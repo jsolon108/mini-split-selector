@@ -208,9 +208,9 @@ const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, quote = [], mzState = {};
 let eclipseSession = { token: null, username: null, password: null };
-  sessionStorage.removeItem('eclipseToken');
-  sessionStorage.removeItem('eclipseUser');
-  sessionStorage.removeItem('eclipsePass');
+  localStorage.removeItem('eclipseToken');
+  localStorage.removeItem('eclipseUser');
+  localStorage.removeItem('eclipsePass');
 
 async function fetchData() {
   const [szR, mzR, iduR, comboR] = await Promise.all([
@@ -592,7 +592,7 @@ async function pushToEclipse() {
       })
     });
     const data = await res.json();
-    if (data.newToken) { eclipseSession.token = data.newToken; sessionStorage.setItem('eclipseToken', data.newToken); }
+    if (data.newToken) { eclipseSession.token = data.newToken; localStorage.setItem('eclipseToken', data.newToken); }
     if (data.success) {
       statusEl.style.color = '#0f6e56';
       statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
@@ -635,9 +635,9 @@ async function doLogin() {
       return;
     }
     eclipseSession = { token: data.sessionToken, username, password };
-    sessionStorage.setItem('eclipseToken', data.sessionToken);
-    sessionStorage.setItem('eclipseUser', data.username || username);
-    sessionStorage.setItem('eclipsePass', password);
+    localStorage.setItem('eclipseToken', data.sessionToken);
+    localStorage.setItem('eclipseUser', data.username || username);
+    localStorage.setItem('eclipsePass', password);
     document.getElementById('login-overlay').classList.remove('visible');
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
@@ -650,9 +650,9 @@ async function doLogin() {
 
 function eclipseLogout() {
   eclipseSession = { token: null, username: null, password: null };
-  sessionStorage.removeItem('eclipseToken');
-  sessionStorage.removeItem('eclipseUser');
-  sessionStorage.removeItem('eclipsePass');
+  localStorage.removeItem('eclipseToken');
+  localStorage.removeItem('eclipseUser');
+  localStorage.removeItem('eclipsePass');
   document.getElementById('login-overlay').classList.add('visible');
   document.getElementById('user-badge').style.display = 'none';
   document.getElementById('login-user').value = '';
@@ -662,11 +662,11 @@ function eclipseLogout() {
 }
 
 
-// Restore session from sessionStorage on load
+// Restore session from localStorage on load
 (function() {
-  const token = sessionStorage.getItem('eclipseToken');
-  const username = sessionStorage.getItem('eclipseUser');
-  const password = sessionStorage.getItem('eclipsePass');
+  const token = localStorage.getItem('eclipseToken');
+  const username = localStorage.getItem('eclipseUser');
+  const password = localStorage.getItem('eclipsePass');
   console.log('Restore check — token:', token ? 'found' : 'missing', 'username:', username);
   if (token && username) {
     eclipseSession = { token, username, password };
