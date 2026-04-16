@@ -557,9 +557,18 @@ function priceBadge(model) {
     if (p.list != null && p.list > p.price) priceHtml += ` <span class="pricing-list">$${p.list.toFixed(2)}</span>`;
   }
   let invHtml = '';
+  // Inventory
   const branch = quotePricing.userBranch || '';
-  if (inv?.userQty != null) invHtml += `<span style="font-size:11px;color:#666">${branch}: ${inv.userQty}</span>`;
-  if (inv?.farmQty != null && branch !== 'FARM') invHtml += ` <span class="pricing-farm">FARM: ${inv.farmQty}</span>`;
+  const userQty = inv?.userQty ?? 0;
+  const farmQty = inv?.farmQty ?? 0;
+  if (quotePricing.inventory) {
+    if (branch === 'FARM') {
+      invHtml += `<span style="font-size:11px;color:#666">FARM: ${userQty}</span>`;
+    } else {
+      invHtml += `<span style="font-size:11px;color:#666">${branch}: ${userQty}</span>`;
+      invHtml += ` <span class="pricing-farm">FARM: ${farmQty}</span>`;
+    }
+  }
   return `<span class="q-price">${priceHtml}${invHtml ? ' '+invHtml : ''}</span>`;
 }
 
