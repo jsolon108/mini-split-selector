@@ -92,6 +92,16 @@ select:focus,input:focus{outline:none;border-color:#999}
 .btn-submit{background:#185FA5;border:none;color:#fff}
 .btn-submit:disabled{opacity:.5;cursor:not-allowed}
 .modal-status{font-size:12px;margin-top:10px;text-align:center;color:#666;min-height:18px}
+.quote-customer-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.quote-customer-bar input{flex:1;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px}
+.quote-customer-bar .customer-selected-pill{flex:1;padding:8px 10px;background:#f0f5ff;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:8px}
+.quote-customer-bar .customer-selected-pill span{font-weight:500;color:#185FA5}
+.get-pricing-btn{height:36px;padding:0 16px;background:#0f6e56;border:none;border-radius:6px;color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.get-pricing-btn:disabled{opacity:.5;cursor:not-allowed}
+.pricing-badge{font-size:11px;color:#0f6e56;font-weight:500;margin-top:2px}
+.pricing-list{font-size:10px;color:#aaa;text-decoration:line-through}
+.pricing-farm{font-size:11px;color:#185FA5;margin-top:1px}
+.customer-dropdown{position:absolute;top:38px;left:0;right:0;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:10;max-height:180px;overflow-y:auto}
 .login-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
 .login-overlay.visible{display:flex}
 .login-box{background:#fff;border-radius:12px;padding:28px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
@@ -156,6 +166,18 @@ select:focus,input:focus{outline:none;border-color:#999}
   </div>
 
   <div class="panel" id="panel-quote">
+    <div class="quote-customer-bar">
+      <div style="position:relative;flex:1;min-width:200px">
+        <input type="text" id="q-customer-search" placeholder="Search customer for pricing..." oninput="qCustomerSearchInput()" autocomplete="off"/>
+        <div id="q-customer-results" class="customer-dropdown" style="display:none"></div>
+      </div>
+      <div id="q-customer-selected" style="display:none;flex:1" class="customer-selected-pill">
+        <span id="q-customer-name"></span>
+        <span id="q-customer-id" style="color:#888"></span>
+        <button onclick="clearQCustomer()" style="margin-left:auto;background:none;border:none;color:#aaa;cursor:pointer;font-size:13px">✕</button>
+      </div>
+      <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
+    </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
     <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
@@ -509,6 +531,31 @@ function renderMulti() { renderMZResults(); }
 function addMZ(id) {}
 
 
+function formatCatNumLocal(model) {
+  if (!model) return null;
+  if (model.startsWith('BMS500-')) return model.replace('BMS500-', '');
+  return model;
+}
+
+function priceBadge(model) {
+  if (!quotePricing?.pricing || !model) return '';
+  const key = formatCatNumLocal(model);
+  const p = quotePricing.pricing[key] || quotePricing.pricing[model];
+  const inv = quotePricing.inventory?.[key] || quotePricing.inventory?.[model];
+  if (!p && !inv) return '';
+  let html = '';
+  // Price
+  if (p?.price != null) {
+    html += `<span class="pricing-badge" style="margin-left:8px">$${p.price.toFixed(2)}</span>`;
+    if (p.list != null && p.list > p.price) html += `<span class="pricing-list" style="margin-left:4px">$${p.list.toFixed(2)}</span>`;
+  }
+  // Inventory
+  const branch = quotePricing.userBranch || '';
+  if (inv?.userQty != null) html += `<span style="margin-left:8px;font-size:11px;color:#666">${branch}: ${inv.userQty}</span>`;
+  if (inv?.farmQty != null && branch !== 'FARM') html += `<span class="pricing-farm" style="margin-left:6px">FARM: ${inv.farmQty}</span>`;
+  return html;
+}
+
 function renderQuote() {
   const el=document.getElementById('quote-box');
   if(!quote.length){el.innerHTML='<div class="empty">No systems added yet</div>';return;}
@@ -516,14 +563,14 @@ function renderQuote() {
     let models='';
     if(q.qtype==='sz'){
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span></div>
-        <div class="q-model-row"><span class="q-model-label">IDU</span><span >${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}</div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
+        <div class="q-model-row"><span class="q-model-label">IDU</span><span >${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}</div>
         ${q.ahri?`<div class="q-model-row"><span class="q-model-label">AHRI</span><span>${q.ahri}</span></div>`:''}
       </div>`;
     } else {
-      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span >${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}</div>`).join('');
+      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span >${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}</div>`).join('');
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span></div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
         ${zlines}
       </div>`;
     }
@@ -714,6 +761,129 @@ async function pushToEclipse() {
     statusEl.textContent = `Network error: ${err.message}`;
     submitBtn.disabled = false;
   }
+}
+
+
+// ── Quote tab customer search & pricing ──────────────────────────
+
+let qSelectedCustomer = null;
+let qCustomerSearchTimer = null;
+let quotePricing = {}; // catalog# -> {price, list, farmPrice}
+
+function qCustomerSearchInput() {
+  clearTimeout(qCustomerSearchTimer);
+  const q = document.getElementById('q-customer-search').value.trim();
+  const resultsEl = document.getElementById('q-customer-results');
+  if (q.length < 2) { resultsEl.style.display='none'; return; }
+  qCustomerSearchTimer = setTimeout(() => qSearchCustomers(q), 350);
+}
+
+async function qSearchCustomers(keyword) {
+  const resultsEl = document.getElementById('q-customer-results');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">Searching...</div>';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword })
+    });
+    const data = await res.json();
+    if (!data.results?.length) { resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">No customers found.</div>'; return; }
+    resultsEl.innerHTML = data.results.map(c => `
+      <div onclick="qSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})"
+           style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:12px"
+           onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
+        <div style="font-weight:500">${c.name}</div>
+        <div style="color:#888">#${c.id}${c.city?' · '+c.city+', '+c.state:''}</div>
+      </div>`).join('');
+  } catch(err) {
+    resultsEl.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:#E24B4A">Error: ${err.message}</div>`;
+  }
+}
+
+function qSelectCustomer(c) {
+  qSelectedCustomer = c;
+  document.getElementById('q-customer-results').style.display = 'none';
+  document.getElementById('q-customer-search').style.display = 'none';
+  document.getElementById('q-customer-selected').style.display = 'flex';
+  document.getElementById('q-customer-name').textContent = c.name;
+  document.getElementById('q-customer-id').textContent = '#' + c.id;
+  document.getElementById('get-pricing-btn').disabled = false;
+  // Also pre-fill the modal customer
+  selectedCustomer = c;
+  document.getElementById('modal-customer-search').style.display = 'none';
+  document.getElementById('customer-selected').style.display = 'block';
+  document.getElementById('customer-selected-name').textContent = c.name;
+  document.getElementById('customer-selected-id').textContent = '#' + c.id;
+  const obRow = document.getElementById('ordered-by-row');
+  const obSelect = document.getElementById('modal-ordered-by');
+  if (c.contacts?.length) {
+    obSelect.innerHTML = '<option value="">— select contact —</option>' + c.contacts.map(ct=>`<option value="${ct.id}">${ct.name}</option>`).join('');
+    obRow.style.display = 'block';
+  } else { obRow.style.display='none'; }
+}
+
+function clearQCustomer() {
+  qSelectedCustomer = null;
+  quotePricing = {};
+  document.getElementById('q-customer-search').value = '';
+  document.getElementById('q-customer-search').style.display = '';
+  document.getElementById('q-customer-selected').style.display = 'none';
+  document.getElementById('get-pricing-btn').disabled = true;
+  renderQuote();
+}
+
+async function getPricing() {
+  if (!qSelectedCustomer || !quote.length) return;
+  const btn = document.getElementById('get-pricing-btn');
+  btn.textContent = 'Loading...';
+  btn.disabled = true;
+
+  // Collect all catalog numbers from the quote
+  const catalogNumbers = [];
+  quote.forEach(q => {
+    if (q.qtype === 'sz') {
+      catalogNumbers.push(formatCatNum(q.ou), formatCatNum(q.iu));
+    } else {
+      catalogNumbers.push(formatCatNum(q.ou));
+      q.zones.forEach(z => catalogNumbers.push(formatCatNum(z.model)));
+    }
+  });
+  const unique = [...new Set(catalogNumbers.filter(Boolean))];
+
+  const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
+
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'pricing',
+        sessionToken: eclipseSession.token,
+        customerId: qSelectedCustomer.id,
+        userId: eclipseSession.username,
+        userBranch,
+        catalogNumbers: unique
+      })
+    });
+    const data = await res.json();
+    console.log('Pricing response:', data);
+    quotePricing = { pricing: data.pricing||{}, inventory: data.inventory||{}, userBranch: data.userBranch, rawPricing: data.rawPricing, rawInv: data.rawInv };
+    console.log('Pricing raw:', data.rawPricing, 'Inv raw:', data.rawInv);
+    renderQuote();
+  } catch(err) {
+    console.error('Pricing error:', err);
+  }
+
+  btn.textContent = 'Refresh Pricing';
+  btn.disabled = false;
+}
+
+function formatCatNum(model) {
+  if (!model) return null;
+  if (model.startsWith('BMS500-')) return model.replace('BMS500-', '');
+  return model;
 }
 
 async function doLogin() {
