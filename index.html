@@ -302,8 +302,9 @@ function renderMZInputs() {
     const allCaps = [...new Set(Object.values(MZ_IDU).flat().map(r => r.cap))].sort((a,b)=>a-b);
     const capOpts = ['<option value="0">— select capacity —</option>', ...allCaps.map(c => `<option value="${c}"${z.cap===c?' selected':''}>${c}K</option>`)].join('');
     // Build type options based on selected cap — union of types available across all ODUs
-    const typeRows = z.cap > 0 ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>r.cap===z.cap).map(r=>[r.type, r])).values()] : [];
-    const typeOpts = z.cap > 0 ? ['<option value="">— select type —</option>', ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join('') : '';
+    const capFilter = z.cap === -1 ? [6,7] : [z.cap];
+    const typeRows = z.cap !== 0 ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>capFilter.includes(r.cap)).map(r=>[r.type, r])).values()] : [];
+    const typeOpts = z.cap !== 0 ? ['<option value="">— select type —</option>', ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join('') : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
@@ -316,7 +317,9 @@ function renderMZInputs() {
   }).join('');
 }
 
-function mzSetCap(idx, cap) {
+function mzSetCap(idx, val) {
+  // 6_7 means user wants 6K or 7K — store as -1 sentinel, resolve per ODU later
+  const cap = val === '6_7' ? -1 : +val;
   mzZoneState[idx] = {cap, type:'', model:'', liq_pipe:'', gas_pipe:''};
   renderMZInputs();
   renderMZResults();
@@ -339,7 +342,8 @@ function renderMZResults() {
   const filledZones = mzZoneState.filter(z => z.cap > 0);
   if (filledZones.length < 2) { el.innerHTML = '<div class="no-res" style="padding:12px 0;color:#999">Fill in at least 2 zones to see matching systems.</div>'; return; }
 
-  const filledCaps = filledZones.map(z => z.cap * 1000);
+  // For 6/7K zones (cap===-1), we'll try both 6000 and 7000 in combo lookup
+  const filledCaps = filledZones.map(z => z.cap === -1 ? 6000 : z.cap * 1000); // default 6000 for lookup
   const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
   const nZones = mzZoneState.length;
   const msCount = mzZoneState.filter(z => z.type==='Mid-Static Duct'||z.type==='Air Handler').length;
@@ -363,15 +367,31 @@ function renderMZResults() {
     // Check all selected types are available on this ODU
     for (const z of mzZoneState) {
       if (!z.cap || !z.type) continue;
-      const hasType = iduRows(o.id).some(r => r.cap === z.cap && r.type === z.type);
+      const caps = z.cap === -1 ? [6,7] : [z.cap];
+      const hasType = iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type);
       if (!hasType) return false;
     }
 
     // Combo validation
     const combos = MZ_COMBOS[o.id];
     if (combos) {
-      // Exact combo match required (Bosch, Hisense)
-      if (!combos.has(comboKey)) return false;
+      // Try both 6000 and 7000 for any 6/7K zones
+      const has67 = mzZoneState.some(z=>z.cap===-1);
+      if (has67) {
+        // Generate all combinations of 6000/7000 for -1 zones
+        const keys = [filledCaps];
+        mzZoneState.forEach((z,i) => {
+          if (z.cap === -1) {
+            const next = [];
+            keys.forEach(k => { next.push([...k]); const k7=[...k]; k7[i]=7000; next.push(k7); });
+            keys.splice(0, keys.length, ...next);
+          }
+        });
+        const anyMatch = keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')));
+        if (!anyMatch) return false;
+      } else {
+        if (!combos.has(comboKey)) return false;
+      }
     } else {
       // BTU range check (Daikin, Fujitsu)
       const total = filledCaps.reduce((a,b)=>a+b,0);
@@ -405,14 +425,10 @@ function renderMZResultCard(o) {
   const zoneLines = mzZoneState.map((z, i) => {
     if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:12px;padding-top:8px">— empty —</div></div>`;
     const row = iduRow(o.id, z.cap, z.type) || iduRows(o.id).find(r => r.cap===z.cap && r.type===z.type);
-    const model = row ? row.model : z.model || '—';
-    const pipes = row ? `Liq: ${row.liq_pipe} · Gas: ${row.gas_pipe}` : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <div style="font-size:12px;padding-top:6px;color:#333">${z.cap}K ${z.type||''}</div>
-        ${model?`<div class="zone-model visible">${model}</div>`:''}
-        ${pipes?`<div class="zone-pipes">${pipes}</div>`:''}
+        <div style="font-size:12px;padding-top:6px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}</div>
       </div>
     </div>`;
   }).join('');
@@ -434,8 +450,9 @@ function addMZResult(ouId) {
   const o = MZ.find(x => x.id === ouId);
   const zones = mzZoneState.map((z, i) => {
     if (!z.cap || !z.type) return null;
-    const row = iduRow(ouId, z.cap, z.type) || iduRows(ouId).find(r => r.cap===z.cap && r.type===z.type);
-    return {z: i+1, cap: z.cap, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe};
+    const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(ouId).some(r=>r.cap===c&&r.type===z.type)) || 6) : z.cap;
+    const row = iduRow(ouId, capToUse, z.type) || iduRows(ouId).find(r => r.cap===capToUse && r.type===z.type);
+    return {z: i+1, cap: capToUse, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe};
   }).filter(Boolean);
   const total = zones.reduce((a,z) => a+z.cap*1000, 0);
   quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou: o.ou,
