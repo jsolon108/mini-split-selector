@@ -78,13 +78,15 @@ export default async function handler(req, res) {
       const userName = data.sessionUser?.userName;
       // Fetch user details to get home branch
       let homeBranch = null;
+      let debugUser = null;
       try {
         const userR = await fetch(`${ECLIPSE_BASE}/Users/${userName}`, {
           headers: { 'Accept': 'application/json', 'sessionToken': token }
         });
         if (userR.ok) {
           const userData = await userR.json();
-          homeBranch = userData.homeBranch || userData.defaultBranch || userData.branchId || null;
+          debugUser = JSON.stringify(userData).slice(0, 500);
+          homeBranch = userData.homeBranchId || userData.homeBranch || userData.defaultBranch || null;
         }
       } catch(e) {}
       return res.status(200).json({ sessionToken: token, sessionId: data.id, username: userName, homeBranch });
