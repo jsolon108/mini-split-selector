@@ -225,8 +225,8 @@ export default async function handler(req, res) {
         const catKey = catalogNumbers[i];
         if (!catKey) return;
         const branches = r.branchAvailableQuantity || [];
-        const userQty = branches.find(b => b.warehouse === userBranch)?.warehouseQty ?? null;
-        const farmQty = branches.find(b => b.warehouse === FARM)?.warehouseQty ?? null;
+        const userQty = branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? null;
+        const farmQty = branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? null;
         invMap[catKey] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
       });
 
