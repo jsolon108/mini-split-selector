@@ -66,7 +66,9 @@ select:focus,input:focus{outline:none;border-color:#999}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
 .q-name{font-weight:600;font-size:13px;margin-bottom:4px}
 .q-model-list{font-family:'SF Mono',monospace;font-size:11px;color:#555;display:flex;flex-direction:column;gap:3px}
-.q-model-row{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.q-model-row{display:flex;gap:6px;align-items:baseline;min-width:0}
+.q-model-row .q-price{margin-left:auto;text-align:right;white-space:nowrap;flex-shrink:0}
+.q-total-row{display:flex;justify-content:flex-end;border-top:1px solid #eee;margin-top:6px;padding-top:6px;font-size:12px;font-weight:600;color:#333}
 .q-model-label{color:#999;font-size:10px;width:55px;flex-shrink:0}
 .q-pipes{font-size:10px;color:#aaa;white-space:nowrap;flex-shrink:0}
 .q-note{font-size:11px;color:#999;margin-top:4px;white-space:normal}
@@ -537,23 +539,28 @@ function formatCatNumLocal(model) {
   return model;
 }
 
+function getPrice(model) {
+  if (!quotePricing?.pricing || !model) return null;
+  const key = formatCatNumLocal(model);
+  return quotePricing.pricing[key] || quotePricing.pricing[model] || null;
+}
+
 function priceBadge(model) {
   if (!quotePricing?.pricing || !model) return '';
   const key = formatCatNumLocal(model);
   const p = quotePricing.pricing[key] || quotePricing.pricing[model];
   const inv = quotePricing.inventory?.[key] || quotePricing.inventory?.[model];
   if (!p && !inv) return '';
-  let html = '';
-  // Price
+  let priceHtml = '';
   if (p?.price != null) {
-    html += `<span class="pricing-badge" style="margin-left:8px">$${p.price.toFixed(2)}</span>`;
-    if (p.list != null && p.list > p.price) html += `<span class="pricing-list" style="margin-left:4px">$${p.list.toFixed(2)}</span>`;
+    priceHtml += `<span class="pricing-badge">$${p.price.toFixed(2)}</span>`;
+    if (p.list != null && p.list > p.price) priceHtml += ` <span class="pricing-list">$${p.list.toFixed(2)}</span>`;
   }
-  // Inventory
+  let invHtml = '';
   const branch = quotePricing.userBranch || '';
-  if (inv?.userQty != null) html += `<span style="margin-left:8px;font-size:11px;color:#666">${branch}: ${inv.userQty}</span>`;
-  if (inv?.farmQty != null && branch !== 'FARM') html += `<span class="pricing-farm" style="margin-left:6px">FARM: ${inv.farmQty}</span>`;
-  return html;
+  if (inv?.userQty != null) invHtml += `<span style="font-size:11px;color:#666">${branch}: ${inv.userQty}</span>`;
+  if (inv?.farmQty != null && branch !== 'FARM') invHtml += ` <span class="pricing-farm">FARM: ${inv.farmQty}</span>`;
+  return `<span class="q-price">${priceHtml}${invHtml ? ' '+invHtml : ''}</span>`;
 }
 
 function renderQuote() {
@@ -562,16 +569,25 @@ function renderQuote() {
   el.innerHTML=quote.map((q,qi)=>{
     let models='';
     if(q.qtype==='sz'){
+      // IDU first for single zone (Eclipse add-on ordering)
+      const iduPrice = getPrice(q.iu);
+      const oduPrice = getPrice(q.ou);
+      const szTotal = (iduPrice?.price||0) + (oduPrice?.price||0);
       models=`<div class="q-model-list">
+        <div class="q-model-row"><span class="q-model-label">IDU</span><span>${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}</div>
         <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
-        <div class="q-model-row"><span class="q-model-label">IDU</span><span >${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}</div>
         ${q.ahri?`<div class="q-model-row"><span class="q-model-label">AHRI</span><span>${q.ahri}</span></div>`:''}
+        ${szTotal>0?`<div class="q-total-row">System total: $${szTotal.toFixed(2)}</div>`:''}
       </div>`;
     } else {
-      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span >${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}</div>`).join('');
+      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}</div>`).join('');
+      const oduPrice = getPrice(q.ou);
+      const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
+      const mzTotal = (oduPrice?.price||0) + zoneTotal;
       models=`<div class="q-model-list">
         <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
         ${zlines}
+        ${mzTotal>0?`<div class="q-total-row">System total: $${mzTotal.toFixed(2)}</div>`:''}
       </div>`;
     }
     return `<div class="quote-line">
