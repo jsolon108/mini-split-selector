@@ -26,8 +26,9 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     shipToCustomer: customerAccount || '',
     customerPONumber: customerPO || '',
     orderBy: orderBy || '',
-    salesSource: 'Email / Text',
+    salesSource: 'EMAIL',
     writer: username || '',
+    quoteStatus: 'Bid',
     lines: lines.map(l => ({
       lineItemProduct: {
         catalogNumber: formatCatalogNumber(l.model),
