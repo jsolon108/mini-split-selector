@@ -210,12 +210,30 @@ function renderMZCard(o) {
   const over=total>o.max_btu;
   const underMin=o.min_btu>0&&total>0&&total<o.min_btu;
 
-  // Fujitsu mid-static enforcement
+  // Mid-static count and max enforcement
   const typeCount={};
   st.forEach(z=>{if(z.type)typeCount[z.type]=(typeCount[z.type]||0)+1;});
   const msRows=iduRows(o.id).filter(r=>r.type==='Mid-Static Duct');
   const msMax=msRows.length>0?(msRows[0].max_of_type||null):null;
-  const msViolation=msMax!==null&&(typeCount['Mid-Static Duct']||0)>msMax;
+  const msCount=typeCount['Mid-Static Duct']||0;
+  const msViolation=msMax!==null&&msCount>msMax;
+
+  // *2/*3 zone count reduction rule
+  const rule=o.ms_zone_rule||null;
+  let effectiveZonesMax=o.zones_max;
+  let msZoneWarn='';
+  if(msCount>0&&rule===2){
+    effectiveZonesMax=3;
+    msZoneWarn=`Mid-Static Duct limits this system to 3 zones max`;
+  } else if(msCount>=2&&rule===3){
+    effectiveZonesMax=3;
+    msZoneWarn=`2 Mid-Static Ducts limits this system to 3 zones max`;
+  } else if(msCount===1&&rule===3){
+    effectiveZonesMax=4;
+    msZoneWarn=`Mid-Static Duct limits this system to 4 zones max`;
+  }
+  const zonesSelected=st.filter(z=>z.cap>0).length;
+  const msZoneViolation=zonesSelected>effectiveZonesMax;
 
   const filled=st.filter(z=>z.cap>0&&z.type).length;
   const filledCaps=st.filter(z=>z.cap>0).map(z=>z.cap*1000);
@@ -239,14 +257,20 @@ function renderMZCard(o) {
 
   const capList=caps(o.id);
   const zoneRows=st.map((z,i)=>{
+    // Lock zones beyond effectiveZonesMax — clear and disable them
+    const locked=i>=effectiveZonesMax;
+    if(locked&&z.cap>0){
+      // Clear the locked zone state silently
+      mzState[o.id][i]={cap:0,type:'',model:'',liq_pipe:'',gas_pipe:''};
+    }
     const capOpts=['<option value="0">— empty —</option>',...capList.map(c=>`<option value="${c}"${z.cap===c?' selected':''}>${c}K</option>`)].join('');
     const typeOptions=z.cap>0?typesForCap(o.id,z.cap):[];
     const typeOpts=z.cap>0?['<option value="">— select type —</option>',...typeOptions.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join(''):'';
-    return `<div class="zone-row">
+    return `<div class="zone-row"${locked?' style="opacity:.35;pointer-events:none"':''}>
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <select onchange="updateZoneCap('${o.id}',${i},+this.value)">${capOpts}</select>
-        ${z.cap>0?`<select onchange="updateZoneType('${o.id}',${i},this.value)">${typeOpts}</select>`:''}
+        <select onchange="updateZoneCap('${o.id}',${i},+this.value)"${locked?' disabled':''}>${capOpts}</select>
+        ${z.cap>0&&!locked?`<select onchange="updateZoneType('${o.id}',${i},this.value)">${typeOpts}</select>`:''}
         <div class="zone-model${z.model?' visible':''}">${z.model||''}</div>
         ${z.liq_pipe?`<div class="zone-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</div>`:''}
       </div>
@@ -263,6 +287,8 @@ function renderMZCard(o) {
       <div class="btu-track"><div class="btu-fill ${barClass}" style="width:${barPct}%"></div></div>
     </div>
     ${msViolation?`<div class="mz-warn visible">Max ${msMax} Mid-Static Duct zone${msMax>1?'s':''} per system</div>`:''}
+    ${msZoneViolation?`<div class="mz-warn visible">${msZoneWarn} — remove a zone</div>`:''}
+    ${!msZoneViolation&&msZoneWarn?`<div class="mz-warn visible" style="color:#EF9F27">${msZoneWarn}</div>`:''}
     ${comboInvalid?`<div class="mz-warn visible">This combination is not valid for this ODU — adjust zone sizes</div>`:''}
     <button class="mz-add-btn" onclick="addMZ('${o.id}')" ${valid?'':'disabled'}>+ Add to quote</button>
   </div>`;
