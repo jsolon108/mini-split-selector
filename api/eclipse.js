@@ -22,12 +22,18 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
   return {
     priceBranch: branch,
     shipBranch: branch,
+    glBranch: branch,
     billToCustomer: customerAccount || '',
     shipToCustomer: customerAccount || '',
     customerPONumber: customerPO || '',
+    customerReleaseNumber: 'API',
     orderBy: orderBy || '',
     salesSource: 'Email / Text',
     writer: username || '',
+    insideSalesPerson: username || '',
+    orderType: '',
+    ttyId: '',
+    ttyData: '',
     lines: lines.map(l => ({
       lineItemProduct: {
         catalogNumber: formatCatalogNumber(l.model),
