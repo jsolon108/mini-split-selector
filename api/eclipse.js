@@ -74,7 +74,7 @@ export default async function handler(req, res) {
       if (r.status === 401) return res.status(401).json({ error: 'Invalid username or password' });
       if (!r.ok) return res.status(r.status).json({ error: `Login failed: ${r.status}` });
       const data = await r.json();
-      return res.status(200).json({ sessionToken: data.sessionToken, sessionId: data.id, username: data.sessionUser?.userName });
+      return res.status(200).json({ sessionToken: data.sessionToken, sessionId: data.id, username: data.sessionUser?.userName, homeBranch: data.sessionUser?.homeBranch || data.homeBranch || null });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
