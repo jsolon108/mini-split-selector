@@ -253,8 +253,8 @@ async function fetchData() {
     fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos_ahu?select=ou_id,combo&order=ou_id`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=5000`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos_ahu?select=ou_id,combo&order=ou_id&limit=5000`, { headers: H })
   ]);
   SZ = await szR.json();
   MZ = await mzR.json();
