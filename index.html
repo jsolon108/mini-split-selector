@@ -162,8 +162,8 @@ select:focus,input:focus{outline:none;border-color:#999}
       <option value="MILF">MILF — Milford</option>
       <option value="HART">HART — Hartford</option>
     </select>
-    <label>Customer Account # <span style="color:#aaa;font-weight:400">(optional)</span></label>
-    <input type="text" id="modal-customer" placeholder="e.g. 12345"/>
+    <label>Customer Account # <span style="color:#E24B4A">*</span></label>
+    <input type="text" id="modal-customer" placeholder="e.g. 12345" required/>
     <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
     <div class="modal-btns">
@@ -469,6 +469,7 @@ async function pushToEclipse() {
   const statusEl = document.getElementById('modal-status');
   const submitBtn = document.getElementById('modal-submit');
 
+  if (!customerAccount) { statusEl.style.color='#E24B4A'; statusEl.textContent='Customer account # is required.'; return; }
   submitBtn.disabled = true;
   statusEl.textContent = 'Creating order in Eclipse...';
   statusEl.style.color = '#666';
