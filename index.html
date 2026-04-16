@@ -210,12 +210,12 @@ function renderMZCard(o) {
   const over=total>o.max_btu;
   const underMin=o.min_btu>0&&total>0&&total<o.min_btu;
 
-  // Mid-static count and max enforcement
+  // Mid-static count and max enforcement (Mid-Static Duct = ARUH, Air Handler = AMUH — same rules)
   const typeCount={};
   st.forEach(z=>{if(z.type)typeCount[z.type]=(typeCount[z.type]||0)+1;});
-  const msRows=iduRows(o.id).filter(r=>r.type==='Mid-Static Duct');
+  const msRows=iduRows(o.id).filter(r=>r.type==='Mid-Static Duct'||r.type==='Air Handler');
   const msMax=msRows.length>0?(msRows[0].max_of_type||null):null;
-  const msCount=typeCount['Mid-Static Duct']||0;
+  const msCount=(typeCount['Mid-Static Duct']||0)+(typeCount['Air Handler']||0);
   const msViolation=msMax!==null&&msCount>msMax;
 
   // *2/*3 zone count reduction rule
@@ -224,13 +224,13 @@ function renderMZCard(o) {
   let msZoneWarn='';
   if(msCount>0&&rule===2){
     effectiveZonesMax=3;
-    msZoneWarn=`Mid-Static Duct limits this system to 3 zones max`;
+    msZoneWarn=`Mid-Static/Air Handler limits this system to 3 zones max`;
   } else if(msCount>=2&&rule===3){
     effectiveZonesMax=3;
-    msZoneWarn=`2 Mid-Static Ducts limits this system to 3 zones max`;
+    msZoneWarn=`2 Mid-Static/Air Handler units limits this system to 3 zones max`;
   } else if(msCount===1&&rule===3){
     effectiveZonesMax=4;
-    msZoneWarn=`Mid-Static Duct limits this system to 4 zones max`;
+    msZoneWarn=`Mid-Static/Air Handler limits this system to 4 zones max`;
   }
   const zonesSelected=st.filter(z=>z.cap>0).length;
   const msZoneViolation=zonesSelected>effectiveZonesMax;
@@ -286,7 +286,7 @@ function renderMZCard(o) {
       <div class="btu-status"><span>${status}</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
       <div class="btu-track"><div class="btu-fill ${barClass}" style="width:${barPct}%"></div></div>
     </div>
-    ${msViolation?`<div class="mz-warn visible">Max ${msMax} Mid-Static Duct zone${msMax>1?'s':''} per system</div>`:''}
+    ${msViolation?`<div class="mz-warn visible">Max ${msMax} Mid-Static Duct/Air Handler unit${msMax>1?'s':''} per system</div>`:''}
     ${msZoneViolation?`<div class="mz-warn visible">${msZoneWarn} — remove a zone</div>`:''}
     ${!msZoneViolation&&msZoneWarn?`<div class="mz-warn visible" style="color:#EF9F27">${msZoneWarn}</div>`:''}
     ${comboInvalid?`<div class="mz-warn visible">This combination is not valid for this ODU — adjust zone sizes</div>`:''}
