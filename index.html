@@ -636,7 +636,7 @@ async function doLogin() {
     localStorage.setItem('eclipseUser', data.username || username);
     localStorage.setItem('eclipsePass', password);
     document.getElementById('login-overlay').classList.remove('visible');
-    document.getElementById('user-name').textContent = data.username || username;
+    document.getElementById('user-name').textContent = (data.username || username) + ' [' + JSON.stringify(data.debugUser) + ']';
     document.getElementById('user-badge').style.display = '';
     if (data.homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = data.homeBranch; }
   } catch (err) {
