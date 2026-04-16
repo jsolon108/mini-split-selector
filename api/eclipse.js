@@ -111,7 +111,9 @@ export default async function handler(req, res) {
         return res.status(r.status).json({ error: `Order failed: ${r.status}`, detail: rawText });
       }
 
-      return res.status(200).json({ success: true, orderId: null, debug: rawText.slice(0, 800) });
+      const order = JSON.parse(rawText);
+      const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
+      return res.status(200).json({ success: true, orderId: o.eclipseOid || o.id });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
