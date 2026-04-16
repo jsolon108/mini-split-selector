@@ -1,5 +1,12 @@
 const ECLIPSE_BASE = 'https://api.johnstonenyct.com:5000';
 
+function formatCatalogNumber(model) {
+  if (model && model.startsWith('BMS500-')) {
+    return model.replace('BMS500-', '').replace(/-/g, '');
+  }
+  return model;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -69,7 +76,7 @@ export default async function handler(req, res) {
           orderBy: orderBy || '',
           lines: lines.map(l => ({
             lineItemProduct: {
-              catalogNumber: l.model,
+              catalogNumber: formatCatalogNumber(l.model),
               quantity: l.qty,
               um: 'EA',
               umQuantity: l.qty,
