@@ -372,7 +372,7 @@ function renderMZResults() {
 
     // Check all selected types are available on this ODU
     for (const z of mzZoneState) {
-      if (!z.cap || !z.type) continue;
+      if ((!z.cap && z.cap !== -1) || !z.type) continue;
       const caps = z.cap === -1 ? [6,7] : [z.cap];
       const hasType = iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type);
       if (!hasType) return false;
@@ -381,16 +381,18 @@ function renderMZResults() {
     // Combo validation
     const combos = MZ_COMBOS[o.id];
     if (combos) {
-      // Try both 6000 and 7000 for any 6/7K zones
-      const has67 = mzZoneState.some(z=>z.cap===-1);
+      const has67 = filledZones.some(z => z.cap === -1);
       if (has67) {
-        // Generate all combinations of 6000/7000 for -1 zones
-        const keys = [filledCaps];
-        mzZoneState.forEach((z,i) => {
+        // Generate all 6000/7000 permutations for -1 zones using filledZones indices
+        let keys = [filledZones.map(z => z.cap === -1 ? 6000 : z.cap * 1000)];
+        filledZones.forEach((z, i) => {
           if (z.cap === -1) {
             const next = [];
-            keys.forEach(k => { next.push([...k]); const k7=[...k]; k7[i]=7000; next.push(k7); });
-            keys.splice(0, keys.length, ...next);
+            keys.forEach(k => {
+              next.push([...k]);
+              const k7 = [...k]; k7[i] = 7000; next.push(k7);
+            });
+            keys = next;
           }
         });
         const anyMatch = keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')));
