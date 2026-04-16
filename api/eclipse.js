@@ -98,20 +98,23 @@ export default async function handler(req, res) {
   // Customer search
   if (action === 'searchCustomers') {
     try {
-      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=25`, {
+      const isNumeric = /^\d+$/.test(keyword.trim());
+      let searchUrl = `${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=25`;
+      if (isNumeric) searchUrl += `&id=${encodeURIComponent(keyword.trim())}`;
+      const r = await fetch(searchUrl, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!r.ok) return res.status(r.status).json({ error: `Customer search failed: ${r.status}` });
       const data = await r.json();
       const results = (data.results || [])
-        .filter(c => c.isBillTo === true)
+        .filter(c => c.isBillTo === true && !c.autoDelete)
         .slice(0, 10)
         .map(c => ({
           id: c.id,
           name: c.name,
           city: c.city,
           state: c.state,
-          contacts: (c.contacts || []).map(ct => ({ id: ct.id, name: ct.name }))
+          contacts: (c.creditAuthPersonnelList || c.contacts || []).map(ct => ({ id: ct.contactId || ct.name, name: ct.name }))
         }));
       return res.status(200).json({ results });
     } catch (err) {
