@@ -185,12 +185,11 @@ export default async function handler(req, res) {
       let pricingResults = [];
       if (productIds.length > 0) {
         const pricingByIdParams = new URLSearchParams();
-        productIds.forEach(id => pricingByIdParams.append('ProductId', id));
+        // Use catalog numbers directly for pricing — more reliable than productId positional match
+        catalogNumbers.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
         pricingByIdParams.append('Quantity', '1');
         if (customerId) pricingByIdParams.append('CustomerId', customerId);
         pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
-        pricingByIdParams.append('ConsiderUserAuthBranch', 'true');
-        if (userIdUpper) pricingByIdParams.append('UserId', userIdUpper);
 
         const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
         console.log('Pricing URL:', pricingUrl);
@@ -204,29 +203,31 @@ export default async function handler(req, res) {
         pricingResults = pricingData.results || [];
       }
 
-      // Build pricing map keyed by productId
+      // Build pricing map keyed by catalog number (positional match)
       const pricingByProductId = {};
-      pricingResults.forEach(r => {
-        if (r.productId) pricingByProductId[r.productId] = {
+      pricingResults.forEach((r, i) => {
+        const catKey = catalogNumbers[i];
+        if (catKey) pricingByProductId[catKey] = {
           price: r.productUnitPrice?.value ?? null,
           list: r.listPrice?.value ?? null
         };
       });
 
-      // Build final maps keyed by catalog number (using position correlation)
-      // invResults[i] corresponds to catalogNumbers[i]
+      // Build final maps keyed by catalog number
       const pricingMap = {};
       const invMap = {};
+      
+      // Pricing map from direct catalog number lookup
+      Object.assign(pricingMap, pricingByProductId);
+
+      // Inventory map from inventory results (positional)
       invResults.forEach((r, i) => {
-        const catKey = catalogNumbers[i]; // positional match
+        const catKey = catalogNumbers[i];
         if (!catKey) return;
         const branches = r.branchAvailableQuantity || [];
         const userQty = branches.find(b => b.warehouse === userBranch)?.warehouseQty ?? null;
         const farmQty = branches.find(b => b.warehouse === FARM)?.warehouseQty ?? null;
         invMap[catKey] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
-        if (r.productId && pricingByProductId[r.productId]) {
-          pricingMap[catKey] = pricingByProductId[r.productId];
-        }
       });
 
       return res.status(200).json({
