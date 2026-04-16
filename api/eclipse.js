@@ -38,6 +38,7 @@ export default async function handler(req, res) {
           priceBranch: branch,
           shipBranch: branch,
           billToCustomer: customerAccount || '',
+          shipToCustomer: customerAccount || '',
           customerPONumber: customerPO || '',
           lines: lines.map(l => ({
             lineItemProduct: {
