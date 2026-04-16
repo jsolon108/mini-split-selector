@@ -134,10 +134,17 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-multi">
     <div class="mz-filter">
-      <select id="mz-brand" onchange="renderMulti()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
-      <select id="mz-zones" onchange="renderMulti()"><option value="">All zone counts</option><option value="2">2-zone</option><option value="3">3-zone</option><option value="4">4-zone</option><option value="5">5-zone</option><option value="6">6-zone</option></select>
+      <select id="mz-zones" onchange="initMZZones()">
+        <option value="">— select zone count —</option>
+        <option value="2">2 zones</option>
+        <option value="3">3 zones</option>
+        <option value="4">4 zones</option>
+        <option value="5">5 zones</option>
+        <option value="6">6 zones</option>
+      </select>
     </div>
-    <div id="multi-results"><div class="loading">Loading...</div></div>
+    <div id="mz-zone-inputs" style="display:none;margin-bottom:16px"></div>
+    <div id="multi-results"></div>
   </div>
 
   <div class="panel" id="panel-quote">
@@ -275,135 +282,178 @@ function caps(ouId){return [...new Set(iduRows(ouId).map(r=>r.cap))].sort((a,b)=
 function typesForCap(ouId,cap){return iduRows(ouId).filter(r=>r.cap===cap);}
 function iduRow(ouId,cap,type){return iduRows(ouId).find(r=>r.cap===cap&&r.type===type)||null;}
 
-function renderMulti() {
-  const b=document.getElementById('mz-brand').value, z=document.getElementById('mz-zones').value;
-  const list=MZ.filter(o=>(!b||o.brand===b)&&(!z||o.zones_max===+z));
-  const el=document.getElementById('multi-results');
-  if(!list.length){el.innerHTML='<div class="no-res">No units match.</div>';return;}
-  const brands=[...new Set(list.map(o=>o.brand))];
-  el.innerHTML=brands.map(brand=>{
-    const items=list.filter(o=>o.brand===brand);
-    return `<div class="grp-label">${brand}</div><div class="mz-grid">${items.map(renderMZCard).join('')}</div>`;
+// ── New multi-zone: zone-first approach ──────────────────────────
+
+let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}, ...]
+
+function initMZZones() {
+  const n = +document.getElementById('mz-zones').value;
+  if (!n) { document.getElementById('mz-zone-inputs').style.display='none'; document.getElementById('multi-results').innerHTML=''; return; }
+  mzZoneState = Array.from({length: n}, () => ({cap:0, type:'', model:'', liq_pipe:'', gas_pipe:''}));
+  renderMZInputs();
+  renderMZResults();
+}
+
+function renderMZInputs() {
+  const el = document.getElementById('mz-zone-inputs');
+  el.style.display = '';
+  el.innerHTML = mzZoneState.map((z, i) => {
+    // Build cap options from all unique caps across all MZ IDUs
+    const allCaps = [...new Set(Object.values(MZ_IDU).flat().map(r => r.cap))].sort((a,b)=>a-b);
+    const capOpts = ['<option value="0">— select capacity —</option>', ...allCaps.map(c => `<option value="${c}"${z.cap===c?' selected':''}>${c}K</option>`)].join('');
+    // Build type options based on selected cap — union of types available across all ODUs
+    const typeRows = z.cap > 0 ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>r.cap===z.cap).map(r=>[r.type, r])).values()] : [];
+    const typeOpts = z.cap > 0 ? ['<option value="">— select type —</option>', ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join('') : '';
+    return `<div class="zone-row">
+      <span class="zone-label">Zone ${i+1}</span>
+      <div class="zone-selects">
+        <select onchange="mzSetCap(${i},+this.value)">${capOpts}</select>
+        ${z.cap>0?`<select onchange="mzSetType(${i},this.value)">${typeOpts}</select>`:''}
+        ${z.model?`<div class="zone-model visible">${z.model}</div>`:''}
+        ${z.liq_pipe?`<div class="zone-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</div>`:''}
+      </div>
+    </div>`;
   }).join('');
 }
 
-function renderMZCard(o) {
-  const st=mzState[o.id];
-  const total=st.reduce((a,z)=>a+z.cap*1000,0);
-  const pct=o.ou_cap>0?Math.round(total/(o.ou_cap*1000)*100):0;
-  const barPct=Math.min(total/o.max_btu*100,100);
-  const over=total>o.max_btu;
-  const underMin=o.min_btu>0&&total>0&&total<o.min_btu;
+function mzSetCap(idx, cap) {
+  mzZoneState[idx] = {cap, type:'', model:'', liq_pipe:'', gas_pipe:''};
+  renderMZInputs();
+  renderMZResults();
+}
 
-  // Mid-static count and max enforcement (Mid-Static Duct = ARUH, Air Handler = AMUH — same rules)
-  const typeCount={};
-  st.forEach(z=>{if(z.type)typeCount[z.type]=(typeCount[z.type]||0)+1;});
-  const msRows=iduRows(o.id).filter(r=>r.type==='Mid-Static Duct'||r.type==='Air Handler');
-  const msMax=msRows.length>0?(msRows[0].max_of_type||null):null;
-  const msCount=(typeCount['Mid-Static Duct']||0)+(typeCount['Air Handler']||0);
-  const msViolation=msMax!==null&&msCount>msMax;
-
-  // *2/*3 zone count reduction rule
-  const rule=o.ms_zone_rule||null;
-  let effectiveZonesMax=o.zones_max;
-  let msZoneWarn='';
-  if(msCount>0&&rule===2){
-    effectiveZonesMax=3;
-    msZoneWarn=`Mid-Static/Air Handler limits this system to 3 zones max`;
-  } else if(msCount>=2&&rule===3){
-    effectiveZonesMax=3;
-    msZoneWarn=`2 Mid-Static/Air Handler units limits this system to 3 zones max`;
-  } else if(msCount===1&&rule===3){
-    effectiveZonesMax=4;
-    msZoneWarn=`Mid-Static/Air Handler limits this system to 4 zones max`;
+function mzSetType(idx, type) {
+  const z = mzZoneState[idx];
+  if (!type) { z.type=''; z.model=''; z.liq_pipe=''; z.gas_pipe=''; }
+  else {
+    // Find the model for this cap+type — prefer the first matching IDU row across any ODU
+    const row = Object.values(MZ_IDU).flat().find(r => r.cap===z.cap && r.type===type);
+    z.type=type; z.model=row?row.model:''; z.liq_pipe=row?row.liq_pipe:''; z.gas_pipe=row?row.gas_pipe:'';
   }
-  const zonesSelected=st.filter(z=>z.cap>0).length;
-  const msZoneViolation=zonesSelected>effectiveZonesMax;
+  renderMZInputs();
+  renderMZResults();
+}
 
-  const filled=st.filter(z=>z.cap>0&&z.type).length;
-  const filledCaps=st.filter(z=>z.cap>0).map(z=>z.cap*1000);
+function renderMZResults() {
+  const el = document.getElementById('multi-results');
+  const filledZones = mzZoneState.filter(z => z.cap > 0);
+  if (filledZones.length < 2) { el.innerHTML = '<div class="no-res" style="padding:12px 0;color:#999">Fill in at least 2 zones to see matching systems.</div>'; return; }
 
-  // Combo validation — check selected caps against ductless_mz_combos (Bosch and any brand with combos loaded)
-  const combos=MZ_COMBOS[o.id];
-  let comboValid=true, comboInvalid=false;
-  if(combos&&filledCaps.length>=2){
-    const key=[...filledCaps].sort((a,b)=>a-b).join(',');
-    comboValid=combos.has(key);
-    comboInvalid=!comboValid;
-  }
+  const filledCaps = filledZones.map(z => z.cap * 1000);
+  const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
+  const nZones = mzZoneState.length;
+  const msCount = mzZoneState.filter(z => z.type==='Mid-Static Duct'||z.type==='Air Handler').length;
 
-  const valid=!over&&!underMin&&filled>=2&&total>0&&!msViolation&&comboValid;
-  const barClass=over?'btu-over':underMin?'btu-under':'btu-ok';
-  const status=total===0?`Select ≥2 zones · max ${o.max_btu/1000}K`
-    :over?`Over max ${o.max_btu/1000}K — reduce capacity`
-    :underMin?`Under min ${o.min_btu/1000}K (${pct}%) — add capacity`
-    :comboInvalid?`${total/1000}K total — invalid combo for this ODU`
-    :`${total/1000}K total (${pct}%) ✓`;
+  // Find all valid ODUs
+  const valid = MZ.filter(o => {
+    // Must support enough zones
+    if (o.zones_max < nZones) return false;
 
-  const capList=caps(o.id);
-  const zoneRows=st.map((z,i)=>{
-    // Lock zones beyond effectiveZonesMax — clear and disable them
-    const locked=i>=effectiveZonesMax;
-    if(locked&&z.cap>0){
-      // Clear the locked zone state silently
-      mzState[o.id][i]={cap:0,type:'',model:'',liq_pipe:'',gas_pipe:''};
+    // Fujitsu ms_zone_rule check
+    const rule = o.ms_zone_rule || null;
+    if (msCount > 0 && rule === 2 && nZones > 3) return false;
+    if (msCount >= 2 && rule === 3 && nZones > 3) return false;
+    if (msCount === 1 && rule === 3 && nZones > 4) return false;
+
+    // Mid-static count check
+    const msRows = iduRows(o.id).filter(r => r.type==='Mid-Static Duct'||r.type==='Air Handler');
+    const msMax = msRows.length > 0 ? (msRows[0].max_of_type || null) : null;
+    if (msMax !== null && msCount > msMax) return false;
+
+    // Check all selected types are available on this ODU
+    for (const z of mzZoneState) {
+      if (!z.cap || !z.type) continue;
+      const hasType = iduRows(o.id).some(r => r.cap === z.cap && r.type === z.type);
+      if (!hasType) return false;
     }
-    const capOpts=['<option value="0">— empty —</option>',...capList.map(c=>`<option value="${c}"${z.cap===c?' selected':''}>${c}K</option>`)].join('');
-    const typeOptions=z.cap>0?typesForCap(o.id,z.cap):[];
-    const typeOpts=z.cap>0?['<option value="">— select type —</option>',...typeOptions.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join(''):'';
-    return `<div class="zone-row"${locked?' style="opacity:.35;pointer-events:none"':''}>
+
+    // Combo validation
+    const combos = MZ_COMBOS[o.id];
+    if (combos) {
+      // Exact combo match required (Bosch, Hisense)
+      if (!combos.has(comboKey)) return false;
+    } else {
+      // BTU range check (Daikin, Fujitsu)
+      const total = filledCaps.reduce((a,b)=>a+b,0);
+      if (total > o.max_btu) return false;
+      if (o.min_btu > 0 && total < o.min_btu) return false;
+    }
+
+    return true;
+  });
+
+  if (!valid.length) {
+    el.innerHTML = '<div class="no-res" style="padding:12px 0;color:#999">No valid systems found for this combination.</div>';
+    return;
+  }
+
+  const brands = [...new Set(valid.map(o => o.brand))];
+  el.innerHTML = brands.map(brand => {
+    const items = valid.filter(o => o.brand === brand);
+    return `<div class="grp-label">${brand}</div><div class="mz-grid">${items.map(o => renderMZResultCard(o)).join('')}</div>`;
+  }).join('');
+}
+
+function renderMZResultCard(o) {
+  const filledZones = mzZoneState.filter(z => z.cap > 0 && z.type);
+  const total = filledZones.reduce((a,z) => a+z.cap*1000, 0);
+  const pct = o.ou_cap > 0 ? Math.round(total/(o.ou_cap*1000)*100) : 0;
+  const barPct = Math.min(total/o.max_btu*100, 100);
+  const allFilled = mzZoneState.every(z => z.cap > 0 && z.type);
+
+  // Resolve actual model numbers for this ODU
+  const zoneLines = mzZoneState.map((z, i) => {
+    if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:12px;padding-top:8px">— empty —</div></div>`;
+    const row = iduRow(o.id, z.cap, z.type) || iduRows(o.id).find(r => r.cap===z.cap && r.type===z.type);
+    const model = row ? row.model : z.model || '—';
+    const pipes = row ? `Liq: ${row.liq_pipe} · Gas: ${row.gas_pipe}` : '';
+    return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <select onchange="updateZoneCap('${o.id}',${i},+this.value)"${locked?' disabled':''}>${capOpts}</select>
-        ${z.cap>0&&!locked?`<select onchange="updateZoneType('${o.id}',${i},this.value)">${typeOpts}</select>`:''}
-        <div class="zone-model${z.model?' visible':''}">${z.model||''}</div>
-        ${z.liq_pipe?`<div class="zone-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</div>`:''}
+        <div style="font-size:12px;padding-top:6px;color:#333">${z.cap}K ${z.type||''}</div>
+        ${model?`<div class="zone-model visible">${model}</div>`:''}
+        ${pipes?`<div class="zone-pipes">${pipes}</div>`:''}
       </div>
     </div>`;
   }).join('');
 
   return `<div class="mz-card">
-    <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone</div>
+    <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max</div>
     <div class="mz-sub">${o.ou}</div>
     <div class="mz-note">${o.note||''}</div>
-    ${zoneRows}
+    ${zoneLines}
     <div class="btu-bar">
-      <div class="btu-status"><span>${status}</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
-      <div class="btu-track"><div class="btu-fill ${barClass}" style="width:${barPct}%"></div></div>
+      <div class="btu-status"><span>${total/1000}K total (${pct}%)</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
+      <div class="btu-track"><div class="btu-fill btu-ok" style="width:${barPct}%"></div></div>
     </div>
-    ${msViolation?`<div class="mz-warn visible">Max ${msMax} Mid-Static Duct/Air Handler unit${msMax>1?'s':''} per system</div>`:''}
-    ${msZoneViolation?`<div class="mz-warn visible">${msZoneWarn} — remove a zone</div>`:''}
-    ${!msZoneViolation&&msZoneWarn?`<div class="mz-warn visible" style="color:#EF9F27">${msZoneWarn}</div>`:''}
-    ${comboInvalid?`<div class="mz-warn visible">This combination is not valid for this ODU — adjust zone sizes</div>`:''}
-    <button class="mz-add-btn" onclick="addMZ('${o.id}')" ${valid?'':'disabled'}>+ Add to quote</button>
+    <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'}>${allFilled?'+ Add to quote':'Complete all zones to add'}</button>
   </div>`;
 }
 
-function updateZoneCap(ouId,idx,cap) {
-  mzState[ouId][idx]={cap,type:'',model:'',liq_pipe:'',gas_pipe:''};
-  renderMulti();
+function addMZResult(ouId) {
+  const o = MZ.find(x => x.id === ouId);
+  const zones = mzZoneState.map((z, i) => {
+    if (!z.cap || !z.type) return null;
+    const row = iduRow(ouId, z.cap, z.type) || iduRows(ouId).find(r => r.cap===z.cap && r.type===z.type);
+    return {z: i+1, cap: z.cap, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe};
+  }).filter(Boolean);
+  const total = zones.reduce((a,z) => a+z.cap*1000, 0);
+  quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou: o.ou,
+    ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz', zones, totalBtu: total,
+    note: `${zones.length}-zone · ${total/1000}K total`});
+  updateCount();
+  // Reset zone inputs
+  mzZoneState = mzZoneState.map(() => ({cap:0, type:'', model:'', liq_pipe:'', gas_pipe:''}));
+  renderMZInputs();
+  renderMZResults();
 }
 
-function updateZoneType(ouId,idx,type) {
-  const z=mzState[ouId][idx];
-  if(!type){z.type='';z.model='';z.liq_pipe='';z.gas_pipe='';}
-  else{
-    const row=iduRow(ouId,z.cap,type);
-    z.type=type; z.model=row?row.model:''; z.liq_pipe=row?row.liq_pipe:''; z.gas_pipe=row?row.gas_pipe:'';
-  }
-  renderMulti();
-}
+// Keep old mzState-based functions for compatibility (no longer used in new flow)
+function updateZoneCap(ouId,idx,cap) {}
+function updateZoneType(ouId,idx,type) {}
+function renderMulti() { renderMZResults(); }
+function addMZ(id) {}
 
-function addMZ(id) {
-  const o=MZ.find(x=>x.id===id);
-  const zones=mzState[o.id].map((z,i)=>z.cap>0&&z.type?{z:i+1,...z}:null).filter(Boolean);
-  const total=zones.reduce((a,z)=>a+z.cap*1000,0);
-  quote.push({id:id+'-'+Date.now(),brand:o.brand,series:o.series,cap:o.ou_cap,ou:o.ou,
-    ref:o.ref,seer2:o.seer2,hspf2:o.hspf2,qty:1,qtype:'mz',zones,totalBtu:total,
-    note:`${zones.length}-zone · ${total/1000}K total`});
-  mzState[id]=Array.from({length:o.zones_max},()=>({cap:0,type:'',model:'',liq_pipe:'',gas_pipe:''}));
-  updateCount(); renderMulti();
-}
 
 function renderQuote() {
   const el=document.getElementById('quote-box');
