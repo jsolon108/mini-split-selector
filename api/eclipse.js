@@ -160,13 +160,14 @@ export default async function handler(req, res) {
   if (action === 'pricing') {
     try {
       const { customerId, userId, userBranch, catalogNumbers } = req.body;
+      const userIdUpper = (userId || '').toUpperCase();
       const FARM = 'FARM';
 
       // Inventory call — use catalog numbers to find products
       const invParams = new URLSearchParams();
       catalogNumbers.forEach(cn => invParams.append('CatalogNumber', cn));
       invParams.append('ConsiderUserAuthBranch', 'true');
-      if (userId) invParams.append('UserId', userId);
+      if (userIdUpper) invParams.append('UserId', userIdUpper);
 
       // Step 1: Get inventory + product IDs using catalog numbers
       const invRes = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + invParams.toString(), {
@@ -189,7 +190,7 @@ export default async function handler(req, res) {
         if (customerId) pricingByIdParams.append('CustomerId', customerId);
         pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
         pricingByIdParams.append('ConsiderUserAuthBranch', 'true');
-        if (userId) pricingByIdParams.append('UserId', userId);
+        if (userIdUpper) pricingByIdParams.append('UserId', userIdUpper);
 
         const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
         console.log('Pricing URL:', pricingUrl);
