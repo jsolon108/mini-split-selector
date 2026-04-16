@@ -78,6 +78,32 @@ select:focus,input:focus{outline:none;border-color:#999}
 .no-res{font-size:13px;color:#999;padding:12px 0}
 .loading{font-size:13px;color:#999;padding:20px;text-align:center}
 .qbadge{font-size:10px;padding:1px 6px;border-radius:10px;background:#e8f0fd;color:#185FA5;margin-left:6px;font-weight:500;vertical-align:middle}
+.push-btn{width:100%;padding:10px;font-size:13px;border-radius:8px;background:#185FA5;border:none;cursor:pointer;color:#fff;font-weight:500;margin-top:8px}
+.push-btn:hover{background:#1450a0}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:16px}
+.modal label{font-size:12px;color:#666;display:block;margin-bottom:4px;margin-top:12px}
+.modal input,.modal select{width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff}
+.modal-btns{display:flex;gap:8px;margin-top:20px}
+.modal-btns button{flex:1;padding:9px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:500}
+.btn-cancel{background:#fff;border:1px solid #ddd;color:#333}
+.btn-submit{background:#185FA5;border:none;color:#fff}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed}
+.modal-status{font-size:12px;margin-top:10px;text-align:center;color:#666;min-height:18px}
+.login-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
+.login-box{background:#fff;border-radius:12px;padding:28px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.login-title{font-size:16px;font-weight:600;margin-bottom:4px}
+.login-sub{font-size:12px;color:#888;margin-bottom:18px}
+.login-box label{font-size:12px;color:#666;display:block;margin-bottom:4px;margin-top:12px}
+.login-box input{width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px}
+.login-btn{width:100%;padding:10px;margin-top:18px;border-radius:6px;background:#185FA5;border:none;color:#fff;font-size:13px;font-weight:500;cursor:pointer}
+.login-btn:disabled{opacity:.5;cursor:not-allowed}
+.login-error{font-size:12px;color:#E24B4A;margin-top:8px;min-height:16px;text-align:center}
+.user-badge{font-size:12px;color:#666;margin-left:auto}
+.user-badge span{font-weight:500;color:#185FA5}
+.user-badge button{font-size:11px;color:#aaa;background:none;border:none;cursor:pointer;margin-left:6px}
 </style>
 </head>
 <body>
@@ -85,6 +111,8 @@ select:focus,input:focus{outline:none;border-color:#999}
   <div>
     <div class="header-logo">Johnstone Supply NY/CT</div>
     <div class="header-sub">Ductless Quote Builder</div>
+  </div>
+  <div class="user-badge" id="user-badge" style="display:none">Logged in as <span id="user-name"></span><button onclick="eclipseLogout()">Log out</button>
   </div>
 </div>
 <div class="container">
@@ -113,7 +141,50 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-quote">
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
-    <button class="copy-btn" onclick="copyQuote()">Copy to clipboard for Eclipse</button>
+    <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
+    <button class="push-btn" onclick="openEclipseModal()">Push to Eclipse</button>
+  </div>
+</div>
+
+<!-- Eclipse Modal -->
+<div class="modal-overlay" id="eclipse-modal">
+  <div class="modal">
+    <div class="modal-title">Push to Eclipse</div>
+    <label>Branch</label>
+    <select id="modal-branch">
+      <option value="BALD">BALD — Baldwin</option>
+      <option value="BOH">BOH — Bay Shore</option>
+      <option value="BKLN">BKLN — Brooklyn</option>
+      <option value="FARM">FARM — Farmingdale</option>
+      <option value="NHP">NHP — New Hyde Park</option>
+      <option value="MANH">MANH — Manhattan</option>
+      <option value="STAM">STAM — Stamford</option>
+      <option value="MILF">MILF — Milford</option>
+      <option value="HART">HART — Hartford</option>
+    </select>
+    <label>Customer Account # <span style="color:#aaa;font-weight:400">(optional)</span></label>
+    <input type="text" id="modal-customer" placeholder="e.g. 12345"/>
+    <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
+    <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeEclipseModal()">Cancel</button>
+      <button class="btn-submit" id="modal-submit" onclick="pushToEclipse()">Push Order</button>
+    </div>
+    <div class="modal-status" id="modal-status"></div>
+  </div>
+</div>
+
+<!-- Eclipse Login Overlay -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-box">
+    <div class="login-title">Johnstone Supply NY/CT</div>
+    <div class="login-sub">Sign in with your Eclipse credentials to continue</div>
+    <label>Username</label>
+    <input type="text" id="login-user" placeholder="Eclipse username" autocomplete="username"/>
+    <label>Password</label>
+    <input type="password" id="login-pass" placeholder="Eclipse password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="login-error" id="login-error"></div>
   </div>
 </div>
 
@@ -123,6 +194,7 @@ const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, quote = [], mzState = {};
+let eclipseSession = { token: null, username: null, password: null };
 
 async function fetchData() {
   const [szR, mzR, iduR, comboR] = await Promise.all([
@@ -377,6 +449,119 @@ function copyQuote() {
     setTimeout(()=>{btn.textContent='Copy to clipboard for Eclipse';},2000);
   });
 }
+
+
+function openEclipseModal() {
+  if (!quote.length) { alert('Add systems to the quote first.'); return; }
+  document.getElementById('modal-status').textContent = '';
+  document.getElementById('modal-submit').disabled = false;
+  document.getElementById('eclipse-modal').classList.add('open');
+}
+
+function closeEclipseModal() {
+  document.getElementById('eclipse-modal').classList.remove('open');
+}
+
+async function pushToEclipse() {
+  const branch = document.getElementById('modal-branch').value;
+  const customerAccount = document.getElementById('modal-customer').value.trim();
+  const customerPO = document.getElementById('modal-po').value.trim();
+  const statusEl = document.getElementById('modal-status');
+  const submitBtn = document.getElementById('modal-submit');
+
+  submitBtn.disabled = true;
+  statusEl.textContent = 'Creating order in Eclipse...';
+  statusEl.style.color = '#666';
+
+  const lines = [];
+  quote.forEach(q => {
+    if (q.qtype === 'sz') {
+      lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
+      lines.push({ model: q.iu, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K IDU` });
+    } else {
+      lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
+      q.zones.forEach(z => {
+        lines.push({ model: z.model, qty: q.qty, description: `${z.cap}K ${z.type} IDU` });
+      });
+    }
+  });
+
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'order',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        branch, customerAccount, customerPO, lines
+      })
+    });
+    const data = await res.json();
+    if (data.newToken) eclipseSession.token = data.newToken;
+    if (data.success) {
+      statusEl.style.color = '#0f6e56';
+      statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
+    } else if (res.status === 401) {
+      statusEl.style.color = '#E24B4A';
+      statusEl.textContent = 'Session expired — please log out and sign in again.';
+      submitBtn.disabled = false;
+    } else {
+      statusEl.style.color = '#E24B4A';
+      statusEl.textContent = `Error: ${data.error}${data.detail ? ' — ' + data.detail : ''}`;
+      submitBtn.disabled = false;
+    }
+  } catch (err) {
+    statusEl.style.color = '#E24B4A';
+    statusEl.textContent = `Network error: ${err.message}`;
+    submitBtn.disabled = false;
+  }
+}
+
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  if (!username || !password) { errEl.textContent = 'Please enter your username and password.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  errEl.textContent = '';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Login failed.';
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+      return;
+    }
+    eclipseSession = { token: data.sessionToken, username, password };
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('user-name').textContent = data.username || username;
+    document.getElementById('user-badge').style.display = '';
+  } catch (err) {
+    errEl.textContent = 'Network error — ' + err.message;
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+function eclipseLogout() {
+  eclipseSession = { token: null, username: null, password: null };
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('user-badge').style.display = 'none';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  document.getElementById('login-btn').disabled = false;
+  document.getElementById('login-btn').textContent = 'Sign In';
+}
+
 
 fetchData();
 </script>
