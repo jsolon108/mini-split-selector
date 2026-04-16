@@ -297,21 +297,29 @@ function initMZZones() {
 function renderMZInputs() {
   const el = document.getElementById('mz-zone-inputs');
   el.style.display = '';
+  const allCaps = [...new Set(Object.values(MZ_IDU).flat().map(r => r.cap))].sort((a,b)=>a-b);
+  const has6 = allCaps.includes(6), has7 = allCaps.includes(7);
+  // Build grouped cap options — merge 6K and 7K into one option
+  const capGroups = [];
+  if (has6 || has7) capGroups.push({label:'6/7K', value:'6_7'});
+  allCaps.filter(c => c!==6 && c!==7).forEach(c => capGroups.push({label:c+'K', value:String(c)}));
+
   el.innerHTML = mzZoneState.map((z, i) => {
-    // Build cap options from all unique caps across all MZ IDUs
-    const allCaps = [...new Set(Object.values(MZ_IDU).flat().map(r => r.cap))].sort((a,b)=>a-b);
-    const capOpts = ['<option value="0">— select capacity —</option>', ...allCaps.map(c => `<option value="${c}"${z.cap===c?' selected':''}>${c}K</option>`)].join('');
-    // Build type options based on selected cap — union of types available across all ODUs
+    const selectedVal = z.cap === -1 ? '6_7' : z.cap > 0 ? String(z.cap) : '0';
+    const capOpts = ['<option value="0">— select capacity —</option>',
+      ...capGroups.map(g => `<option value="${g.value}"${selectedVal===g.value?' selected':''}>${g.label}</option>`)
+    ].join('');
+    const hasCapSelected = z.cap !== 0;
     const capFilter = z.cap === -1 ? [6,7] : [z.cap];
-    const typeRows = z.cap !== 0 ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>capFilter.includes(r.cap)).map(r=>[r.type, r])).values()] : [];
-    const typeOpts = z.cap !== 0 ? ['<option value="">— select type —</option>', ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)].join('') : '';
+    const typeRows = hasCapSelected ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>capFilter.includes(r.cap)).map(r=>[r.type,r])).values()] : [];
+    const typeOpts = hasCapSelected ? ['<option value="">— select type —</option>',
+      ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)
+    ].join('') : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <select onchange="mzSetCap(${i},+this.value)">${capOpts}</select>
-        ${z.cap>0?`<select onchange="mzSetType(${i},this.value)">${typeOpts}</select>`:''}
-        ${z.model?`<div class="zone-model visible">${z.model}</div>`:''}
-        ${z.liq_pipe?`<div class="zone-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</div>`:''}
+        <select onchange="mzSetCap(${i},this.value)">${capOpts}</select>
+        ${hasCapSelected?`<select onchange="mzSetType(${i},this.value)">${typeOpts}</select>`:''}
       </div>
     </div>`;
   }).join('');
@@ -329,9 +337,7 @@ function mzSetType(idx, type) {
   const z = mzZoneState[idx];
   if (!type) { z.type=''; z.model=''; z.liq_pipe=''; z.gas_pipe=''; }
   else {
-    // Find the model for this cap+type — prefer the first matching IDU row across any ODU
-    const row = Object.values(MZ_IDU).flat().find(r => r.cap===z.cap && r.type===type);
-    z.type=type; z.model=row?row.model:''; z.liq_pipe=row?row.liq_pipe:''; z.gas_pipe=row?row.gas_pipe:'';
+    z.type=type; z.model=''; z.liq_pipe=''; z.gas_pipe='';
   }
   renderMZInputs();
   renderMZResults();
