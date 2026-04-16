@@ -162,55 +162,65 @@ export default async function handler(req, res) {
       const { customerId, userId, userBranch, catalogNumbers } = req.body;
       const FARM = 'FARM';
 
-      // Pricing call (branch-independent for customer price)
-      const pricingParams = new URLSearchParams();
-      catalogNumbers.forEach(cn => pricingParams.append('CatalogNumber', cn));
-      pricingParams.append('Quantity', '1');
-      if (customerId) pricingParams.append('CustomerId', customerId);
-      pricingParams.append('CalculateOnlyForBranch', userBranch);
-      pricingParams.append('ConsiderUserAuthBranch', 'true');
-      if (userId) pricingParams.append('UserId', userId);
-
-      // Inventory call
+      // Inventory call — use catalog numbers to find products
       const invParams = new URLSearchParams();
       catalogNumbers.forEach(cn => invParams.append('CatalogNumber', cn));
       invParams.append('ConsiderUserAuthBranch', 'true');
       if (userId) invParams.append('UserId', userId);
 
-      const [pricingRes, invRes] = await Promise.all([
-        fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingParams.toString(), {
-          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-        }),
-        fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + invParams.toString(), {
-          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-        })
-      ]);
-
-      const pricingData = pricingRes.ok ? await pricingRes.json() : {};
+      // Step 1: Get inventory + product IDs using catalog numbers
+      const invRes = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + invParams.toString(), {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
       const invData = invRes.ok ? await invRes.json() : {};
-
-      const pricingResults = pricingData.results || [];
       const invResults = invData.results || [];
 
-      // Build pricing map keyed by catalog number
-      const pricingMap = {};
+      // Build catalog# -> productId map from inventory results
+      // We need to correlate by position since inventory doesn't return catalog#
+      // Store by productId and also build productId list for pricing call
+      const productIds = invResults.map(r => r.productId).filter(Boolean);
+
+      // Step 2: Get pricing using productIds
+      let pricingResults = [];
+      if (productIds.length > 0) {
+        const pricingByIdParams = new URLSearchParams();
+        productIds.forEach(id => pricingByIdParams.append('ProductId', id));
+        pricingByIdParams.append('Quantity', '1');
+        if (customerId) pricingByIdParams.append('CustomerId', customerId);
+        pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
+        pricingByIdParams.append('ConsiderUserAuthBranch', 'true');
+        if (userId) pricingByIdParams.append('UserId', userId);
+
+        const pricingRes = await fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString(), {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        const pricingData = pricingRes.ok ? await pricingRes.json() : {};
+        pricingResults = pricingData.results || [];
+      }
+
+      // Build pricing map keyed by productId
+      const pricingByProductId = {};
       pricingResults.forEach(r => {
-        const key = r.upcCode || r.customerPN || r.productDescription;
-        if (key) pricingMap[key] = {
+        if (r.productId) pricingByProductId[r.productId] = {
           price: r.productUnitPrice?.value ?? null,
           list: r.listPrice?.value ?? null
         };
       });
 
-      // Build inventory map — extract qty per branch from branchAvailableQuantity
+      // Build final maps keyed by catalog number (using position correlation)
+      // invResults[i] corresponds to catalogNumbers[i]
+      const pricingMap = {};
       const invMap = {};
-      invResults.forEach(r => {
-        const key = r.upcCode || r.customerPN || r.productDescription;
-        if (!key) return;
+      invResults.forEach((r, i) => {
+        const catKey = catalogNumbers[i]; // positional match
+        if (!catKey) return;
         const branches = r.branchAvailableQuantity || [];
         const userQty = branches.find(b => b.warehouse === userBranch)?.warehouseQty ?? null;
         const farmQty = branches.find(b => b.warehouse === FARM)?.warehouseQty ?? null;
-        invMap[key] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
+        invMap[catKey] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
+        if (r.productId && pricingByProductId[r.productId]) {
+          pricingMap[catKey] = pricingByProductId[r.productId];
+        }
       });
 
       return res.status(200).json({
