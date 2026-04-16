@@ -667,12 +667,14 @@ function eclipseLogout() {
   const token = sessionStorage.getItem('eclipseToken');
   const username = sessionStorage.getItem('eclipseUser');
   const password = sessionStorage.getItem('eclipsePass');
+  console.log('Restore check — token:', token ? 'found' : 'missing', 'username:', username);
   if (token && username) {
     eclipseSession = { token, username, password };
     document.getElementById('user-name').textContent = username;
     document.getElementById('user-badge').style.display = '';
-    // login overlay stays hidden (display:none by default)
+    console.log('Session restored, overlay should stay hidden');
   } else {
+    console.log('No session found, showing login');
     document.getElementById('login-overlay').classList.add('visible');
   }
 })();
