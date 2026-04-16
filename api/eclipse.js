@@ -89,6 +89,7 @@ export default async function handler(req, res) {
 
     try {
       let r = await doOrder(sessionToken);
+      const rawText = await r.text();
 
       if (r.status === 419 && username && password) {
         const loginR = await fetch(`${ECLIPSE_BASE}/Sessions`, {
@@ -102,20 +103,15 @@ export default async function handler(req, res) {
         if (r.ok) {
           const order = await r.json();
           const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
-          const rawId = o.id || o.orderNumber || o.orderId || o.salesOrderId;
-          return res.status(200).json({ success: true, orderId: 'S10' + rawId, newToken: loginData.sessionToken });
+          return res.status(200).json({ success: true, orderId: null, debug: JSON.stringify(o).slice(0, 500), newToken: loginData.sessionToken });
         }
       }
 
       if (!r.ok) {
-        const errBody = await r.text();
-        return res.status(r.status).json({ error: `Order failed: ${r.status}`, detail: errBody });
+        return res.status(r.status).json({ error: `Order failed: ${r.status}`, detail: rawText });
       }
 
-      const order = await r.json();
-      const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
-      const rawId = o.id || o.orderNumber || o.orderId || o.salesOrderId;
-      return res.status(200).json({ success: true, orderId: 'S10' + rawId });
+      return res.status(200).json({ success: true, orderId: null, debug: rawText.slice(0, 800) });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
