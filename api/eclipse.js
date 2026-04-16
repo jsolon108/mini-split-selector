@@ -131,7 +131,10 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
 
-      return res.status(200).json({ success: true, orderId: extractOrderId(text) });
+      console.log('Eclipse order raw response:', text.slice(0, 500));
+      const orderId = extractOrderId(text);
+      console.log('Extracted orderId:', orderId);
+      return res.status(200).json({ success: true, orderId, rawSlice: text.slice(0, 300) });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
