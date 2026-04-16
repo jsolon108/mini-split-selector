@@ -417,20 +417,15 @@ function renderMZResults() {
 
   const total = filledZones.reduce((a,z) => a + (z.cap === -1 ? 6000 : z.cap * 1000), 0);
 
-  // Sort by closest to 100% without going over — within brand groupings
-  const sortedValid = [...valid].sort((a, b) => {
-    const aPct = total / (a.ou_cap * 1000);
-    const bPct = total / (b.ou_cap * 1000);
-    // Penalize over 100% heavily
-    const aScore = aPct > 1 ? 999 + aPct : 1 - aPct;
-    const bScore = bPct > 1 ? 999 + bPct : 1 - bPct;
-    if (a.brand !== b.brand) return a.brand.localeCompare(b.brand);
-    return aScore - bScore;
-  });
+  // Sort within each brand by closest to 100% without going over
+  const sortScore = o => {
+    const pct = total / (o.ou_cap * 1000);
+    return pct > 1 ? 999 + pct : 1 - pct; // over 100% goes to bottom, under 100% sorted by distance from 100%
+  };
 
-  const brands = [...new Set(sortedValid.map(o => o.brand))];
+  const brands = [...new Set(valid.map(o => o.brand))].sort();
   el.innerHTML = brands.map(brand => {
-    const items = sortedValid.filter(o => o.brand === brand);
+    const items = valid.filter(o => o.brand === brand).sort((a,b) => sortScore(a) - sortScore(b));
     return `<div class="grp-label">${brand}</div><div class="mz-grid">${items.map(o => renderMZResultCard(o)).join('')}</div>`;
   }).join('');
 }
