@@ -191,10 +191,15 @@ export default async function handler(req, res) {
         pricingByIdParams.append('ConsiderUserAuthBranch', 'true');
         if (userId) pricingByIdParams.append('UserId', userId);
 
-        const pricingRes = await fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString(), {
+        const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
+        console.log('Pricing URL:', pricingUrl);
+        const pricingRes = await fetch(pricingUrl, {
           headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
         });
-        const pricingData = pricingRes.ok ? await pricingRes.json() : {};
+        console.log('Pricing status:', pricingRes.status);
+        const pricingText = await pricingRes.text();
+        console.log('Pricing raw text:', pricingText.slice(0, 500));
+        const pricingData = pricingRes.ok ? JSON.parse(pricingText) : {};
         pricingResults = pricingData.results || [];
       }
 
@@ -228,7 +233,8 @@ export default async function handler(req, res) {
         pricing: pricingMap,
         inventory: invMap,
         rawPricing: pricingResults.slice(0, 2),
-        rawInv: invResults.slice(0, 2)
+        rawInv: invResults.slice(0, 2),
+        debug: { productIds, catalogNumbers, customerId, userBranch }
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
