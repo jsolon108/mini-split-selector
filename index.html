@@ -870,6 +870,7 @@ async function getPricing() {
     const data = await res.json();
     console.log('Pricing response:', data);
     quotePricing = { pricing: data.pricing||{}, inventory: data.inventory||{}, userBranch: data.userBranch, rawPricing: data.rawPricing, rawInv: data.rawInv };
+    console.log('Debug:', data.debug);
     console.log('Pricing raw:', data.rawPricing, 'Inv raw:', data.rawInv);
     renderQuote();
   } catch(err) {
