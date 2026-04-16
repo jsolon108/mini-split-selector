@@ -208,8 +208,8 @@ export default async function handler(req, res) {
       pricingResults.forEach((r, i) => {
         const catKey = catalogNumbers[i];
         if (catKey) pricingByProductId[catKey] = {
-          price: r.productUnitPrice?.value ?? null,
-          list: r.listPrice?.value ?? null
+          price: r.unitPrice?.value ?? r.productUnitPrice?.value ?? null,
+          list: r.listPrice?.value ?? r.list?.value ?? null
         };
       });
 
