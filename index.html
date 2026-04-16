@@ -134,6 +134,13 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-multi">
     <div class="mz-filter" style="align-items:center">
+      <select id="mz-brand-filter" onchange="renderMZResults()" style="flex:0 0 auto;min-width:160px">
+        <option value="">Brand (optional)</option>
+        <option>Bosch</option>
+        <option>Daikin</option>
+        <option>Fujitsu</option>
+        <option>Hisense</option>
+      </select>
       <select id="mz-zones" onchange="initMZZones()">
         <option value="">— select zone count —</option>
         <option value="2">2 zones</option>
@@ -289,6 +296,7 @@ let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}, ...]
 
 function clearMZ() {
   document.getElementById('mz-zones').value = '';
+  document.getElementById('mz-brand-filter').value = '';
   mzZoneState = [];
   document.getElementById('mz-zone-inputs').style.display = 'none';
   document.getElementById('mz-zone-inputs').innerHTML = '';
@@ -426,15 +434,19 @@ function renderMZResults() {
 
   const total = filledZones.reduce((a,z) => a + (z.cap === -1 ? 6000 : z.cap * 1000), 0);
 
+  // Apply optional brand filter
+  const brandFilter = document.getElementById('mz-brand-filter')?.value || '';
+  const filteredValid = brandFilter ? valid.filter(o => o.brand === brandFilter) : valid;
+
   // Sort within each brand by closest to 100% without going over
   const sortScore = o => {
     const pct = total / (o.ou_cap * 1000);
     return pct > 1 ? 999 + pct : 1 - pct; // over 100% goes to bottom, under 100% sorted by distance from 100%
   };
 
-  const brands = [...new Set(valid.map(o => o.brand))].sort();
+  const brands = [...new Set(filteredValid.map(o => o.brand))].sort();
   el.innerHTML = brands.map(brand => {
-    const items = valid.filter(o => o.brand === brand).sort((a,b) => sortScore(a) - sortScore(b));
+    const items = filteredValid.filter(o => o.brand === brand).sort((a,b) => sortScore(a) - sortScore(b));
     return `<div class="grp-label">${brand}</div><div class="mz-grid">${items.map(o => renderMZResultCard(o)).join('')}</div>`;
   }).join('');
 }
