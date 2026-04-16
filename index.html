@@ -133,7 +133,7 @@ select:focus,input:focus{outline:none;border-color:#999}
   </div>
 
   <div class="panel" id="panel-multi">
-    <div class="mz-filter">
+    <div class="mz-filter" style="align-items:center">
       <select id="mz-zones" onchange="initMZZones()">
         <option value="">— select zone count —</option>
         <option value="2">2 zones</option>
@@ -142,6 +142,7 @@ select:focus,input:focus{outline:none;border-color:#999}
         <option value="5">5 zones</option>
         <option value="6">6 zones</option>
       </select>
+      <button onclick="clearMZ()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Clear</button>
     </div>
     <div id="mz-zone-inputs" style="display:none;margin-bottom:16px"></div>
     <div id="multi-results"></div>
@@ -285,6 +286,14 @@ function iduRow(ouId,cap,type){return iduRows(ouId).find(r=>r.cap===cap&&r.type=
 // ── New multi-zone: zone-first approach ──────────────────────────
 
 let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}, ...]
+
+function clearMZ() {
+  document.getElementById('mz-zones').value = '';
+  mzZoneState = [];
+  document.getElementById('mz-zone-inputs').style.display = 'none';
+  document.getElementById('mz-zone-inputs').innerHTML = '';
+  document.getElementById('multi-results').innerHTML = '';
+}
 
 function initMZZones() {
   const n = +document.getElementById('mz-zones').value;
