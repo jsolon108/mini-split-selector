@@ -101,8 +101,9 @@ export default async function handler(req, res) {
         r = await doOrder(loginData.sessionToken);
         if (r.ok) {
           const order = await r.json();
-          const o = Array.isArray(order) ? order[0] : order;
-          return res.status(200).json({ success: true, orderId: null, debug: Object.keys(o), newToken: loginData.sessionToken });
+          const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
+          const rawId = o.id || o.orderNumber || o.orderId || o.salesOrderId;
+          return res.status(200).json({ success: true, orderId: 'S10' + rawId, newToken: loginData.sessionToken });
         }
       }
 
@@ -112,8 +113,9 @@ export default async function handler(req, res) {
       }
 
       const order = await r.json();
-      const o = Array.isArray(order) ? order[0] : order;
-      return res.status(200).json({ success: true, orderId: null, debug: Object.keys(o) });
+      const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
+      const rawId = o.id || o.orderNumber || o.orderId || o.salesOrderId;
+      return res.status(200).json({ success: true, orderId: 'S10' + rawId });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
