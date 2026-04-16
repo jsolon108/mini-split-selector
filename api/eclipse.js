@@ -7,14 +7,63 @@ function formatCatalogNumber(model) {
   return model;
 }
 
+async function createSession(username, password) {
+  const r = await fetch(`${ECLIPSE_BASE}/Sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({ username, password })
+  });
+  if (!r.ok) throw new Error(`Login failed: ${r.status}`);
+  const data = await r.json();
+  return data.sessionToken;
+}
+
+function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines) {
+  return {
+    priceBranch: branch,
+    shipBranch: branch,
+    billToCustomer: customerAccount || '',
+    shipToCustomer: customerAccount || '',
+    customerPONumber: customerPO || '',
+    orderBy: orderBy || '',
+    lines: lines.map(l => ({
+      lineItemProduct: {
+        catalogNumber: formatCatalogNumber(l.model),
+        quantity: l.qty,
+        um: 'EA',
+        umQuantity: l.qty,
+        productDescription: l.description || ''
+      }
+    }))
+  };
+}
+
+async function postOrder(token, payload) {
+  const r = await fetch(`${ECLIPSE_BASE}/SalesOrders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'sessionToken': token
+    },
+    body: JSON.stringify(payload)
+  });
+  const text = await r.text();
+  return { status: r.status, text };
+}
+
+function extractOrderId(text) {
+  const data = JSON.parse(text);
+  const o = data.results ? data.results[0] : (Array.isArray(data) ? data[0] : data);
+  return o.eclipseOid || o.id || null;
+}
+
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines } = req.body;
+  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines, keyword } = req.body;
 
-  // Action: login
+  // Login
   if (action === 'login') {
     try {
       const r = await fetch(`${ECLIPSE_BASE}/Sessions`, {
@@ -31,10 +80,9 @@ export default async function handler(req, res) {
     }
   }
 
-  // Action: searchCustomers
+  // Customer search
   if (action === 'searchCustomers') {
     try {
-      const { keyword } = req.body;
       const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=25`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
@@ -44,77 +92,46 @@ export default async function handler(req, res) {
         .filter(c => c.isBillTo === true)
         .slice(0, 10)
         .map(c => ({
-        id: c.id,
-        name: c.name,
-        city: c.city,
-        state: c.state,
-        requiresAuth: c.noOrderEntryUnlessAuth || false,
-        contacts: (c.contacts || []).map(ct => ({ id: ct.id, name: ct.name }))
-      }));
+          id: c.id,
+          name: c.name,
+          city: c.city,
+          state: c.state,
+          contacts: (c.contacts || []).map(ct => ({ id: ct.id, name: ct.name }))
+        }));
       return res.status(200).json({ results });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  // Action: order
+  // Create order
   if (action === 'order') {
-    const doOrder = async (token) => {
-      return await fetch(`${ECLIPSE_BASE}/SalesOrders`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'sessionToken': token
-        },
-        body: JSON.stringify({
-          priceBranch: branch,
-          shipBranch: branch,
-          billToCustomer: customerAccount || '',
-          shipToCustomer: customerAccount || '',
-          customerPONumber: customerPO || '',
-          orderBy: orderBy || '',
-          lines: lines.map(l => ({
-            lineItemProduct: {
-              catalogNumber: formatCatalogNumber(l.model),
-              quantity: l.qty,
-              um: 'EA',
-              umQuantity: l.qty,
-              productDescription: l.description || ''
-            }
-          }))
-        })
-      });
-    };
-
     try {
-      let r = await doOrder(sessionToken);
-      const rawText = await r.text();
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines);
+      let { status, text } = await postOrder(sessionToken, payload);
 
-      if (r.status === 419 && username && password) {
-        const loginR = await fetch(`${ECLIPSE_BASE}/Sessions`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-        if (!loginR.ok) return res.status(401).json({ error: 'Session expired — please log in again' });
-        const loginData = await loginR.json();
-        r = await doOrder(loginData.sessionToken);
-        if (r.ok) {
-          const retryText = await r.text();
-          const retryOrder = JSON.parse(retryText);
-          const retryO = retryOrder.results ? retryOrder.results[0] : (Array.isArray(retryOrder) ? retryOrder[0] : retryOrder);
-          return res.status(200).json({ success: true, orderId: retryO.eclipseOid || retryO.id, newToken: loginData.sessionToken });
+      // Token expired — refresh and retry
+      if (status === 419) {
+        let newToken;
+        try {
+          newToken = await createSession(username, password);
+        } catch {
+          return res.status(401).json({ error: 'Session expired — please log out and sign in again.' });
         }
+        const retry = await postOrder(newToken, payload);
+        status = retry.status;
+        text = retry.text;
+        if (status === 200 || status === 201) {
+          return res.status(200).json({ success: true, orderId: extractOrderId(text), newToken });
+        }
+        return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
 
-      if (!r.ok) {
-        return res.status(r.status).json({ error: `Order failed: ${r.status}`, detail: rawText });
+      if (status !== 200 && status !== 201) {
+        return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
 
-      const order = JSON.parse(rawText);
-      const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
-      return res.status(200).json({ success: true, orderId: o.eclipseOid || o.id });
+      return res.status(200).json({ success: true, orderId: extractOrderId(text) });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
