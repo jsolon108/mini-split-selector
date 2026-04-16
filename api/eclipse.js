@@ -28,12 +28,15 @@ export default async function handler(req, res) {
   if (action === 'searchCustomers') {
     try {
       const { keyword } = req.body;
-      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=10&isBillTo=true`, {
+      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=25`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!r.ok) return res.status(r.status).json({ error: `Customer search failed: ${r.status}` });
       const data = await r.json();
-      const results = (data.results || []).map(c => ({
+      const results = (data.results || [])
+        .filter(c => c.isBillTo === true)
+        .slice(0, 10)
+        .map(c => ({
         id: c.id,
         name: c.name,
         city: c.city,
