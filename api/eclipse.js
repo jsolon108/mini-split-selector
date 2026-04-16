@@ -5,9 +5,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, username, password, sessionToken, branch, customerAccount, customerPO, lines } = req.body;
+  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines } = req.body;
 
-  // Action: login — get a session token
+  // Action: login
   if (action === 'login') {
     try {
       const r = await fetch(`${ECLIPSE_BASE}/Sessions`, {
@@ -24,7 +24,30 @@ export default async function handler(req, res) {
     }
   }
 
-  // Action: order — create a sales order
+  // Action: searchCustomers
+  if (action === 'searchCustomers') {
+    try {
+      const { keyword } = req.body;
+      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=10`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!r.ok) return res.status(r.status).json({ error: `Customer search failed: ${r.status}` });
+      const data = await r.json();
+      const results = (data.results || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        city: c.city,
+        state: c.state,
+        requiresAuth: c.noOrderEntryUnlessAuth || false,
+        contacts: (c.contacts || []).map(ct => ({ id: ct.id, name: ct.name }))
+      }));
+      return res.status(200).json({ results });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Action: order
   if (action === 'order') {
     const doOrder = async (token) => {
       return await fetch(`${ECLIPSE_BASE}/SalesOrders`, {
@@ -40,6 +63,7 @@ export default async function handler(req, res) {
           billToCustomer: customerAccount || '',
           shipToCustomer: customerAccount || '',
           customerPONumber: customerPO || '',
+          orderBy: orderBy || '',
           lines: lines.map(l => ({
             lineItemProduct: {
               catalogNumber: l.model,
@@ -56,7 +80,6 @@ export default async function handler(req, res) {
     try {
       let r = await doOrder(sessionToken);
 
-      // If token expired, re-auth with passed credentials and retry once
       if (r.status === 419 && username && password) {
         const loginR = await fetch(`${ECLIPSE_BASE}/Sessions`, {
           method: 'POST',
