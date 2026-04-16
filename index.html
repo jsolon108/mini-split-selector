@@ -929,6 +929,7 @@ async function doLogin() {
     localStorage.setItem('eclipseToken', data.sessionToken);
     localStorage.setItem('eclipseUser', data.username || username);
     localStorage.setItem('eclipsePass', password);
+    if (data.homeBranch) localStorage.setItem('eclipseHomeBranch', data.homeBranch);
     document.getElementById('login-overlay').classList.remove('visible');
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
