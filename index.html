@@ -146,7 +146,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-multi">
     <div class="mz-filter" style="align-items:center">
-      <select id="mz-brand-filter" onchange="renderMZResults()" style="flex:0 0 auto;min-width:160px">
+      <select id="mz-brand-filter" onchange="renderMZInputs();renderMZResults()" style="flex:0 0 auto;min-width:160px">
         <option value="">Brand (optional)</option>
         <option>Bosch</option>
         <option>Daikin</option>
@@ -344,7 +344,13 @@ function initMZZones() {
 function renderMZInputs() {
   const el = document.getElementById('mz-zone-inputs');
   el.style.display = '';
-  const allCaps = [...new Set(Object.values(MZ_IDU).flat().map(r => r.cap))].filter(c => c !== 48 && c !== 60).sort((a,b)=>a-b);
+  const brandFilter = document.getElementById('mz-brand-filter')?.value || '';
+  const relevantIDUs = Object.entries(MZ_IDU).flatMap(([ouId, rows]) => {
+    if (!brandFilter) return rows;
+    const o = MZ.find(m => m.id === ouId);
+    return o?.brand === brandFilter ? rows : [];
+  });
+  const allCaps = [...new Set(relevantIDUs.map(r => r.cap))].filter(c => c !== 48 && c !== 60).sort((a,b)=>a-b);
   const has6 = allCaps.includes(6), has7 = allCaps.includes(7);
   // Build grouped cap options — merge 6K and 7K into one option
   const capGroups = [];
