@@ -163,23 +163,30 @@ export default async function handler(req, res) {
       const userIdUpper = (userId || '').toUpperCase();
       const FARM = 'FARM';
 
-      // Inventory call — use catalog numbers to find products
-      const invParams = new URLSearchParams();
-      catalogNumbers.forEach(cn => invParams.append('CatalogNumber', cn));
-      invParams.append('ConsiderUserAuthBranch', 'true');
-      if (userIdUpper) invParams.append('UserId', userIdUpper);
+      // Step 1: Get inventory per catalog number (one at a time to avoid positional mismatch)
+      const invMap = {};
+      for (const cn of catalogNumbers) {
+        const params = new URLSearchParams();
+        params.append('CatalogNumber', cn);
+        params.append('ConsiderUserAuthBranch', 'true');
+        if (userIdUpper) params.append('UserId', userIdUpper);
+        const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        if (!r.ok) continue;
+        const d = await r.json();
+        const item = (d.results || [])[0];
+        if (!item) { invMap[cn] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
+        const branches = item.branchAvailableQuantity || [];
+        invMap[cn] = {
+          userQty: branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? 0,
+          farmQty: branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? 0,
+          total: item.totalWarehouseQty ?? 0,
+          productId: item.productId
+        };
+      }
 
-      // Step 1: Get inventory + product IDs using catalog numbers
-      const invRes = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + invParams.toString(), {
-        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-      });
-      const invData = invRes.ok ? await invRes.json() : {};
-      const invResults = invData.results || [];
-
-      // Build catalog# -> productId map from inventory results
-      // We need to correlate by position since inventory doesn't return catalog#
-      // Store by productId and also build productId list for pricing call
-      const productIds = invResults.map(r => r.productId).filter(Boolean);
+      const productIds = Object.values(invMap).map(v => v.productId).filter(Boolean);
 
       // Step 2: Get pricing using productIds
       let pricingResults = [];
@@ -204,30 +211,13 @@ export default async function handler(req, res) {
       }
 
       // Build pricing map keyed by catalog number (positional match)
-      const pricingByProductId = {};
+      const pricingMap = {};
       pricingResults.forEach((r, i) => {
         const catKey = catalogNumbers[i];
-        if (catKey) pricingByProductId[catKey] = {
+        if (catKey) pricingMap[catKey] = {
           price: r.unitPrice?.value ?? r.productUnitPrice?.value ?? null,
           list: r.listPrice?.value ?? r.list?.value ?? null
         };
-      });
-
-      // Build final maps keyed by catalog number
-      const pricingMap = {};
-      const invMap = {};
-      
-      // Pricing map from direct catalog number lookup
-      Object.assign(pricingMap, pricingByProductId);
-
-      // Inventory map from inventory results (positional)
-      invResults.forEach((r, i) => {
-        const catKey = catalogNumbers[i];
-        if (!catKey) return;
-        const branches = r.branchAvailableQuantity || [];
-        const userQty = branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? null;
-        const farmQty = branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? null;
-        invMap[catKey] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
       });
 
       return res.status(200).json({
@@ -235,8 +225,7 @@ export default async function handler(req, res) {
         pricing: pricingMap,
         inventory: invMap,
         rawPricing: pricingResults.slice(0, 2),
-        rawInv: invResults.slice(0, 2),
-        debug: { productIds, catalogNumbers, customerId, userBranch }
+        rawInv: Object.entries(invMap).slice(0, 2)
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
