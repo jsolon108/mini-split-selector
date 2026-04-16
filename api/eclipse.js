@@ -2,7 +2,7 @@ const ECLIPSE_BASE = 'https://api.johnstonenyct.com:5000';
 
 function formatCatalogNumber(model) {
   if (model && model.startsWith('BMS500-')) {
-    return model.replace('BMS500-', '').replace(/-/g, '');
+    return model.replace('BMS500-', '');
   }
   return model;
 }
