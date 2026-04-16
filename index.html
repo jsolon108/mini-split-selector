@@ -202,29 +202,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 </div>
 
 <script>
-
-// Debug: track localStorage changes
-const _removeItem = localStorage.removeItem.bind(localStorage);
-localStorage.removeItem = function(key) {
-  console.log('localStorage.removeItem called for:', key, new Error().stack);
-  _removeItem(key);
-};
-const _clear = localStorage.clear.bind(localStorage);
-localStorage.clear = function() {
-  console.log('localStorage.clear called!', new Error().stack);
-  _clear();
-};
-window.addEventListener('storage', e => console.log('storage event:', e.key, e.newValue));
-
 const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
 const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, quote = [], mzState = {};
 let eclipseSession = { token: null, username: null, password: null };
-  localStorage.removeItem('eclipseToken');
-  localStorage.removeItem('eclipseUser');
-  localStorage.removeItem('eclipsePass');
 
 async function fetchData() {
   const [szR, mzR, iduR, comboR] = await Promise.all([
@@ -681,14 +664,11 @@ function eclipseLogout() {
   const token = localStorage.getItem('eclipseToken');
   const username = localStorage.getItem('eclipseUser');
   const password = localStorage.getItem('eclipsePass');
-  console.log('Restore check — token:', token ? 'found' : 'missing', 'username:', username);
   if (token && username) {
     eclipseSession = { token, username, password };
     document.getElementById('user-name').textContent = username;
     document.getElementById('user-badge').style.display = '';
-    console.log('Session restored, overlay should stay hidden');
   } else {
-    console.log('No session found, showing login');
     document.getElementById('login-overlay').classList.add('visible');
   }
 })();
