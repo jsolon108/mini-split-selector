@@ -39,7 +39,6 @@ export default async function handler(req, res) {
           shipBranch: branch,
           billToCustomer: customerAccount || '',
           customerPONumber: customerPO || '',
-          orderStatus: 'Quote',
           lines: lines.map(l => ({
             lineItemProduct: {
               catalogNumber: l.model,
