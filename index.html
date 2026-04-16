@@ -245,15 +245,16 @@ const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
 const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
-let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, quote = [], mzState = {};
+let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {};
 let eclipseSession = { token: null, username: null, password: null };
 
 async function fetchData() {
-  const [szR, mzR, iduR, comboR] = await Promise.all([
+  const [szR, mzR, iduR, comboR, ahuComboR] = await Promise.all([
     fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos_ahu?select=ou_id,combo&order=ou_id`, { headers: H })
   ]);
   SZ = await szR.json();
   MZ = await mzR.json();
@@ -264,6 +265,11 @@ async function fetchData() {
   comboRows.forEach(r => {
     if (!MZ_COMBOS[r.ou_id]) MZ_COMBOS[r.ou_id] = new Set();
     MZ_COMBOS[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
+  });
+  const ahuComboRows = await ahuComboR.json();
+  ahuComboRows.forEach(r => {
+    if (!MZ_COMBOS_AHU[r.ou_id]) MZ_COMBOS_AHU[r.ou_id] = new Set();
+    MZ_COMBOS_AHU[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
   });
   MZ.forEach(o => { mzState[o.id] = Array.from({length: o.zones_max}, () => ({cap:0,type:'',model:'',liq_pipe:'',gas_pipe:''})); });
   renderSingle();
@@ -419,8 +425,11 @@ function renderMZResults() {
       if (!hasType) return false;
     }
 
-    // Combo validation
-    const combos = MZ_COMBOS[o.id];
+    // Combo validation — use AHU table if any zone is Air Handler
+    const hasAHU = mzZoneState.some(z => z.type === 'Air Handler');
+    const combos = hasAHU ? (MZ_COMBOS_AHU[o.id] || null) : MZ_COMBOS[o.id];
+    // If AHU selected but this ODU has no AHU combos, exclude it
+    if (hasAHU && !MZ_COMBOS_AHU[o.id]) return false;
     if (combos) {
       const has67 = filledZones.some(z => z.cap === -1);
       if (has67) {
