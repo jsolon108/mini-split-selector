@@ -249,19 +249,21 @@ let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [
 let eclipseSession = { token: null, username: null, password: null };
 
 async function fetchData() {
-  const [szR, mzR, iduR, comboR, ahuComboR] = await Promise.all([
+  const [szR, mzR, iduR, comboR, comboR2, comboR3, ahuComboR] = await Promise.all([
     fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
     fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=5000`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos_ahu?select=ou_id,combo&order=ou_id&limit=5000`, { headers: H })
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=1000`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=1000&offset=1000`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=1000&offset=2000`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos_ahu?select=ou_id,combo&order=ou_id&limit=1000`, { headers: H })
   ]);
   SZ = await szR.json();
   MZ = await mzR.json();
   const iduRows = await iduR.json();
   iduRows.forEach(r => { if (!MZ_IDU[r.ou_id]) MZ_IDU[r.ou_id] = []; MZ_IDU[r.ou_id].push(r); });
   // Build combo lookup: MZ_COMBOS[ou_id] = Set of sorted combo strings e.g. "6000,9000,12000"
-  const comboRows = await comboR.json();
+  const comboRows = [...await comboR.json(), ...await comboR2.json(), ...await comboR3.json()];
   comboRows.forEach(r => {
     if (!MZ_COMBOS[r.ou_id]) MZ_COMBOS[r.ou_id] = new Set();
     MZ_COMBOS[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
