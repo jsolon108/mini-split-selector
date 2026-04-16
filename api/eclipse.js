@@ -101,7 +101,8 @@ export default async function handler(req, res) {
         r = await doOrder(loginData.sessionToken);
         if (r.ok) {
           const order = await r.json();
-          return res.status(200).json({ success: true, orderId: null, debug: Object.keys(order), newToken: loginData.sessionToken });
+          const o = Array.isArray(order) ? order[0] : order;
+          return res.status(200).json({ success: true, orderId: null, debug: Object.keys(o), newToken: loginData.sessionToken });
         }
       }
 
@@ -111,7 +112,8 @@ export default async function handler(req, res) {
       }
 
       const order = await r.json();
-      return res.status(200).json({ success: true, orderId: null, debug: Object.keys(order) });
+      const o = Array.isArray(order) ? order[0] : order;
+      return res.status(200).json({ success: true, orderId: null, debug: Object.keys(o) });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
