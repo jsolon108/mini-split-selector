@@ -154,7 +154,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <label>Branch</label>
     <select id="modal-branch">
       <option value="BALD">BALD — Baldwin</option>
-      <option value="BOH">BOH — Bay Shore</option>
+      <option value="BOH">BOH — Bohemia</option>
       <option value="BKLN">BKLN — Brooklyn</option>
       <option value="FARM">FARM — Farmingdale</option>
       <option value="NHP">NHP — New Hyde Park</option>
@@ -638,6 +638,7 @@ async function doLogin() {
     document.getElementById('login-overlay').classList.remove('visible');
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
+    if (data.homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = data.homeBranch; }
   } catch (err) {
     errEl.textContent = 'Network error — ' + err.message;
     btn.disabled = false;
@@ -650,6 +651,7 @@ function eclipseLogout() {
   localStorage.removeItem('eclipseToken');
   localStorage.removeItem('eclipseUser');
   localStorage.removeItem('eclipsePass');
+  localStorage.removeItem('eclipseHomeBranch');
   document.getElementById('login-overlay').classList.add('visible');
   document.getElementById('user-badge').style.display = 'none';
   document.getElementById('login-user').value = '';
@@ -664,10 +666,12 @@ function eclipseLogout() {
   const token = localStorage.getItem('eclipseToken');
   const username = localStorage.getItem('eclipseUser');
   const password = localStorage.getItem('eclipsePass');
+  const homeBranch = localStorage.getItem('eclipseHomeBranch');
   if (token && username) {
     eclipseSession = { token, username, password };
     document.getElementById('user-name').textContent = username;
     document.getElementById('user-badge').style.display = '';
+    if (homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = homeBranch; }
   } else {
     document.getElementById('login-overlay').classList.add('visible');
   }
