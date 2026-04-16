@@ -207,6 +207,9 @@ const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, quote = [], mzState = {};
 let eclipseSession = { token: null, username: null, password: null };
+  sessionStorage.removeItem('eclipseToken');
+  sessionStorage.removeItem('eclipseUser');
+  sessionStorage.removeItem('eclipsePass');
 
 async function fetchData() {
   const [szR, mzR, iduR, comboR] = await Promise.all([
@@ -588,7 +591,7 @@ async function pushToEclipse() {
       })
     });
     const data = await res.json();
-    if (data.newToken) eclipseSession.token = data.newToken;
+    if (data.newToken) { eclipseSession.token = data.newToken; sessionStorage.setItem('eclipseToken', data.newToken); }
     if (data.success) {
       statusEl.style.color = '#0f6e56';
       statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
@@ -631,6 +634,9 @@ async function doLogin() {
       return;
     }
     eclipseSession = { token: data.sessionToken, username, password };
+    sessionStorage.setItem('eclipseToken', data.sessionToken);
+    sessionStorage.setItem('eclipseUser', data.username || username);
+    sessionStorage.setItem('eclipsePass', password);
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
@@ -643,6 +649,9 @@ async function doLogin() {
 
 function eclipseLogout() {
   eclipseSession = { token: null, username: null, password: null };
+  sessionStorage.removeItem('eclipseToken');
+  sessionStorage.removeItem('eclipseUser');
+  sessionStorage.removeItem('eclipsePass');
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('user-badge').style.display = 'none';
   document.getElementById('login-user').value = '';
@@ -651,6 +660,19 @@ function eclipseLogout() {
   document.getElementById('login-btn').textContent = 'Sign In';
 }
 
+
+// Restore session from sessionStorage on load
+(function() {
+  const token = sessionStorage.getItem('eclipseToken');
+  const username = sessionStorage.getItem('eclipseUser');
+  const password = sessionStorage.getItem('eclipsePass');
+  if (token && username) {
+    eclipseSession = { token, username, password };
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('user-name').textContent = username;
+    document.getElementById('user-badge').style.display = '';
+  }
+})();
 
 fetchData();
 </script>
