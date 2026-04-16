@@ -156,5 +156,74 @@ export default async function handler(req, res) {
     }
   }
 
+  // Get pricing and inventory
+  if (action === 'pricing') {
+    try {
+      const { customerId, userId, userBranch, catalogNumbers } = req.body;
+      const FARM = 'FARM';
+
+      // Pricing call (branch-independent for customer price)
+      const pricingParams = new URLSearchParams();
+      catalogNumbers.forEach(cn => pricingParams.append('CatalogNumber', cn));
+      pricingParams.append('Quantity', '1');
+      if (customerId) pricingParams.append('CustomerId', customerId);
+      pricingParams.append('CalculateOnlyForBranch', userBranch);
+      pricingParams.append('ConsiderUserAuthBranch', 'true');
+      if (userId) pricingParams.append('UserId', userId);
+
+      // Inventory call
+      const invParams = new URLSearchParams();
+      catalogNumbers.forEach(cn => invParams.append('CatalogNumber', cn));
+      invParams.append('ConsiderUserAuthBranch', 'true');
+      if (userId) invParams.append('UserId', userId);
+
+      const [pricingRes, invRes] = await Promise.all([
+        fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingParams.toString(), {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        }),
+        fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + invParams.toString(), {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        })
+      ]);
+
+      const pricingData = pricingRes.ok ? await pricingRes.json() : {};
+      const invData = invRes.ok ? await invRes.json() : {};
+
+      const pricingResults = pricingData.results || [];
+      const invResults = invData.results || [];
+
+      // Build pricing map keyed by catalog number
+      const pricingMap = {};
+      pricingResults.forEach(r => {
+        const key = r.upcCode || r.customerPN || r.productDescription;
+        if (key) pricingMap[key] = {
+          price: r.productUnitPrice?.value ?? null,
+          list: r.listPrice?.value ?? null
+        };
+      });
+
+      // Build inventory map — extract qty per branch from branchAvailableQuantity
+      const invMap = {};
+      invResults.forEach(r => {
+        const key = r.upcCode || r.customerPN || r.productDescription;
+        if (!key) return;
+        const branches = r.branchAvailableQuantity || [];
+        const userQty = branches.find(b => b.warehouse === userBranch)?.warehouseQty ?? null;
+        const farmQty = branches.find(b => b.warehouse === FARM)?.warehouseQty ?? null;
+        invMap[key] = { userQty, farmQty, total: r.totalWarehouseQty ?? null };
+      });
+
+      return res.status(200).json({
+        userBranch,
+        pricing: pricingMap,
+        inventory: invMap,
+        rawPricing: pricingResults.slice(0, 2),
+        rawInv: invResults.slice(0, 2)
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Unknown action' });
 }
