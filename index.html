@@ -202,6 +202,20 @@ select:focus,input:focus{outline:none;border-color:#999}
 </div>
 
 <script>
+
+// Debug: track localStorage changes
+const _removeItem = localStorage.removeItem.bind(localStorage);
+localStorage.removeItem = function(key) {
+  console.log('localStorage.removeItem called for:', key, new Error().stack);
+  _removeItem(key);
+};
+const _clear = localStorage.clear.bind(localStorage);
+localStorage.clear = function() {
+  console.log('localStorage.clear called!', new Error().stack);
+  _clear();
+};
+window.addEventListener('storage', e => console.log('storage event:', e.key, e.newValue));
+
 const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
 const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
