@@ -18,7 +18,7 @@ async function createSession(username, password) {
   return data.sessionToken;
 }
 
-function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines) {
+function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
   return {
     priceBranch: branch,
     shipBranch: branch,
@@ -26,6 +26,8 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines) 
     shipToCustomer: customerAccount || '',
     customerPONumber: customerPO || '',
     orderBy: orderBy || '',
+    salesSource: 'Email / Text',
+    writer: username || '',
     lines: lines.map(l => ({
       lineItemProduct: {
         catalogNumber: formatCatalogNumber(l.model),
@@ -125,7 +127,7 @@ export default async function handler(req, res) {
   // Create order
   if (action === 'order') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines);
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       let { status, text } = await postOrder(sessionToken, payload);
 
       // Token expired — refresh and retry
