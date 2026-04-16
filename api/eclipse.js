@@ -28,7 +28,7 @@ export default async function handler(req, res) {
   if (action === 'searchCustomers') {
     try {
       const { keyword } = req.body;
-      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=10`, {
+      const r = await fetch(`${ECLIPSE_BASE}/Customers?keyword=${encodeURIComponent(keyword)}&pageSize=10&isBillTo=true`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!r.ok) return res.status(r.status).json({ error: `Customer search failed: ${r.status}` });
