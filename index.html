@@ -345,7 +345,7 @@ function mzSetType(idx, type) {
 
 function renderMZResults() {
   const el = document.getElementById('multi-results');
-  const filledZones = mzZoneState.filter(z => z.cap > 0);
+  const filledZones = mzZoneState.filter(z => (z.cap > 0 || z.cap === -1));
   if (filledZones.length < 2) { el.innerHTML = '<div class="no-res" style="padding:12px 0;color:#999">Fill in at least 2 zones to see matching systems.</div>'; return; }
 
   // For 6/7K zones (cap===-1), we'll try both 6000 and 7000 in combo lookup
@@ -425,7 +425,7 @@ function renderMZResultCard(o) {
   const total = filledZones.reduce((a,z) => a+z.cap*1000, 0);
   const pct = o.ou_cap > 0 ? Math.round(total/(o.ou_cap*1000)*100) : 0;
   const barPct = Math.min(total/o.max_btu*100, 100);
-  const allFilled = mzZoneState.every(z => z.cap > 0 && z.type);
+  const allFilled = mzZoneState.every(z => (z.cap > 0 || z.cap === -1) && z.type);
 
   // Resolve actual model numbers for this ODU
   const zoneLines = mzZoneState.map((z, i) => {
@@ -455,7 +455,7 @@ function renderMZResultCard(o) {
 function addMZResult(ouId) {
   const o = MZ.find(x => x.id === ouId);
   const zones = mzZoneState.map((z, i) => {
-    if (!z.cap || !z.type) return null;
+    if ((!z.cap && z.cap !== -1) || !z.type) return null;
     const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(ouId).some(r=>r.cap===c&&r.type===z.type)) || 6) : z.cap;
     const row = iduRow(ouId, capToUse, z.type) || iduRows(ouId).find(r => r.cap===capToUse && r.type===z.type);
     return {z: i+1, cap: capToUse, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe};
