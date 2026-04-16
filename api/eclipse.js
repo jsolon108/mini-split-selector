@@ -44,6 +44,7 @@ export default async function handler(req, res) {
               catalogNumber: l.model,
               quantity: l.qty,
               um: 'EA',
+              umQuantity: l.qty,
               productDescription: l.description || ''
             }
           }))
