@@ -92,7 +92,8 @@ select:focus,input:focus{outline:none;border-color:#999}
 .btn-submit{background:#185FA5;border:none;color:#fff}
 .btn-submit:disabled{opacity:.5;cursor:not-allowed}
 .modal-status{font-size:12px;margin-top:10px;text-align:center;color:#666;min-height:18px}
-.login-overlay{display:flex;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
+.login-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center}
+.login-overlay.visible{display:flex}
 .login-box{background:#fff;border-radius:12px;padding:28px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,.2)}
 .login-title{font-size:16px;font-weight:600;margin-bottom:4px}
 .login-sub{font-size:12px;color:#888;margin-bottom:18px}
@@ -194,7 +195,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <label>Username</label>
     <input type="text" id="login-user" placeholder="Eclipse username" autocomplete="username"/>
     <label>Password</label>
-    <input type="password" id="login-pass" placeholder="Eclipse password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <input type="password" id="login-pass" placeholder="Eclipse password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin()}"/>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="login-error"></div>
   </div>
@@ -637,7 +638,7 @@ async function doLogin() {
     sessionStorage.setItem('eclipseToken', data.sessionToken);
     sessionStorage.setItem('eclipseUser', data.username || username);
     sessionStorage.setItem('eclipsePass', password);
-    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('login-overlay').classList.remove('visible');
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
   } catch (err) {
@@ -652,7 +653,7 @@ function eclipseLogout() {
   sessionStorage.removeItem('eclipseToken');
   sessionStorage.removeItem('eclipseUser');
   sessionStorage.removeItem('eclipsePass');
-  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('login-overlay').classList.add('visible');
   document.getElementById('user-badge').style.display = 'none';
   document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
@@ -668,9 +669,11 @@ function eclipseLogout() {
   const password = sessionStorage.getItem('eclipsePass');
   if (token && username) {
     eclipseSession = { token, username, password };
-    document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('user-name').textContent = username;
     document.getElementById('user-badge').style.display = '';
+    // login overlay stays hidden (display:none by default)
+  } else {
+    document.getElementById('login-overlay').classList.add('visible');
   }
 })();
 
