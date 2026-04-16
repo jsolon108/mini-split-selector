@@ -101,9 +101,10 @@ export default async function handler(req, res) {
         const loginData = await loginR.json();
         r = await doOrder(loginData.sessionToken);
         if (r.ok) {
-          const order = await r.json();
-          const o = order.results ? order.results[0] : (Array.isArray(order) ? order[0] : order);
-          return res.status(200).json({ success: true, orderId: null, debug: JSON.stringify(o).slice(0, 500), newToken: loginData.sessionToken });
+          const retryText = await r.text();
+          const retryOrder = JSON.parse(retryText);
+          const retryO = retryOrder.results ? retryOrder.results[0] : (Array.isArray(retryOrder) ? retryOrder[0] : retryOrder);
+          return res.status(200).json({ success: true, orderId: retryO.eclipseOid || retryO.id, newToken: loginData.sessionToken });
         }
       }
 
