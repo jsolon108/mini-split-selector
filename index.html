@@ -546,6 +546,9 @@ function openEclipseModal() {
   if (!quote.length) { alert('Add systems to the quote first.'); return; }
   document.getElementById('modal-status').textContent = '';
   document.getElementById('modal-submit').disabled = false;
+  // Default branch to user's home branch
+  const homeBranch = localStorage.getItem('eclipseHomeBranch');
+  if (homeBranch) document.getElementById('modal-branch').value = homeBranch;
   document.getElementById('eclipse-modal').classList.add('open');
 }
 
