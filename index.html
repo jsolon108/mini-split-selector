@@ -1172,10 +1172,12 @@ async function showInvModal(model, description) {
       body: JSON.stringify({
         action: 'branchInventory',
         sessionToken: eclipseSession.token,
-        catalogNumber: formatCatNumLocal(model)
+        catalogNumber: formatCatNumLocal(model),
+        username: eclipseSession.username
       })
     });
     const data = await res.json();
+    console.log('Inv response:', data);
     if (data.error) throw new Error(data.error);
 
     const branches = data.branches || [];
