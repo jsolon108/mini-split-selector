@@ -280,5 +280,32 @@ export default async function handler(req, res) {
     }
   }
 
+  // Branch inventory lookup for a single product
+  if (action === 'branchInventory') {
+    try {
+      const { catalogNumber } = req.body;
+      const params = new URLSearchParams();
+      params.append('CatalogNumber', catalogNumber);
+      const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!r.ok) return res.status(r.status).json({ error: `Inventory lookup failed: ${r.status}` });
+      const data = await r.json();
+      const item = (data.results || [])[0];
+      if (!item) return res.status(200).json({ branches: [] });
+
+      const branches = (item.branchAvailableQuantity || [])
+        .map(b => {
+          const code = b.warehouse.split(' ')[0];
+          return { code, qty: b.warehouseQty || 0 };
+        })
+        .sort((a, b) => a.code.localeCompare(b.code));
+
+      return res.status(200).json({ branches, total: item.totalWarehouseQty });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Unknown action' });
 }
