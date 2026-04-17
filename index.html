@@ -400,20 +400,17 @@ function isCapViable(zoneIdx, candidateCap) {
       if (!iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type)) return false;
     }
 
-    // Combo validation for filled zones only (not the candidate zone)
-    const filledWithType = testState.filter(z => (z.cap > 0 || z.cap === -1) && z.type);
-    if (filledWithType.length < 2) return true; // not enough to validate yet
-
-    const filledCaps = filledWithType.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
-    const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
+    // Combo validation — check all filled caps including candidate
+    const allFilledCaps = testFilled.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
+    const comboKey = [...allFilledCaps].sort((a,b)=>a-b).join(',');
     const hasComboTable = !!MZ_COMBOS[o.id];
     const combos = hasAHU ? (MZ_COMBOS_AHU[o.id] || null) : MZ_COMBOS[o.id];
     if (hasAHU && hasComboTable && !MZ_COMBOS_AHU[o.id]) return false;
     if (combos) {
-      const has67 = filledWithType.some(z => z.cap === -1);
+      const has67 = testFilled.some(z => z.cap === -1);
       if (has67) {
-        let keys = [filledCaps];
-        filledWithType.forEach((z, i) => {
+        let keys = [allFilledCaps];
+        testFilled.forEach((z, i) => {
           if (z.cap === -1) {
             const next = [];
             keys.forEach(k => { next.push([...k]); const k7=[...k]; k7[i]=7000; next.push(k7); });
@@ -425,7 +422,7 @@ function isCapViable(zoneIdx, candidateCap) {
         if (!combos.has(comboKey)) return false;
       }
     } else {
-      const total = filledCaps.reduce((a,b)=>a+b,0);
+      const total = allFilledCaps.reduce((a,b)=>a+b,0);
       if (total > o.max_btu) return false;
     }
     return true;
