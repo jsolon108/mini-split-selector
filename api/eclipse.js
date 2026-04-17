@@ -276,6 +276,7 @@ export default async function handler(req, res) {
           lines: (o.lines || []).map(l => ({
             description: l.productDecription?.split('\n')[0],
             qty: l.orderQty,
+            status: l.status,
             id: l.productId
           })).slice(0, 10)
         };
