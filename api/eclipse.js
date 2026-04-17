@@ -244,7 +244,7 @@ export default async function handler(req, res) {
       if (username) params.append('Writer', username.toUpperCase());
       params.append('OrderStatus', 'Bid');
       params.append('pageSize', '20');
-      params.append('sort', '-OrderDate');
+      params.append('sort', '-id');
       // Limit to recent — last 12 months
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
