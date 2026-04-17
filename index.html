@@ -430,7 +430,7 @@ function renderMZResults() {
   if (filledZones.length < 2) { el.innerHTML = '<div class="no-res" style="padding:12px 0;color:#999">Fill in at least 2 zones to see matching systems.</div>'; return; }
 
   // For 6/7K zones (cap===-1), we'll try both 6000 and 7000 in combo lookup
-  const filledCaps = filledZones.map(z => z.cap === -1 ? 6000 : z.cap * 1000); // default 6000 for lookup
+  const filledCaps = filledZones.map(z => z.cap === -1 ? 7000 : z.cap * 1000); // use 7000 for display/total
   const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
   const nZones = mzZoneState.length;
   const msCount = mzZoneState.filter(z => z.type==='Mid-Static Duct'||z.type==='Air Handler').length;
@@ -500,7 +500,7 @@ function renderMZResults() {
     return;
   }
 
-  const total = filledZones.reduce((a,z) => a + (z.cap === -1 ? 6000 : z.cap * 1000), 0);
+  const total = filledZones.reduce((a,z) => a + (z.cap === -1 ? 7000 : z.cap * 1000), 0);
 
   // Apply optional brand filter
   const brandFilter = document.getElementById('mz-brand-filter')?.value || '';
