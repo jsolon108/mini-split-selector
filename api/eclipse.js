@@ -283,10 +283,12 @@ export default async function handler(req, res) {
   // Branch inventory lookup for a single product
   if (action === 'branchInventory') {
     try {
-      const { catalogNumber } = req.body;
+      const { catalogNumber, username } = req.body;
       const cleanCatalog = catalogNumber.replace(/^BMS500-/, '');
       const params = new URLSearchParams();
       params.append('CatalogNumber', cleanCatalog);
+      params.append('ConsiderUserAuthBranch', 'true');
+      if (username) params.append('UserId', username.toUpperCase());
       const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
