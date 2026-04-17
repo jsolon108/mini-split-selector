@@ -107,6 +107,13 @@ select:focus,input:focus{outline:none;border-color:#999}
 .inv-btn{background:none;border:1px solid #ddd;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;color:#185FA5;white-space:nowrap;margin-left:6px}
 .inv-btn:hover{background:#f0f5ff}
 .inv-close-btn{width:100%;margin-top:16px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
+.avail-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+.avail-yes{background:#0f6e56}
+.avail-no{background:#E24B4A}
+.avail-partial{background:#EF9F27}
+.oo-line{display:flex;align-items:center;gap:6px;font-size:12px;color:#555;padding:3px 0;border-bottom:1px solid #f5f5f3}
+.oo-line:last-child{border-bottom:none}
+.oo-line-qty{color:#888;white-space:nowrap;min-width:30px}
 .rq-card{background:#fff;border:1px solid #e5e5e3;border-radius:10px;padding:14px 16px;margin-bottom:10px}
 .rq-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .rq-id{font-weight:600;font-size:13px;color:#185FA5}
@@ -155,13 +162,17 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('multi')">Multi-zone</div>
     <div class="tab" onclick="switchTab('quote')">Quote <span class="qbadge" id="qcount">0</span></div>
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
+    <div class="tab" onclick="switchTab('open')">Open Orders</div>
+    <div class="tab" onclick="switchTab('open')">Open Orders</div>
   </div>
 
   <div class="panel active" id="panel-single">
     <div class="filters">
+      <button onclick="clearSingle()" style="height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666">Clear</button>
       <select id="s-brand" onchange="renderSingle()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
       <select id="s-cap" onchange="renderSingle()"><option value="">All capacities</option><option value="9">9K</option><option value="12">12K</option><option value="15">15K</option><option value="18">18K</option><option value="24">24K</option><option value="30">30K</option><option value="36">36K</option><option value="42">42K</option><option value="48">48K</option><option value="60">60K</option></select>
       <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
+      <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Clear</button>
     </div>
     <div class="results" id="single-results"><div class="loading">Loading...</div></div>
   </div>
@@ -203,8 +214,24 @@ select:focus,input:focus{outline:none;border-color:#999}
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
+    <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A">Clear quote</button>
+    <button onclick="clearQuote()" style="width:100%;margin-bottom:8px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;color:#666">Clear quote</button>
     <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
     <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
+  </div>
+</div>
+
+  <div class="panel" id="panel-open">
+    <div style="max-width:600px;margin:0 auto">
+      <div style="margin-bottom:12px">
+        <div style="position:relative">
+          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
+            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
+        </div>
+      </div>
+      <div id="oo-results"></div>
+    </div>
   </div>
 </div>
 
@@ -302,7 +329,7 @@ async function fetchData() {
 
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote'][i]===t));
-  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent'][i]==='panel-'+t));
+  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open'][i]==='panel-'+t));
   renderQuote();
 }
 
@@ -1205,6 +1232,202 @@ function closeInvModal() {
   document.getElementById('inv-modal-overlay').classList.remove('open');
 }
 
+
+function clearSingle() {
+  document.getElementById('s-brand').value = '';
+  document.getElementById('s-cap').value = '';
+  document.getElementById('s-indoor').value = '';
+  renderSingle();
+}
+
+function clearQuote() {
+  if (!quote.length) return;
+  if (!confirm('Clear all systems from the quote?')) return;
+  quote = [];
+  updateCount();
+  renderQuote();
+  quotePricing = {};
+}
+
+// ── Open Orders tab ────────────────────────────────────────────────
+
+let ooSearchTimer = null;
+let ooSelectedCustomer = null;
+
+function ooSearchInput() {
+  clearTimeout(ooSearchTimer);
+  const q = document.getElementById('oo-customer-search').value.trim();
+  const resultsEl = document.getElementById('oo-customer-results');
+  if (q.length < 2) { resultsEl.style.display='none'; return; }
+  ooSearchTimer = setTimeout(() => ooSearch(q), 350);
+}
+
+async function ooSearch(keyword) {
+  const resultsEl = document.getElementById('oo-customer-results');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">Searching...</div>';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword })
+    });
+    const data = await res.json();
+    if (!data.results?.length) { resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">No customers found.</div>'; return; }
+    resultsEl.innerHTML = data.results.map(c => `
+      <div onclick="ooSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})"
+           style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:12px"
+           onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
+        <div style="font-weight:500">${c.name}</div>
+        <div style="color:#888">#${c.id}${c.city?' · '+c.city+', '+c.state:''}</div>
+      </div>`).join('');
+  } catch(err) {
+    resultsEl.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:#E24B4A">Error: ${err.message}</div>`;
+  }
+}
+
+async function ooSelectCustomer(c) {
+  ooSelectedCustomer = c;
+  document.getElementById('oo-customer-results').style.display = 'none';
+  document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+  await ooLoadOrders(c.id);
+}
+
+async function ooLoadOrders(customerId) {
+  const el = document.getElementById('oo-results');
+  el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">Loading...</div>';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'searchOrders',
+        sessionToken: eclipseSession.token,
+        customerId: String(customerId),
+        username: null,
+        orderStatus: 'open'
+      })
+    });
+    const data = await res.json();
+    if (!data.orders?.length) { el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">No open orders found.</div>'; return; }
+    el.innerHTML = data.orders.map(o => `
+      <div class="rq-card">
+        <div class="rq-header">
+          <span class="rq-id">${o.id}</span>
+          <span class="rq-date">${o.date ? new Date(o.date).toLocaleDateString() : ''} · ${o.branch || ''} · ${o.status || ''}</span>
+        </div>
+        <div class="rq-customer">${o.customer || ''}</div>
+        <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.po ? ' · PO: ' + o.po : ''}</div>
+        <div class="rq-lines">${o.lines.map(l => `${l.qty}× ${l.description || l.id}`).join('<br>')}</div>
+        ${o.total != null ? `<div class="rq-total">$${(Math.round(o.total * 100) / 100).toFixed(2)}</div>` : ''}
+      </div>`).join('');
+  } catch(err) {
+    el.innerHTML = `<div style="color:#E24B4A;font-size:13px">Error: ${err.message}</div>`;
+  }
+}
+
+
+// ── Open Orders tab ───────────────────────────────────────────────
+
+function ooSearchInput() {
+  clearTimeout(ooSearchTimer);
+  const q = document.getElementById('oo-customer-search').value.trim();
+  const resultsEl = document.getElementById('oo-customer-results');
+  if (q.length < 2) { resultsEl.style.display='none'; return; }
+  ooSearchTimer = setTimeout(() => ooSearch(q), 350);
+}
+
+async function ooSearch(keyword) {
+  const resultsEl = document.getElementById('oo-customer-results');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">Searching...</div>';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword })
+    });
+    const data = await res.json();
+    if (!data.results?.length) { resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#888">No customers found.</div>'; return; }
+    resultsEl.innerHTML = data.results.map(c => `
+      <div onclick="ooSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})"
+           style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:12px"
+           onmouseover="this.style.background='#f5f5f3'" onmouseout="this.style.background=''">
+        <div style="font-weight:500">${c.name}</div>
+        <div style="color:#888">#${c.id}${c.city?' · '+c.city+', '+c.state:''}</div>
+      </div>`).join('');
+  } catch(err) {
+    resultsEl.innerHTML = `<div style="padding:8px 12px;font-size:12px;color:#E24B4A">Error: ${err.message}</div>`;
+  }
+}
+
+async function ooSelectCustomer(c) {
+  ooSelectedCustomer = c;
+  document.getElementById('oo-customer-results').style.display = 'none';
+  document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+  await ooLoadOrders(c.id);
+}
+
+async function ooLoadOrders(customerId) {
+  const el = document.getElementById('oo-results');
+  el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">Loading...</div>';
+  const myOnly = document.getElementById('oo-my-only')?.checked;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'searchOpenOrders',
+        sessionToken: eclipseSession.token,
+        customerId: String(customerId),
+        username: myOnly ? eclipseSession.username : null
+      })
+    });
+    const data = await res.json();
+    if (!data.orders?.length) { el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">No open orders found.</div>'; return; }
+    el.innerHTML = data.orders.map(o => {
+      const lines = o.lines.map(l => {
+        const avail = l.status === 'Stock' ? 'yes' : l.status === 'NonStock' || l.status === 'Nonstock' ? 'no' : 'partial';
+        const label = avail === 'yes' ? 'Available' : avail === 'no' ? 'Not available' : l.status || 'Unknown';
+        return `<div class="oo-line">
+          <span class="avail-dot avail-${avail}"></span>
+          <span class="oo-line-qty">${l.qty}×</span>
+          <span style="flex:1">${l.description || l.id}</span>
+          <span style="font-size:11px;color:${avail==='yes'?'#0f6e56':avail==='no'?'#E24B4A':'#EF9F27'}">${label}</span>
+        </div>`;
+      }).join('');
+      return `<div class="rq-card">
+        <div class="rq-header">
+          <span class="rq-id">${o.id}</span>
+          <span class="rq-date">${o.date ? new Date(o.date).toLocaleDateString() : ''} · ${o.branch || ''}</span>
+        </div>
+        <div class="rq-customer">${o.customer || ''}</div>
+        <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.po ? ' · PO: ' + o.po : ''}</div>
+        <div style="margin-top:8px">${lines}</div>
+        ${o.total != null ? `<div class="rq-total">$${(Math.round(o.total * 100) / 100).toFixed(2)}</div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(err) {
+    el.innerHTML = `<div style="color:#E24B4A;font-size:13px">Error: ${err.message}</div>`;
+  }
+}
+
+function clearSingle() {
+  document.getElementById('s-brand').value = '';
+  document.getElementById('s-cap').value = '';
+  document.getElementById('s-indoor').value = '';
+  renderSingle();
+}
+
+function clearQuote() {
+  if (!quote.length) return;
+  if (!confirm('Clear all items from the quote?')) return;
+  quote = [];
+  quotePricing = {};
+  updateCount();
+  renderQuote();
+}
+
 async function doLogin() {
   const username = document.getElementById('login-user').value.trim();
   const password = document.getElementById('login-pass').value;
@@ -1284,6 +1507,25 @@ fetchData();
     <button class="inv-close-btn" onclick="closeInvModal()">Close</button>
   </div>
 </div>
+  <div class="panel" id="panel-open">
+    <div style="max-width:700px;margin:0 auto">
+      <div style="margin-bottom:12px">
+        <div style="position:relative">
+          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
+            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
+        </div>
+      </div>
+      <div style="margin:8px 0 12px;font-size:13px;color:#555">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="oo-my-only" checked style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
+          My orders only
+        </label>
+      </div>
+      <div id="oo-results"></div>
+    </div>
+  </div>
+
 </body>
 </html>  </div>
 
@@ -1315,4 +1557,23 @@ fetchData();
     <button class="inv-close-btn" onclick="closeInvModal()">Close</button>
   </div>
 </div>
+  <div class="panel" id="panel-open">
+    <div style="max-width:700px;margin:0 auto">
+      <div style="margin-bottom:12px">
+        <div style="position:relative">
+          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
+            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
+        </div>
+      </div>
+      <div style="margin:8px 0 12px;font-size:13px;color:#555">
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="oo-my-only" checked style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
+          My orders only
+        </label>
+      </div>
+      <div id="oo-results"></div>
+    </div>
+  </div>
+
 </body>
