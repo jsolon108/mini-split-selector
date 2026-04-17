@@ -28,12 +28,8 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     customerPONumber: customerPO || '',
     customerReleaseNumber: 'API',
     orderBy: orderBy || '',
-    salesSource: 'Email / Text',
-    writer: username || '',
-    insideSalesPerson: username || '',
+    writer: (username || '').toUpperCase(),
     orderType: '',
-    ttyId: '',
-    ttyData: '',
     lines: lines.map(l => ({
       lineItemProduct: {
         catalogNumber: formatCatalogNumber(l.model),
