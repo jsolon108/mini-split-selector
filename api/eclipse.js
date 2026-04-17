@@ -284,13 +284,15 @@ export default async function handler(req, res) {
   if (action === 'branchInventory') {
     try {
       const { catalogNumber } = req.body;
+      const cleanCatalog = catalogNumber.replace(/^BMS500-/, '');
       const params = new URLSearchParams();
-      params.append('CatalogNumber', catalogNumber);
+      params.append('CatalogNumber', cleanCatalog);
       const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!r.ok) return res.status(r.status).json({ error: `Inventory lookup failed: ${r.status}` });
       const data = await r.json();
+      console.log('BranchInv raw:', JSON.stringify(data).slice(0, 300));
       const item = (data.results || [])[0];
       if (!item) return res.status(200).json({ branches: [] });
 
@@ -301,7 +303,7 @@ export default async function handler(req, res) {
         })
         .sort((a, b) => a.code.localeCompare(b.code));
 
-      return res.status(200).json({ branches, total: item.totalWarehouseQty });
+      return res.status(200).json({ branches, total: item.totalWarehouseQty, debug: cleanCatalog });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
