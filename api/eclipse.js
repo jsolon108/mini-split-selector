@@ -243,6 +243,7 @@ export default async function handler(req, res) {
       const params = new URLSearchParams();
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
+      params.append('OrderStatus', 'Bid');
       params.append('pageSize', '20');
       params.append('sort', '-OrderDate');
       // Limit to recent — last 90 days
