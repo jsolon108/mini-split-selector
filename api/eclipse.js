@@ -259,7 +259,7 @@ export default async function handler(req, res) {
       const orders = (data.results || data || []).map(o => {
         const gen = o.generations?.[0] || {};
         return {
-          id: o.id || o.eclipseOid,
+          id: (o.id || o.eclipseOid || '').replace(/\.\d+$/, ''),
           date: gen.orderDate || o.orderDate,
           customer: gen.shipToName || o.billToCustomer,
           customerId: gen.billToId,
