@@ -238,11 +238,16 @@ export default async function handler(req, res) {
   // Search recent orders by customer
   if (action === 'searchOrders') {
     try {
-      const { customerId, username } = req.body;
+      const { customerId, username, orderStatus } = req.body;
       const params = new URLSearchParams();
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
-      params.append('OrderStatus', 'Bid');
+      if (orderStatus === 'open') {
+        // Open orders: ShipWhenAvailable, CallWhenAvailable, etc.
+        ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete'].forEach(s => params.append('OrderStatus', s));
+      } else {
+        params.append('OrderStatus', 'Bid');
+      }
       params.append('pageSize', '20');
       params.append('sort', '-OrderDate');
       // Limit to recent — last 12 months
@@ -309,6 +314,51 @@ export default async function handler(req, res) {
         .sort((a, b) => a.code.localeCompare(b.code));
 
       return res.status(200).json({ branches, total: item.totalWarehouseQty, debug: cleanCatalog });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Search open orders by customer
+  if (action === 'searchOpenOrders') {
+    try {
+      const { customerId, username } = req.body;
+      const params = new URLSearchParams();
+      if (customerId) params.append('BillTo', customerId);
+      if (username) params.append('Writer', username.toUpperCase());
+      // Open orders = not Bid, not invoiced
+      ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete','ShipItemComplete','PickUpNow','ShipWhenSpecified','CallWhenSpecified'].forEach(s => params.append('OrderStatus', s));
+      params.append('pageSize', '20');
+      const start = new Date();
+      start.setFullYear(start.getFullYear() - 1);
+      params.append('OrderDateStart', start.toISOString());
+
+      const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!r.ok) return res.status(r.status).json({ error: `Order search failed: ${r.status}` });
+      const data = await r.json();
+      const orders = (data.results || data || []).map(o => {
+        const gen = o.generations?.[0] || {};
+        return {
+          id: (o.id || o.eclipseOid || '').replace(/\.\d+$/, ''),
+          date: gen.orderDate || o.orderDate,
+          customer: gen.shipToName || o.billToCustomer,
+          branch: gen.shipBranch,
+          orderedBy: gen.orderedByName,
+          status: gen.status,
+          po: gen.poNumber || '',
+          total: gen.salesTotal?.value,
+          lines: (o.lines || []).map(l => ({
+            description: l.productDecription?.split('\n')[0],
+            qty: l.orderQty,
+            status: l.status,
+            id: l.productId
+          })).slice(0, 15)
+        };
+      });
+      orders.sort((a, b) => (b.id || '').localeCompare(a.id || '', undefined, {numeric: true}));
+      return res.status(200).json({ orders });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
