@@ -34,7 +34,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
         catalogNumber: formatCatalogNumber(l.model),
         quantity: l.qty,
         um: 'EA',
-        umQuantity: l.qty,
+        umQuantity: 1,
         productDescription: l.description || ''
       }
     }))
