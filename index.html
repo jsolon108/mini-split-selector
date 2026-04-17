@@ -163,16 +163,14 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('quote')">Quote <span class="qbadge" id="qcount">0</span></div>
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
-    <div class="tab" onclick="switchTab('open')">Open Orders</div>
   </div>
 
   <div class="panel active" id="panel-single">
     <div class="filters">
-      <button onclick="clearSingle()" style="height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666">Clear</button>
       <select id="s-brand" onchange="renderSingle()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
       <select id="s-cap" onchange="renderSingle()"><option value="">All capacities</option><option value="9">9K</option><option value="12">12K</option><option value="15">15K</option><option value="18">18K</option><option value="24">24K</option><option value="30">30K</option><option value="36">36K</option><option value="42">42K</option><option value="48">48K</option><option value="60">60K</option></select>
       <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
-      <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Clear</button>
+      <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Reset</button>
     </div>
     <div class="results" id="single-results"><div class="loading">Loading...</div></div>
   </div>
@@ -215,24 +213,11 @@ select:focus,input:focus{outline:none;border-color:#999}
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A">Clear quote</button>
-    <button onclick="clearQuote()" style="width:100%;margin-bottom:8px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer;color:#666">Clear quote</button>
     <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
     <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
   </div>
 </div>
 
-  <div class="panel" id="panel-open">
-    <div style="max-width:600px;margin:0 auto">
-      <div style="margin-bottom:12px">
-        <div style="position:relative">
-          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
-            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
-          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
-        </div>
-      </div>
-      <div id="oo-results"></div>
-    </div>
-  </div>
 </div>
 
 <!-- Eclipse Modal -->
@@ -328,8 +313,8 @@ async function fetchData() {
 }
 
 function switchTab(t) {
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote'][i]===t));
-  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open'][i]==='panel-'+t));
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','open','recent'][i]===t));
+  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-open','panel-recent'][i]==='panel-'+t));
   renderQuote();
 }
 
@@ -1509,12 +1494,10 @@ fetchData();
 </div>
   <div class="panel" id="panel-open">
     <div style="max-width:700px;margin:0 auto">
-      <div style="margin-bottom:12px">
-        <div style="position:relative">
-          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
-            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
-          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
-        </div>
+      <div style="margin-bottom:12px;position:relative">
+        <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
+          style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+        <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
       <div style="margin:8px 0 12px;font-size:13px;color:#555">
         <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
@@ -1526,17 +1509,12 @@ fetchData();
     </div>
   </div>
 
-</body>
-</html>  </div>
-
   <div class="panel" id="panel-recent">
     <div style="max-width:600px;margin:0 auto">
-      <div style="margin-bottom:12px">
-        <div style="position:relative">
-          <input type="text" id="rq-customer-search" placeholder="Search by customer name or account number..." oninput="rqSearchInput()" autocomplete="off"
-            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
-          <div id="rq-customer-results" class="customer-dropdown" style="display:none"></div>
-        </div>
+      <div style="margin-bottom:12px;position:relative">
+        <input type="text" id="rq-customer-search" placeholder="Search by customer name or account number..." oninput="rqSearchInput()" autocomplete="off"
+          style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+        <div id="rq-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
       <div style="margin:8px 0 12px;font-size:13px;color:#555">
         <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
@@ -1548,32 +1526,5 @@ fetchData();
     </div>
   </div>
 
-</div>
-<div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
-  <div class="inv-modal" onclick="event.stopPropagation()">
-    <div class="inv-modal-title" id="inv-modal-title">Inventory</div>
-    <div class="inv-modal-model" id="inv-modal-model"></div>
-    <div id="inv-modal-body"><div style="color:#888;font-size:13px">Loading...</div></div>
-    <button class="inv-close-btn" onclick="closeInvModal()">Close</button>
-  </div>
-</div>
-  <div class="panel" id="panel-open">
-    <div style="max-width:700px;margin:0 auto">
-      <div style="margin-bottom:12px">
-        <div style="position:relative">
-          <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
-            style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
-          <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
-        </div>
-      </div>
-      <div style="margin:8px 0 12px;font-size:13px;color:#555">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="oo-my-only" checked style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
-          My orders only
-        </label>
-      </div>
-      <div id="oo-results"></div>
-    </div>
-  </div>
-
 </body>
+</html>
