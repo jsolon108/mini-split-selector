@@ -1111,17 +1111,24 @@ async function rqLoadOrders(customerId) {
     });
     const data = await res.json();
     if (!data.orders?.length) { el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">No recent quotes found.</div>'; return; }
-    el.innerHTML = data.orders.map(o => `
-      <div class="rq-card">
+    el.innerHTML = data.orders.map(o => {
+      const lines = o.lines.map(l => {
+        const avail = l.status === 'Stock' ? 'yes' : l.status === 'NonStock' || l.status === 'Nonstock' ? 'no' : l.status ? 'partial' : null;
+        const dot = avail ? `<span class="avail-dot avail-${avail}"></span>` : '';
+        const label = avail === 'yes' ? '<span style="font-size:11px;color:#0f6e56">Available</span>' : avail === 'no' ? '<span style="font-size:11px;color:#E24B4A">Not available</span>' : avail === 'partial' ? `<span style="font-size:11px;color:#EF9F27">${l.status}</span>` : '';
+        return `<div class="oo-line">${dot}<span class="oo-line-qty">${l.qty}×</span><span style="flex:1">${l.description || l.id}</span>${label}</div>`;
+      }).join('');
+      return `<div class="rq-card">
         <div class="rq-header">
           <span class="rq-id">${o.id}</span>
-          <span class="rq-date">${o.date ? new Date(o.date).toLocaleDateString() : ''} · ${o.branch || ''} · ${o.status || ''}</span>
+          <span class="rq-date">${o.date ? new Date(o.date).toLocaleDateString() : ''} · ${o.branch || ''}</span>
         </div>
         <div class="rq-customer">${o.customer || ''}</div>
         <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.writer ? ' · Writer: ' + o.writer : ''}${o.po ? ' · PO: ' + o.po : ''}</div>
-        <div class="rq-lines">${o.lines.map(l => `${l.qty}× ${l.description || l.id}`).join('<br>')}</div>
+        <div style="margin-top:8px">${lines}</div>
         ${o.total != null ? `<div class="rq-total">$${(Math.round(o.total * 100) / 100).toFixed(2)}</div>` : ''}
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(err) {
     el.innerHTML = `<div style="color:#E24B4A;font-size:13px">Error: ${err.message}</div>`;
   }
