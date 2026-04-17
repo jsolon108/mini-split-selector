@@ -521,7 +521,7 @@ function renderMZResults() {
 
 function renderMZResultCard(o) {
   const filledZones = mzZoneState.filter(z => z.cap > 0 && z.type);
-  const total = filledZones.reduce((a,z) => a+z.cap*1000, 0);
+  const total = filledZones.reduce((a,z) => a + (z.cap === -1 ? 7000 : z.cap*1000), 0);
   const pct = o.ou_cap > 0 ? Math.round(total/(o.ou_cap*1000)*100) : 0;
   const barPct = Math.min(total/o.max_btu*100, 100);
   const allFilled = mzZoneState.every(z => (z.cap > 0 || z.cap === -1) && z.type);
