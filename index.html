@@ -1106,7 +1106,7 @@ async function rqLoadOrders(customerId) {
           <span class="rq-date">${o.date ? new Date(o.date).toLocaleDateString() : ''} · ${o.branch || ''} · ${o.status || ''}</span>
         </div>
         <div class="rq-customer">${o.customer || ''}</div>
-        <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.writer ? ' · Writer: ' + o.writer : ''}</div>
+        <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.writer ? ' · Writer: ' + o.writer : ''}${o.po ? ' · PO: ' + o.po : ''}</div>
         <div class="rq-lines">${o.lines.map(l => `${l.qty}× ${l.description || l.id}`).join('<br>')}</div>
         ${o.total != null ? `<div class="rq-total">$${(Math.round(o.total * 100) / 100).toFixed(2)}</div>` : ''}
       </div>`).join('');
