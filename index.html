@@ -366,7 +366,7 @@ function renderMZInputs() {
     ].join('');
     const hasCapSelected = z.cap !== 0;
     const capFilter = z.cap === -1 ? [6,7] : [z.cap];
-    const typeRows = hasCapSelected ? [...new Map(Object.values(MZ_IDU).flat().filter(r=>capFilter.includes(r.cap)).map(r=>[r.type,r])).values()] : [];
+    const typeRows = hasCapSelected ? [...new Map(relevantIDUs.filter(r=>capFilter.includes(r.cap)).map(r=>[r.type,r])).values()] : [];
     const typeOpts = hasCapSelected ? ['<option value="">— select type —</option>',
       ...typeRows.map(t=>`<option value="${t.type}"${z.type===t.type?' selected':''}>${t.type}</option>`)
     ].join('') : '';
