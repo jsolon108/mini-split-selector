@@ -170,7 +170,9 @@ select:focus,input:focus{outline:none;border-color:#999}
       <select id="s-brand" onchange="renderSingle()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
       <select id="s-cap" onchange="renderSingle()"><option value="">All capacities</option><option value="9">9K</option><option value="12">12K</option><option value="15">15K</option><option value="18">18K</option><option value="24">24K</option><option value="30">30K</option><option value="36">36K</option><option value="42">42K</option><option value="48">48K</option><option value="60">60K</option></select>
       <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
-      <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Reset Filters</button><div class="loading">Loading...</div></div>
+      <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Reset Filters</button>
+    </div>
+    <div class="results" id="single-results"><div class="loading">Loading...</div></div>
   </div>
 
   <div class="panel" id="panel-multi">
