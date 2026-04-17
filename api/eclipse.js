@@ -28,7 +28,6 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     customerPONumber: customerPO || '',
     customerReleaseNumber: 'API',
     orderBy: orderBy || '',
-    writer: (username || '').toUpperCase(),
     orderType: '',
     lines: lines.map(l => ({
       lineItemProduct: {
