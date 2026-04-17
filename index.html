@@ -461,9 +461,10 @@ function renderMZResults() {
 
     // Combo validation — use AHU table if any zone is Air Handler
     const hasAHU = mzZoneState.some(z => z.type === 'Air Handler');
+    const hasComboTable = !!MZ_COMBOS[o.id];
     const combos = hasAHU ? (MZ_COMBOS_AHU[o.id] || null) : MZ_COMBOS[o.id];
-    // If AHU selected but this ODU has no AHU combos, exclude it
-    if (hasAHU && !MZ_COMBOS_AHU[o.id]) return false;
+    // If AHU selected and this ODU uses combo tables but has no AHU combos, exclude it
+    if (hasAHU && hasComboTable && !MZ_COMBOS_AHU[o.id]) return false;
     if (combos) {
       const has67 = filledZones.some(z => z.cap === -1);
       if (has67) {
