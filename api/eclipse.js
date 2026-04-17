@@ -328,10 +328,7 @@ export default async function handler(req, res) {
       if (username) params.append('Writer', username.toUpperCase());
       // Open orders = not Bid, not invoiced
       ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete','ShipItemComplete','PickUpNow','ShipWhenSpecified','CallWhenSpecified'].forEach(s => params.append('OrderStatus', s));
-      params.append('pageSize', '20');
-      const start = new Date();
-      start.setFullYear(start.getFullYear() - 1);
-      params.append('OrderDateStart', start.toISOString());
+      params.append('pageSize', '50');
 
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
