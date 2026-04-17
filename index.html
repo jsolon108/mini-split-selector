@@ -146,7 +146,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-multi">
     <div class="mz-filter" style="align-items:center">
-      <select id="mz-brand-filter" onchange="renderMZInputs();renderMZResults()" style="flex:0 0 auto;min-width:160px">
+      <select id="mz-brand-filter" onchange="updateMZZoneOptions();renderMZInputs();renderMZResults()" style="flex:0 0 auto;min-width:160px">
         <option value="">Brand (optional)</option>
         <option>Bosch</option>
         <option>Daikin</option>
@@ -159,7 +159,7 @@ select:focus,input:focus{outline:none;border-color:#999}
         <option value="3">3 zones</option>
         <option value="4">4 zones</option>
         <option value="5">5 zones</option>
-        <option value="6">6 zones</option>
+        <option value="6" id="mz-zones-6">6 zones</option>
       </select>
       <button onclick="clearMZ()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Clear</button>
     </div>
@@ -325,6 +325,23 @@ function iduRow(ouId,cap,type){return iduRows(ouId).find(r=>r.cap===cap&&r.type=
 // ── New multi-zone: zone-first approach ──────────────────────────
 
 let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}, ...]
+
+function updateMZZoneOptions() {
+  const brand = document.getElementById('mz-brand-filter')?.value || '';
+  const opt6 = document.getElementById('mz-zones-6');
+  if (!opt6) return;
+  // Only Bosch supports 6 zones
+  if (brand && brand !== 'Bosch') {
+    opt6.style.display = 'none';
+    // If 6 zones currently selected, reset
+    if (document.getElementById('mz-zones').value === '6') {
+      document.getElementById('mz-zones').value = '';
+      initMZZones();
+    }
+  } else {
+    opt6.style.display = '';
+  }
+}
 
 function clearMZ() {
   document.getElementById('mz-zones').value = '';
