@@ -212,7 +212,7 @@ select:focus,input:focus{outline:none;border-color:#999}
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
-    <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A">Clear quote</button>
+    <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A;margin-bottom:10px">Clear quote</button>
     <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
     <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
   </div>
@@ -747,7 +747,7 @@ function renderQuote() {
 }
 
 function changeQty(i,v){quote[i].qty=Math.max(1,v||1);renderQuote();}
-function removeQ(i){quote.splice(i,1);updateCount();renderQuote();}
+function removeQ(i){quote.splice(i,1);updateCount();renderQuote();renderSingle();}
 function updateCount(){document.getElementById('qcount').textContent=quote.length;}
 
 function copyQuote() {
@@ -1404,12 +1404,7 @@ async function ooLoadOrders(customerId) {
   }
 }
 
-function clearSingle() {
-  document.getElementById('s-brand').value = '';
-  document.getElementById('s-cap').value = '';
-  document.getElementById('s-indoor').value = '';
-  renderSingle();
-}
+
 
 function clearQuote() {
   if (!quote.length) return;
