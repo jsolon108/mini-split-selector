@@ -868,13 +868,10 @@ async function pushToEclipse() {
       lines.push({ model: q.iu, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K IDU` });
     } else {
       lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
-      // Group identical IDU models within this system
-      const iduGroups = {};
+      // Add one line per zone (Eclipse requires qty=1 per line for this product type)
       q.zones.forEach(z => {
-        if (!iduGroups[z.model]) iduGroups[z.model] = { model: z.model, qty: 0, description: `${z.cap}K ${z.type} IDU` };
-        iduGroups[z.model].qty += q.qty;
+        lines.push({ model: z.model, qty: 1, description: `${z.cap}K ${z.type} IDU` });
       });
-      Object.values(iduGroups).forEach(g => lines.push(g));
     }
   });
 
