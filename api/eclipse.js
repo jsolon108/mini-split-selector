@@ -354,7 +354,7 @@ export default async function handler(req, res) {
           })).slice(0, 15)
         };
       });
-      orders.sort((a, b) => (b.id || '').localeCompare(a.id || '', undefined, {numeric: true}));
+      orders.sort((a, b) => parseInt((b.id||'').replace(/\D/g,''),10) - parseInt((a.id||'').replace(/\D/g,''),10));
       return res.status(200).json({ orders });
     } catch (err) {
       return res.status(500).json({ error: err.message });
