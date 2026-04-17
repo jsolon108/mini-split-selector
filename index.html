@@ -94,6 +94,19 @@ select:focus,input:focus{outline:none;border-color:#999}
 .btn-submit{background:#185FA5;border:none;color:#fff}
 .btn-submit:disabled{opacity:.5;cursor:not-allowed}
 .modal-status{font-size:12px;margin-top:10px;text-align:center;color:#666;min-height:18px}
+.inv-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
+.inv-modal-overlay.open{opacity:1;pointer-events:all}
+.inv-modal{background:#fff;border-radius:14px;padding:24px;width:340px;max-width:90vw;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+.inv-modal-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.inv-modal-model{font-size:11px;color:#888;margin-bottom:16px;font-family:monospace}
+.inv-branch-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
+.inv-branch-row:last-child{border-bottom:none}
+.inv-branch-name{color:#555}
+.inv-branch-qty{font-weight:600;color:#0f6e56}
+.inv-branch-qty.zero{color:#ccc;font-weight:400}
+.inv-btn{background:none;border:1px solid #ddd;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;color:#185FA5;white-space:nowrap;margin-left:6px}
+.inv-btn:hover{background:#f0f5ff}
+.inv-close-btn{width:100%;margin-top:16px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
 .rq-card{background:#fff;border:1px solid #e5e5e3;border-radius:10px;padding:14px 16px;margin-bottom:10px}
 .rq-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
 .rq-id{font-weight:600;font-size:13px;color:#185FA5}
@@ -304,7 +317,7 @@ function renderSingle() {
       <div class="card-row">
         <div style="flex:1;min-width:0">
           <div class="sys-name">${s.brand} ${s.series} — ${s.cap}K <span class="badge">${s.ref}</span></div>
-          <div class="sys-models">ODU: ${s.ou} · IDU: ${s.iu}</div>
+          <div class="sys-models">ODU: ${s.ou} <button class="inv-btn" onclick="showInvModal('${s.ou}','ODU')">Inv</button> · IDU: ${s.iu} <button class="inv-btn" onclick="showInvModal('${s.iu}','IDU')">Inv</button></div>
           <div class="sys-specs">
             ${s.seer2?`<div class="spec">SEER2 <b>${s.seer2}</b></div>`:''}
             ${s.hspf2?`<div class="spec">HSPF2 <b>${s.hspf2}</b></div>`:''}
@@ -693,8 +706,8 @@ function renderQuote() {
       const oduPrice = getPrice(q.ou);
       const szTotal = (iduPrice?.price||0) + (oduPrice?.price||0);
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">IDU</span><span>${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}</div>
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
+        <div class="q-model-row"><span class="q-model-label">IDU</span><span>${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}<button class="inv-btn" onclick="showInvModal('${q.iu}','IDU')">Inventory</button></div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${q.ahri?`<div class="q-model-row"><span class="q-model-label">AHRI</span><span>${q.ahri}</span></div>`:''}
         ${szTotal>0?`<div class="q-total-row">System total: $${szTotal.toFixed(2)}</div>`:''}
       </div>`;
@@ -704,7 +717,7 @@ function renderQuote() {
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
       const mzTotal = (oduPrice?.price||0) + zoneTotal;
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}</div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${zlines}
         ${mzTotal>0?`<div class="q-total-row">System total: $${mzTotal.toFixed(2)}</div>`:''}
       </div>`;
@@ -1135,6 +1148,58 @@ function playKaChing() {
   o3.start(t + 0.2); o3.stop(t + 0.6);
 }
 
+
+// ── Branch Inventory Modal ─────────────────────────────────────────
+
+const BRANCH_LABELS = {
+  'BALD': 'Baldwin', 'BKLN': 'Brooklyn', 'BOH': 'Bohemia',
+  'FARM': 'Farmingdale', 'NHP': 'New Hyde Park', 'MANH': 'Manhattan',
+  'STAM': 'Stamford', 'MILF': 'Milford', 'HART': 'Hartford',
+  'CPCT': 'CP Connecticut', 'CPNY': 'CP New York', 'REDH': 'Red Hook', 'WHNY': 'White Plains'
+};
+
+async function showInvModal(model, description) {
+  const overlay = document.getElementById('inv-modal-overlay');
+  document.getElementById('inv-modal-title').textContent = description || model;
+  document.getElementById('inv-modal-model').textContent = model;
+  document.getElementById('inv-modal-body').innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">Loading...</div>';
+  overlay.classList.add('open');
+
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'branchInventory',
+        sessionToken: eclipseSession.token,
+        catalogNumber: formatCatNumLocal(model)
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const branches = data.branches || [];
+    if (!branches.length) {
+      document.getElementById('inv-modal-body').innerHTML = '<div style="color:#888;font-size:13px">No inventory data found.</div>';
+      return;
+    }
+
+    document.getElementById('inv-modal-body').innerHTML = branches.map(b => {
+      const label = BRANCH_LABELS[b.code] ? `${b.code} — ${BRANCH_LABELS[b.code]}` : b.code;
+      return `<div class="inv-branch-row">
+        <span class="inv-branch-name">${label}</span>
+        <span class="inv-branch-qty ${b.qty === 0 ? 'zero' : ''}">${b.qty}</span>
+      </div>`;
+    }).join('');
+  } catch(err) {
+    document.getElementById('inv-modal-body').innerHTML = `<div style="color:#E24B4A;font-size:13px">${err.message}</div>`;
+  }
+}
+
+function closeInvModal() {
+  document.getElementById('inv-modal-overlay').classList.remove('open');
+}
+
 async function doLogin() {
   const username = document.getElementById('login-user').value.trim();
   const password = document.getElementById('login-pass').value;
@@ -1206,6 +1271,14 @@ function eclipseLogout() {
 
 fetchData();
 </script>
+<div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
+  <div class="inv-modal" onclick="event.stopPropagation()">
+    <div class="inv-modal-title" id="inv-modal-title">Inventory</div>
+    <div class="inv-modal-model" id="inv-modal-model"></div>
+    <div id="inv-modal-body"><div style="color:#888;font-size:13px">Loading...</div></div>
+    <button class="inv-close-btn" onclick="closeInvModal()">Close</button>
+  </div>
+</div>
 </body>
 </html>  </div>
 
@@ -1228,5 +1301,13 @@ fetchData();
     </div>
   </div>
 
+</div>
+<div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
+  <div class="inv-modal" onclick="event.stopPropagation()">
+    <div class="inv-modal-title" id="inv-modal-title">Inventory</div>
+    <div class="inv-modal-model" id="inv-modal-model"></div>
+    <div id="inv-modal-body"><div style="color:#888;font-size:13px">Loading...</div></div>
+    <button class="inv-close-btn" onclick="closeInvModal()">Close</button>
+  </div>
 </div>
 </body>
