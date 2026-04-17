@@ -266,6 +266,7 @@ export default async function handler(req, res) {
           orderedBy: gen.orderedByName,
           writer: gen.writer,
           status: gen.status,
+          po: gen.poNumber || '',
           total: gen.salesTotal?.value,
           lines: (o.lines || []).map(l => ({
             description: l.productDecription?.split('\n')[0],
