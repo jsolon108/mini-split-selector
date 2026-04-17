@@ -148,7 +148,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="filters">
       <select id="s-brand" onchange="renderSingle()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
       <select id="s-cap" onchange="renderSingle()"><option value="">All capacities</option><option value="9">9K</option><option value="12">12K</option><option value="15">15K</option><option value="18">18K</option><option value="24">24K</option><option value="30">30K</option><option value="36">36K</option><option value="42">42K</option><option value="48">48K</option><option value="60">60K</option></select>
-      <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="Cassette">Cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Floor Mount (White)">Floor mount — White</option><option value="Floor Mount (Espresso)">Floor mount — Espresso</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
+      <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="4-Way Cassette">4-Way Cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Floor Mount (White)">Floor mount — White</option><option value="Floor Mount (Espresso)">Floor mount — Espresso</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
     </div>
     <div class="results" id="single-results"><div class="loading">Loading...</div></div>
   </div>
@@ -1097,6 +1097,42 @@ async function rqLoadOrders(customerId) {
   } catch(err) {
     el.innerHTML = `<div style="color:#E24B4A;font-size:13px">Error: ${err.message}</div>`;
   }
+}
+
+
+function playKaChing() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const t = ctx.currentTime;
+
+  // Coin 1 - high ping
+  const o1 = ctx.createOscillator();
+  const g1 = ctx.createGain();
+  o1.connect(g1); g1.connect(ctx.destination);
+  o1.frequency.setValueAtTime(1400, t);
+  o1.frequency.exponentialRampToValueAtTime(1800, t + 0.05);
+  g1.gain.setValueAtTime(0.4, t);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  o1.start(t); o1.stop(t + 0.3);
+
+  // Coin 2 - slightly lower
+  const o2 = ctx.createOscillator();
+  const g2 = ctx.createGain();
+  o2.connect(g2); g2.connect(ctx.destination);
+  o2.frequency.setValueAtTime(1100, t + 0.1);
+  o2.frequency.exponentialRampToValueAtTime(1400, t + 0.15);
+  g2.gain.setValueAtTime(0.35, t + 0.1);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  o2.start(t + 0.1); o2.stop(t + 0.4);
+
+  // Register ching
+  const o3 = ctx.createOscillator();
+  const g3 = ctx.createGain();
+  o3.type = 'square';
+  o3.connect(g3); g3.connect(ctx.destination);
+  o3.frequency.setValueAtTime(800, t + 0.2);
+  g3.gain.setValueAtTime(0.15, t + 0.2);
+  g3.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+  o3.start(t + 0.2); o3.stop(t + 0.6);
 }
 
 async function doLogin() {
