@@ -236,5 +236,49 @@ export default async function handler(req, res) {
     }
   }
 
+  // Search recent orders by customer
+  if (action === 'searchOrders') {
+    try {
+      const { customerId, username } = req.body;
+      const params = new URLSearchParams();
+      if (customerId) params.append('BillTo', customerId);
+      if (username) params.append('Writer', username.toUpperCase());
+      params.append('pageSize', '20');
+      params.append('sort', '-OrderDate');
+      // Limit to recent — last 90 days
+      const start = new Date();
+      start.setDate(start.getDate() - 90);
+      params.append('OrderDateStart', start.toISOString());
+
+      const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!r.ok) return res.status(r.status).json({ error: `Order search failed: ${r.status}` });
+      const data = await r.json();
+      const orders = (data.results || data || []).map(o => {
+        const gen = o.generations?.[0] || {};
+        return {
+          id: o.id || o.eclipseOid,
+          date: gen.orderDate || o.orderDate,
+          customer: gen.shipToName || o.billToCustomer,
+          customerId: gen.billToId,
+          branch: gen.shipBranch,
+          orderedBy: gen.orderedByName,
+          writer: gen.writer,
+          status: gen.status,
+          total: gen.salesTotal?.value,
+          lines: (o.lines || []).map(l => ({
+            description: l.productDecription?.split('\n')[0],
+            qty: l.orderQty,
+            id: l.productId
+          })).slice(0, 10)
+        };
+      });
+      return res.status(200).json({ orders });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Unknown action' });
 }
