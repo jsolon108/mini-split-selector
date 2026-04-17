@@ -712,7 +712,7 @@ function renderQuote() {
         ${szTotal>0?`<div class="q-total-row">System total: $${szTotal.toFixed(2)}</div>`:''}
       </div>`;
     } else {
-      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}</div>`).join('');
+      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
       const oduPrice = getPrice(q.ou);
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
       const mzTotal = (oduPrice?.price||0) + zoneTotal;
