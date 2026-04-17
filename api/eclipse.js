@@ -246,9 +246,9 @@ export default async function handler(req, res) {
       params.append('OrderStatus', 'Bid');
       params.append('pageSize', '20');
       params.append('sort', '-OrderDate');
-      // Limit to recent — last 90 days
+      // Limit to recent — last 12 months
       const start = new Date();
-      start.setDate(start.getDate() - 90);
+      start.setFullYear(start.getFullYear() - 1);
       params.append('OrderDateStart', start.toISOString());
 
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
