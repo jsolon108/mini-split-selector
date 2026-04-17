@@ -1026,7 +1026,7 @@ async function rqLoadOrders(customerId) {
         <div class="rq-customer">${o.customer || ''}</div>
         <div class="rq-meta">${o.orderedBy ? 'Ordered by: ' + o.orderedBy : ''}${o.writer ? ' · Writer: ' + o.writer : ''}</div>
         <div class="rq-lines">${o.lines.map(l => `${l.qty}× ${l.description || l.id}`).join('<br>')}</div>
-        ${o.total != null ? `<div class="rq-total">$${o.total.toFixed(2)}</div>` : ''}
+        ${o.total != null ? `<div class="rq-total">$${(Math.round(o.total * 100) / 100).toFixed(2)}</div>` : ''}
       </div>`).join('');
   } catch(err) {
     el.innerHTML = `<div style="color:#E24B4A;font-size:13px">Error: ${err.message}</div>`;
