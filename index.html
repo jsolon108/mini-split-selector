@@ -313,8 +313,8 @@ async function fetchData() {
 }
 
 function switchTab(t) {
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','open','recent'][i]===t));
-  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-open','panel-recent'][i]==='panel-'+t));
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','recent','open'][i]===t));
+  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open'][i]==='panel-'+t));
   renderQuote();
 }
 
