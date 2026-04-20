@@ -1224,6 +1224,21 @@ function closeInvModal() {
   document.getElementById('inv-modal-overlay').classList.remove('open');
 }
 
+function checkFor419(data, status) {
+  if (status === 419 || (data?.error && (data.error.includes('419') || data.error.includes('session') || data.error.includes('expired')))) {
+    eclipseSession = {};
+    localStorage.removeItem('eclipseToken');
+    localStorage.removeItem('eclipseUser');
+    localStorage.removeItem('eclipsePass');
+    localStorage.removeItem('eclipseHomeBranch');
+    document.getElementById('login-overlay').style.display = 'flex';
+    document.getElementById('user-badge').style.display = 'none';
+    document.getElementById('login-error').textContent = 'Session expired — please log in again.';
+    return true;
+  }
+  return false;
+}
+
 
 function clearSingle() {
   document.getElementById('s-brand').value = '';
@@ -1413,6 +1428,46 @@ function clearQuote() {
   quotePricing = {};
   updateCount();
   renderQuote();
+}
+
+
+// ── Central Eclipse API call with auto session refresh ────────────
+
+async function eclipseCall(body) {
+  body.sessionToken = eclipseSession.token;
+  let res = await fetch('/api/eclipse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  let data = await res.json();
+
+  // Session expired — re-login and retry once
+  if (res.status === 419 || data?.error?.includes('419') || data?.error?.includes('session') || res.status === 401) {
+    try {
+      const loginRes = await fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'login', username: eclipseSession.username, password: eclipseSession.password })
+      });
+      const loginData = await loginRes.json();
+      if (loginData.token) {
+        eclipseSession.token = loginData.token;
+        localStorage.setItem('eclipseToken', loginData.token);
+        body.sessionToken = loginData.token;
+        res = await fetch('/api/eclipse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        data = await res.json();
+      }
+    } catch(e) {
+      throw new Error('Session expired — please log in again.');
+    }
+  }
+
+  return data;
 }
 
 async function doLogin() {
