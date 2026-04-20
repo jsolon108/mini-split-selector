@@ -61,6 +61,18 @@ function extractOrderId(text) {
   return o.eclipseOid || o.id || null;
 }
 
+async function authedFetch(url, options, username, password, sessionToken) {
+  let r = await fetch(url, { ...options, headers: { ...options.headers, 'sessionToken': sessionToken } });
+  if (r.status === 419) {
+    // Re-authenticate and retry once
+    const newToken = await createSession(username, password);
+    sessionToken = newToken;
+    r = await fetch(url, { ...options, headers: { ...options.headers, 'sessionToken': newToken } });
+    r._newToken = newToken;
+  }
+  return r;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
