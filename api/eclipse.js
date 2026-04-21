@@ -64,7 +64,6 @@ function extractOrderId(text) {
 async function authedFetch(url, options, username, password, sessionToken) {
   let r = await fetch(url, { ...options, headers: { ...options.headers, 'sessionToken': sessionToken } });
   if (r.status === 419) {
-    // Re-authenticate and retry once
     const newToken = await createSession(username, password);
     sessionToken = newToken;
     r = await fetch(url, { ...options, headers: { ...options.headers, 'sessionToken': newToken } });
@@ -91,16 +90,13 @@ export default async function handler(req, res) {
       const data = await r.json();
       const token = data.sessionToken;
       const userName = data.sessionUser?.userName;
-      // Fetch user details to get home branch
       let homeBranch = null;
-      let debugUser = null;
       try {
         const userR = await fetch(`${ECLIPSE_BASE}/Users/${userName}`, {
           headers: { 'Accept': 'application/json', 'sessionToken': token }
         });
         if (userR.ok) {
           const userData = await userR.json();
-          debugUser = JSON.stringify(userData).slice(0, 500);
           homeBranch = userData.homeBranchId || userData.homeBranch || userData.defaultBranch || null;
         }
       } catch(e) {}
@@ -142,8 +138,6 @@ export default async function handler(req, res) {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       let { status, text } = await postOrder(sessionToken, payload);
-
-      // Token expired — refresh and retry
       if (status === 419) {
         let newToken;
         try {
@@ -159,11 +153,9 @@ export default async function handler(req, res) {
         }
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
-
       if (status !== 200 && status !== 201) {
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
-
       const orderId = extractOrderId(text);
       return res.status(200).json({ success: true, orderId });
     } catch (err) {
@@ -177,8 +169,6 @@ export default async function handler(req, res) {
       const { customerId, userId, userBranch, catalogNumbers } = req.body;
       const userIdUpper = (userId || '').toUpperCase();
       const FARM = 'FARM';
-
-      // Step 1: Get inventory per catalog number (one at a time to avoid positional mismatch)
       const invMap = {};
       for (const cn of catalogNumbers) {
         const params = new URLSearchParams();
@@ -200,32 +190,22 @@ export default async function handler(req, res) {
           productId: item.productId
         };
       }
-
       const productIds = Object.values(invMap).map(v => v.productId).filter(Boolean);
-
-      // Step 2: Get pricing using productIds
       let pricingResults = [];
       if (productIds.length > 0) {
         const pricingByIdParams = new URLSearchParams();
-        // Use catalog numbers directly for pricing — more reliable than productId positional match
         catalogNumbers.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
         pricingByIdParams.append('Quantity', '1');
         if (customerId) pricingByIdParams.append('CustomerId', customerId);
         pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
-
         const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
-        console.log('Pricing URL:', pricingUrl);
         const pricingRes = await fetch(pricingUrl, {
           headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
         });
-        console.log('Pricing status:', pricingRes.status);
         const pricingText = await pricingRes.text();
-        console.log('Pricing raw text:', pricingText.slice(0, 500));
         const pricingData = pricingRes.ok ? JSON.parse(pricingText) : {};
         pricingResults = pricingData.results || [];
       }
-
-      // Build pricing map keyed by catalog number (positional match)
       const pricingMap = {};
       pricingResults.forEach((r, i) => {
         const catKey = catalogNumbers[i];
@@ -234,7 +214,6 @@ export default async function handler(req, res) {
           list: r.listPrice?.value ?? r.list?.value ?? null
         };
       });
-
       return res.status(200).json({
         userBranch,
         pricing: pricingMap,
@@ -255,18 +234,15 @@ export default async function handler(req, res) {
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
       if (orderStatus === 'open') {
-        // Open orders: ShipWhenAvailable, CallWhenAvailable, etc.
         ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete'].forEach(s => params.append('OrderStatus', s));
       } else {
         params.append('OrderStatus', 'Bid');
       }
       params.append('pageSize', '20');
       params.append('sort', '-OrderDate');
-      // Limit to recent — last 12 months
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
       params.append('OrderDateStart', start.toISOString());
-
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
@@ -293,7 +269,6 @@ export default async function handler(req, res) {
           })).slice(0, 10)
         };
       });
-      // Sort by order ID descending (newest first)
       orders.sort((a, b) => (b.id || '').localeCompare(a.id || '', undefined, {numeric: true}));
       return res.status(200).json({ orders });
     } catch (err) {
@@ -315,17 +290,14 @@ export default async function handler(req, res) {
       });
       if (!r.ok) return res.status(r.status).json({ error: `Inventory lookup failed: ${r.status}` });
       const data = await r.json();
-      console.log('BranchInv raw:', JSON.stringify(data).slice(0, 300));
       const item = (data.results || [])[0];
       if (!item) return res.status(200).json({ branches: [] });
-
       const branches = (item.branchAvailableQuantity || [])
         .map(b => {
           const code = b.warehouse.split(' ')[0];
           return { code, qty: b.warehouseQty || 0 };
         })
         .sort((a, b) => a.code.localeCompare(b.code));
-
       return res.status(200).json({ branches, total: item.totalWarehouseQty, debug: cleanCatalog });
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -339,10 +311,8 @@ export default async function handler(req, res) {
       const params = new URLSearchParams();
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
-      // Open orders = not Bid, not invoiced
       ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete','ShipItemComplete','PickUpNow','ShipWhenSpecified','CallWhenSpecified'].forEach(s => params.append('OrderStatus', s));
       params.append('pageSize', '50');
-
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
@@ -369,6 +339,64 @@ export default async function handler(req, res) {
       });
       orders.sort((a, b) => parseInt((b.id||'').replace(/\D/g,''),10) - parseInt((a.id||'').replace(/\D/g,''),10));
       return res.status(200).json({ orders });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Search products by keyword with tag-along accessories and inventory
+  if (action === 'searchProducts') {
+    try {
+      const { keyword } = req.body;
+
+      // Step 1: Search by keyword
+      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword)}&pageSize=5`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!searchR.ok) return res.status(searchR.status).json({ error: `Product search failed: ${searchR.status}` });
+      const searchData = await searchR.json();
+
+      const results = [];
+      for (const item of (searchData.results || []).slice(0, 3)) {
+        const info = item.basicInfo || [];
+        const get = key => info.find(i => i.key === key)?.value || '';
+        const productId = get('pdwItemId');
+        const catalogNumber = get('catalogNumber');
+        const description = get('description')?.split('\n')[0] || '';
+
+        // Step 2: Get full product details for tagAlongs
+        let tagAlongs = [], substitutes = [];
+        if (productId) {
+          try {
+            const detailR = await fetch(`${ECLIPSE_BASE}/Products/${productId}`, {
+              headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+            });
+            if (detailR.ok) {
+              const detail = await detailR.json();
+              tagAlongs = detail.tagAlongs || [];
+              substitutes = detail.substitutes || [];
+            }
+          } catch(e) {}
+        }
+
+        // Step 3: Get total inventory
+        let qty = null;
+        if (catalogNumber) {
+          try {
+            const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(catalogNumber)}&ConsiderUserAuthBranch=true`, {
+              headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+            });
+            if (invR.ok) {
+              const invData = await invR.json();
+              qty = invData.results?.[0]?.totalWarehouseQty ?? null;
+            }
+          } catch(e) {}
+        }
+
+        results.push({ id: catalogNumber, catalogNumber, name: description, qty, tagAlongs, substitutes });
+      }
+
+      return res.status(200).json({ results });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
