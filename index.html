@@ -3,10 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/x-icon" href="/favicon.ico" />
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-<link rel="apple-touch-icon" href="/apple-touch-icon.png" />  
 <title>Ductless Quote Builder — Johnstone Supply NY/CT</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -153,7 +149,6 @@ select:focus,input:focus{outline:none;border-color:#999}
 </head>
 <body>
 <div class="header">
-  <img src="/JS-Bug_CMYK.png" alt="Johnstone" style="width:32px;height:32px;">
   <div>
     <div class="header-logo">Johnstone Supply NY/CT</div>
     <div class="header-sub">Ductless Quote Builder</div>
@@ -344,16 +339,21 @@ function renderSingle() {
             ${s.liq_pipe?`<div class="spec">Liq <b>${s.liq_pipe}</b> · Gas <b>${s.gas_pipe}</b></div>`:''}
           </div>
         </div>
-        <button class="add-btn${inQ?' added':''}" onclick="addSZ('${s.id}')">${inQ?'Added ✓':'+ Add'}</button>
+        <button class="add-btn${inQ?' added':''}" onclick="addSZ('${s.id}')">${inQ?'✓ Remove':'+ Add'}</button>
       </div>
     </div>`;
   }).join('');
 }
 
 function addSZ(id) {
-  const s=SZ.find(x=>x.id===id), ex=quote.find(q=>q.id===id);
-  if(ex){ex.qty++;}else{quote.push({...s,qty:1,qtype:'sz'});}
-  updateCount(); renderSingle();
+  const idx = quote.findIndex(q => q.id === id);
+  if (idx >= 0) {
+    quote.splice(idx, 1);
+  } else {
+    const s = SZ.find(x => x.id === id);
+    if (s) quote.push({...s, qty:1, qtype:'sz'});
+  }
+  updateCount(); renderSingle(); renderQuote();
 }
 
 function iduRows(ouId){return MZ_IDU[ouId]||[];}
