@@ -1832,13 +1832,17 @@ function chatKeydown(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
 }
 
-// Show/hide chat panel based on quote tab
-const _origSwitchTab = switchTab;
-function switchTab(t) {
-  _origSwitchTab(t);
-  const panel = document.getElementById('chat-panel');
-  if (panel) panel.style.display = t === 'quote' ? 'flex' : 'none';
-}
+// Show/hide chat panel based on quote tab - hook without overriding
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      setTimeout(() => {
+        const panel = document.getElementById('chat-panel');
+        if (panel) panel.style.display = document.getElementById('panel-quote')?.classList.contains('active') ? 'flex' : 'none';
+      }, 0);
+    });
+  });
+});
 
 </script>
 <div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
