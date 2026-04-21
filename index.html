@@ -167,12 +167,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 .chat-input:focus{outline:none;border-color:#185FA5}
 .chat-send-btn{height:34px;padding:0 14px;background:#185FA5;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:500}
 .chat-send-btn:disabled{opacity:.5;cursor:not-allowed}
-.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;margin-top:4px;font-family:inherit}
+.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;font-family:inherit}
 .chat-suggestion:hover{background:#d0e2fa}
-.addon-card{background:#f9f9f8;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;margin-top:4px;align-self:flex-start;width:88%}
+.addon-card{background:#f9f9f8;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;align-self:flex-start;width:100%}
 .addon-card-title{font-weight:600;color:#1a1a1a;margin-bottom:2px;font-size:11px}
 .addon-card-model{font-family:monospace;color:#185FA5;font-size:10px}
-.addon-card-inv{color:#0f6e56;font-size:10px;margin-top:2px}
+.addon-card-inv{color:#0f6e56;font-size:10px}
 </style>
 </head>
 <body>
@@ -1639,11 +1639,9 @@ function eclipseLogout() {
 
 fetchData();
 
-
-// ── Ductless Quote Chatbot ─────────────────────────────────────────
+// ── Ductless Quote Chatbot (Rule-based, no AI API) ─────────────────
 
 let chatOpen = false;
-let chatHistory = [];
 let chatThinking = false;
 
 function toggleChat() {
@@ -1651,32 +1649,62 @@ function toggleChat() {
   const panel = document.getElementById('chat-panel');
   panel.classList.toggle('collapsed', !chatOpen);
   document.getElementById('chat-toggle-btn').textContent = chatOpen ? '▾' : '▴';
-  if (chatOpen && chatHistory.length === 0) {
-    chatGreet();
-  }
+  if (chatOpen) chatGreet();
 }
 
 function chatGreet() {
-  const hasQuote = quote.length > 0;
-  const msg = hasQuote
-    ? `Hi! I can see you have ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. I can suggest add-ons, check inventory, or answer product questions. What do you need?`
-    : `Hi! Add systems to your quote and I can suggest add-ons and accessories based on what's in stock. Or ask me any product question.`;
-  appendChatMsg('assistant', msg);
-  if (hasQuote) {
-    appendSuggestions([
-      'Suggest add-ons for my quote',
-      'What linesets do I need?',
-      'Check thermostat options',
-    ]);
+  const el = document.getElementById('chat-messages');
+  el.innerHTML = '';
+  if (!quote.length) {
+    appendChatMsg('assistant', 'Add systems to your quote and I\'ll suggest add-ons and accessories based on what\'s in stock.');
+    return;
+  }
+  appendChatMsg('assistant', `I can see ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. Click below to check Eclipse for common add-ons:`);
+  appendSuggestions([
+    { label: 'Suggest all add-ons', fn: () => suggestAll() },
+    { label: 'Lineset options', fn: () => searchAddon(getLinesetSearch(), 'Linesets') },
+    { label: 'Disconnect boxes', fn: () => searchAddon('mini split disconnect box', 'Disconnect Boxes') },
+    { label: 'Condensate pumps', fn: () => searchAddon('condensate pump mini split', 'Condensate Pumps') },
+    { label: 'Line hide / covers', fn: () => searchAddon('line set cover line hide', 'Line Hide / Covers') },
+    { label: 'Wall brackets / pads', fn: () => searchAddon('mini split wall bracket pad', 'Wall Brackets & Pads') },
+    { label: 'WiFi adapters', fn: () => searchAddon('mini split wifi adapter', 'WiFi Adapters') },
+  ]);
+}
+
+function getLinesetSearch() {
+  // Try to determine lineset size from quote pipe sizes
+  const szItem = quote.find(q => q.qtype === 'sz');
+  if (szItem && szItem.liq_pipe && szItem.gas_pipe) {
+    const liq = szItem.liq_pipe.replace(/"/g, '').trim();
+    const gas = szItem.gas_pipe.replace(/"/g, '').trim();
+    return `lineset ${liq} ${gas}`;
+  }
+  // Fall back to cap-based guess
+  const maxCap = Math.max(...quote.map(q => q.cap || 0));
+  if (maxCap <= 18) return 'lineset 1/4 1/2';
+  if (maxCap <= 36) return 'lineset 3/8 5/8';
+  return 'lineset mini split';
+}
+
+async function suggestAll() {
+  const addons = [
+    { search: getLinesetSearch(), label: 'Linesets' },
+    { search: 'mini split disconnect box', label: 'Disconnect Boxes' },
+    { search: 'condensate pump mini split', label: 'Condensate Pumps' },
+    { search: 'line set cover', label: 'Line Hide / Covers' },
+    { search: 'mini split wall bracket', label: 'Wall Brackets & Pads' },
+  ];
+  appendChatMsg('assistant', 'Checking Eclipse inventory for common add-ons...');
+  for (const addon of addons) {
+    await searchAddon(addon.search, addon.label);
   }
 }
 
-function appendChatMsg(role, text, isHtml = false) {
+function appendChatMsg(role, text) {
   const el = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-msg ${role}`;
-  if (isHtml) div.innerHTML = text;
-  else div.textContent = text;
+  div.textContent = text;
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
   return div;
@@ -1685,113 +1713,26 @@ function appendChatMsg(role, text, isHtml = false) {
 function appendSuggestions(suggestions) {
   const el = document.getElementById('chat-messages');
   const wrap = document.createElement('div');
-  wrap.style.alignSelf = 'flex-start';
-  wrap.style.width = '88%';
+  wrap.style.cssText = 'align-self:flex-start;width:88%;display:flex;flex-direction:column;gap:4px';
   suggestions.forEach(s => {
     const btn = document.createElement('button');
     btn.className = 'chat-suggestion';
-    btn.textContent = s;
-    btn.onclick = () => { sendChat(s); wrap.remove(); };
+    btn.textContent = s.label;
+    btn.onclick = () => { wrap.remove(); s.fn(); };
     wrap.appendChild(btn);
   });
   el.appendChild(wrap);
   el.scrollTop = el.scrollHeight;
 }
 
-function buildQuoteContext() {
-  if (!quote.length) return 'No systems in quote yet.';
-  return quote.map(q => {
-    if (q.qtype === 'sz') {
-      return `- ${q.brand} ${q.series} ${q.cap}K single zone | ODU: ${q.ou} | IDU: ${q.iu} | Liq pipe: ${q.liq_pipe || 'N/A'} | Gas pipe: ${q.gas_pipe || 'N/A'} | SEER2: ${q.seer2 || 'N/A'} | Qty: ${q.qty}`;
-    } else {
-      const zones = q.zones.map(z => `Zone ${z.z}: ${z.cap}K ${z.type} (${z.model})`).join(', ');
-      return `- ${q.brand} ${q.series} ${q.cap}K multi-zone | ODU: ${q.ou} | Zones: ${zones} | Qty: ${q.qty}`;
-    }
-  }).join('\n');
-}
-
-async function sendChat(userText) {
+async function searchAddon(keyword, label) {
   if (chatThinking) return;
-  const input = document.getElementById('chat-input');
-  const text = userText || input.value.trim();
-  if (!text) return;
-  input.value = '';
-
-  appendChatMsg('user', text);
-  chatHistory.push({ role: 'user', content: text });
-
   chatThinking = true;
-  document.getElementById('chat-send-btn').disabled = true;
-  const thinkingEl = appendChatMsg('thinking', 'Thinking...');
 
-  try {
-    const quoteContext = buildQuoteContext();
-    const systemPrompt = `You are a helpful HVAC product assistant for Johnstone Supply NY/CT, an HVAC distributor. You help internal sales staff with ductless mini-split quotes.
-
-Current quote contents:
-${quoteContext}
-
-Your job:
-1. Suggest relevant add-ons and accessories based on the systems in the quote (linesets, disconnect boxes, thermostats, line hide, condensate pumps, pad/brackets, WiFi adapters, etc.)
-2. Answer product questions concisely
-3. When suggesting specific products, format them as JSON blocks so the UI can check Eclipse inventory. Use this format for product suggestions:
-<addon>{"search":"SEARCH_TERM","description":"DESCRIPTION","reason":"WHY_NEEDED"}</addon>
-
-Be concise. Suggest 2-4 add-ons max per response. Always explain why each add-on is needed.
-If the user asks about linesets, recommend the correct line set size based on the pipe sizes in the quote.
-The user is a sales professional — be direct and specific.`;
-
-    const response = await fetch('/api/claude', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: chatHistory
-      })
-    });
-
-    const data = await response.json();
-    const rawText = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
-
-    // Parse out addon suggestions
-    const addonRegex = /<addon>([\s\S]*?)<\/addon>/g;
-    const addons = [];
-    let match;
-    while ((match = addonRegex.exec(rawText)) !== null) {
-      try { addons.push(JSON.parse(match[1])); } catch(e) {}
-    }
-
-    // Clean text for display
-    const displayText = rawText.replace(/<addon>[\s\S]*?<\/addon>/g, '').trim();
-
-    thinkingEl.remove();
-    appendChatMsg('assistant', displayText);
-    chatHistory.push({ role: 'assistant', content: rawText });
-
-    // Fetch inventory for each addon suggestion
-    if (addons.length > 0 && eclipseSession.token) {
-      for (const addon of addons) {
-        await fetchAddonInventory(addon);
-      }
-    }
-
-  } catch(err) {
-    thinkingEl.remove();
-    appendChatMsg('assistant', 'Sorry, something went wrong. Please try again.');
-    console.error('Chat error:', err);
-  }
-
-  chatThinking = false;
-  document.getElementById('chat-send-btn').disabled = false;
-}
-
-async function fetchAddonInventory(addon) {
   const el = document.getElementById('chat-messages');
   const card = document.createElement('div');
   card.className = 'addon-card';
-  card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model">Searching Eclipse: "${addon.search}"...</div>`;
+  card.innerHTML = `<div class="addon-card-title">${label}</div><div class="addon-card-model">Searching Eclipse for "${keyword}"...</div>`;
   el.appendChild(card);
   el.scrollTop = el.scrollHeight;
 
@@ -1802,37 +1743,69 @@ async function fetchAddonInventory(addon) {
       body: JSON.stringify({
         action: 'searchProducts',
         sessionToken: eclipseSession.token,
-        keyword: addon.search
+        keyword
       })
     });
     const data = await res.json();
     const products = data.results || [];
 
     if (!products.length) {
-      card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model" style="color:#999">No matching products found in Eclipse</div><div style="font-size:10px;color:#aaa;margin-top:2px">${addon.reason}</div>`;
-      return;
+      card.innerHTML = `<div class="addon-card-title">${label}</div><div style="font-size:10px;color:#999">No matching products found in Eclipse for "${keyword}"</div>`;
+    } else {
+      card.innerHTML = `<div class="addon-card-title">${label}</div>` +
+        products.slice(0, 4).map(p => `
+          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-top:1px solid #eee;gap:6px">
+            <span class="addon-card-model" style="flex-shrink:0">${p.catalogNumber || p.id}</span>
+            <span style="font-size:10px;color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>
+            <span class="addon-card-inv" style="flex-shrink:0">${p.qty != null ? p.qty + ' avail' : ''}</span>
+          </div>`).join('');
     }
-
-    // Show top 3 results
-    const top = products.slice(0, 3);
-    card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div style="font-size:10px;color:#888;margin-bottom:4px">${addon.reason}</div>` +
-      top.map(p => `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-top:1px solid #eee">
-        <span class="addon-card-model">${p.id || p.model || p.catalogNumber}</span>
-        <span style="font-size:10px;color:#555;flex:1;padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name || p.description || ''}</span>
-        <span class="addon-card-inv">${p.qty != null ? p.qty + ' avail' : ''}</span>
-      </div>`).join('');
-
   } catch(err) {
-    card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model" style="color:#E24B4A">Could not check Eclipse inventory</div>`;
+    card.innerHTML = `<div class="addon-card-title">${label}</div><div style="font-size:10px;color:#E24B4A">Could not reach Eclipse — are you logged in?</div>`;
   }
+
   el.scrollTop = el.scrollHeight;
+  chatThinking = false;
+
+  // Show more options after each search
+  appendSuggestions([
+    { label: 'Search again', fn: () => searchAddon(keyword, label) },
+    { label: 'Show all add-ons', fn: () => chatGreet() },
+  ]);
 }
 
 function chatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    appendChatMsg('user', text);
+    // Simple keyword matching for free-text input
+    const lower = text.toLowerCase();
+    if (lower.includes('lineset') || lower.includes('line set')) {
+      searchAddon(getLinesetSearch(), 'Linesets');
+    } else if (lower.includes('disconnect')) {
+      searchAddon('mini split disconnect box', 'Disconnect Boxes');
+    } else if (lower.includes('condensate') || lower.includes('pump')) {
+      searchAddon('condensate pump mini split', 'Condensate Pumps');
+    } else if (lower.includes('line hide') || lower.includes('cover')) {
+      searchAddon('line set cover', 'Line Hide / Covers');
+    } else if (lower.includes('bracket') || lower.includes('pad') || lower.includes('mount')) {
+      searchAddon('mini split wall bracket pad', 'Wall Brackets & Pads');
+    } else if (lower.includes('wifi') || lower.includes('wireless')) {
+      searchAddon('mini split wifi adapter', 'WiFi Adapters');
+    } else if (lower.includes('thermostat')) {
+      searchAddon('thermostat mini split', 'Thermostats');
+    } else {
+      // Search Eclipse directly with whatever they typed
+      searchAddon(text, 'Search Results');
+    }
+  }
 }
 
-// Show/hide chat panel based on quote tab - hook without overriding
+// Show/hide chat panel when switching tabs
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
@@ -1893,14 +1866,14 @@ document.addEventListener('DOMContentLoaded', () => {
     <span style="font-size:16px">💬</span>
     <div style="flex:1">
       <div class="chat-header-title">Quote Assistant</div>
-      <div class="chat-header-sub">AI-powered add-on suggestions</div>
+      <div class="chat-header-sub">Eclipse add-on suggestions</div>
     </div>
     <button class="chat-toggle" id="chat-toggle-btn">▴</button>
   </div>
   <div class="chat-messages" id="chat-messages"></div>
   <div class="chat-input-row">
-    <input class="chat-input" id="chat-input" placeholder="Ask about add-ons, products..." onkeydown="chatKeydown(event)" />
-    <button class="chat-send-btn" id="chat-send-btn" onclick="sendChat()">Send</button>
+    <input class="chat-input" id="chat-input" placeholder="Search Eclipse (e.g. lineset, disconnect)..." onkeydown="chatKeydown(event)" />
+    <button class="chat-send-btn" id="chat-send-btn" onclick="chatKeydown({key:'Enter',preventDefault:()=>{}})">Go</button>
   </div>
 </div>
 </body>
