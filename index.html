@@ -1741,7 +1741,7 @@ Be concise. Suggest 2-4 add-ons max per response. Always explain why each add-on
 If the user asks about linesets, recommend the correct line set size based on the pipe sizes in the quote.
 The user is a sales professional — be direct and specific.`;
 
-    const response = await fetch('/api/claude', 
+    const response = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
