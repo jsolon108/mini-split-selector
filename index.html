@@ -148,6 +148,31 @@ select:focus,input:focus{outline:none;border-color:#999}
 .user-badge{font-size:12px;color:#666;margin-left:auto}
 .user-badge span{font-weight:500;color:#185FA5}
 .user-badge button{font-size:11px;color:#aaa;background:none;border:none;cursor:pointer;margin-left:6px}
+
+/* ── Chatbot Panel ─────────────────────────────────────────────── */
+.chat-panel{position:fixed;bottom:20px;right:20px;width:380px;background:#fff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:none;flex-direction:column;z-index:50}
+.chat-panel.collapsed .chat-messages,.chat-panel.collapsed .chat-input-row{display:none}
+.chat-header{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;flex-shrink:0;background:#185FA5;border-radius:14px 14px 0 0;user-select:none}
+.chat-panel.collapsed .chat-header{border-radius:14px}
+.chat-header-title{font-size:13px;font-weight:600;color:#fff;flex:1}
+.chat-header-sub{font-size:11px;color:rgba(255,255,255,.7)}
+.chat-toggle{font-size:14px;color:#fff;background:none;border:none;cursor:pointer;padding:0;line-height:1}
+.chat-messages{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:180px;max-height:360px}
+.chat-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
+.chat-msg.assistant{background:#f5f5f3;color:#1a1a1a;align-self:flex-start;border-radius:4px 10px 10px 10px}
+.chat-msg.user{background:#185FA5;color:#fff;align-self:flex-end;border-radius:10px 4px 10px 10px}
+.chat-msg.thinking{background:#f5f5f3;color:#999;align-self:flex-start;font-style:italic}
+.chat-input-row{display:flex;gap:6px;padding:10px 12px;border-top:1px solid #f0f0f0;flex-shrink:0}
+.chat-input{flex:1;height:34px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit}
+.chat-input:focus{outline:none;border-color:#185FA5}
+.chat-send-btn{height:34px;padding:0 14px;background:#185FA5;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:500}
+.chat-send-btn:disabled{opacity:.5;cursor:not-allowed}
+.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;margin-top:4px;font-family:inherit}
+.chat-suggestion:hover{background:#d0e2fa}
+.addon-card{background:#f9f9f8;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;margin-top:4px;align-self:flex-start;width:88%}
+.addon-card-title{font-weight:600;color:#1a1a1a;margin-bottom:2px;font-size:11px}
+.addon-card-model{font-family:monospace;color:#185FA5;font-size:10px}
+.addon-card-inv{color:#0f6e56;font-size:10px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -1613,6 +1638,208 @@ function eclipseLogout() {
 })();
 
 fetchData();
+
+
+// ── Ductless Quote Chatbot ─────────────────────────────────────────
+
+let chatOpen = false;
+let chatHistory = [];
+let chatThinking = false;
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chat-panel');
+  panel.classList.toggle('collapsed', !chatOpen);
+  document.getElementById('chat-toggle-btn').textContent = chatOpen ? '▾' : '▴';
+  if (chatOpen && chatHistory.length === 0) {
+    chatGreet();
+  }
+}
+
+function chatGreet() {
+  const hasQuote = quote.length > 0;
+  const msg = hasQuote
+    ? `Hi! I can see you have ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. I can suggest add-ons, check inventory, or answer product questions. What do you need?`
+    : `Hi! Add systems to your quote and I can suggest add-ons and accessories based on what's in stock. Or ask me any product question.`;
+  appendChatMsg('assistant', msg);
+  if (hasQuote) {
+    appendSuggestions([
+      'Suggest add-ons for my quote',
+      'What linesets do I need?',
+      'Check thermostat options',
+    ]);
+  }
+}
+
+function appendChatMsg(role, text, isHtml = false) {
+  const el = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  if (isHtml) div.innerHTML = text;
+  else div.textContent = text;
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+  return div;
+}
+
+function appendSuggestions(suggestions) {
+  const el = document.getElementById('chat-messages');
+  const wrap = document.createElement('div');
+  wrap.style.alignSelf = 'flex-start';
+  wrap.style.width = '88%';
+  suggestions.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'chat-suggestion';
+    btn.textContent = s;
+    btn.onclick = () => { sendChat(s); wrap.remove(); };
+    wrap.appendChild(btn);
+  });
+  el.appendChild(wrap);
+  el.scrollTop = el.scrollHeight;
+}
+
+function buildQuoteContext() {
+  if (!quote.length) return 'No systems in quote yet.';
+  return quote.map(q => {
+    if (q.qtype === 'sz') {
+      return `- ${q.brand} ${q.series} ${q.cap}K single zone | ODU: ${q.ou} | IDU: ${q.iu} | Liq pipe: ${q.liq_pipe || 'N/A'} | Gas pipe: ${q.gas_pipe || 'N/A'} | SEER2: ${q.seer2 || 'N/A'} | Qty: ${q.qty}`;
+    } else {
+      const zones = q.zones.map(z => `Zone ${z.z}: ${z.cap}K ${z.type} (${z.model})`).join(', ');
+      return `- ${q.brand} ${q.series} ${q.cap}K multi-zone | ODU: ${q.ou} | Zones: ${zones} | Qty: ${q.qty}`;
+    }
+  }).join('\n');
+}
+
+async function sendChat(userText) {
+  if (chatThinking) return;
+  const input = document.getElementById('chat-input');
+  const text = userText || input.value.trim();
+  if (!text) return;
+  input.value = '';
+
+  appendChatMsg('user', text);
+  chatHistory.push({ role: 'user', content: text });
+
+  chatThinking = true;
+  document.getElementById('chat-send-btn').disabled = true;
+  const thinkingEl = appendChatMsg('thinking', 'Thinking...');
+
+  try {
+    const quoteContext = buildQuoteContext();
+    const systemPrompt = `You are a helpful HVAC product assistant for Johnstone Supply NY/CT, an HVAC distributor. You help internal sales staff with ductless mini-split quotes.
+
+Current quote contents:
+${quoteContext}
+
+Your job:
+1. Suggest relevant add-ons and accessories based on the systems in the quote (linesets, disconnect boxes, thermostats, line hide, condensate pumps, pad/brackets, WiFi adapters, etc.)
+2. Answer product questions concisely
+3. When suggesting specific products, format them as JSON blocks so the UI can check Eclipse inventory. Use this format for product suggestions:
+<addon>{"search":"SEARCH_TERM","description":"DESCRIPTION","reason":"WHY_NEEDED"}</addon>
+
+Be concise. Suggest 2-4 add-ons max per response. Always explain why each add-on is needed.
+If the user asks about linesets, recommend the correct line set size based on the pipe sizes in the quote.
+The user is a sales professional — be direct and specific.`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: systemPrompt,
+        messages: chatHistory
+      })
+    });
+
+    const data = await response.json();
+    const rawText = data.content?.[0]?.text || 'Sorry, I could not generate a response.';
+
+    // Parse out addon suggestions
+    const addonRegex = /<addon>([\s\S]*?)<\/addon>/g;
+    const addons = [];
+    let match;
+    while ((match = addonRegex.exec(rawText)) !== null) {
+      try { addons.push(JSON.parse(match[1])); } catch(e) {}
+    }
+
+    // Clean text for display
+    const displayText = rawText.replace(/<addon>[\s\S]*?<\/addon>/g, '').trim();
+
+    thinkingEl.remove();
+    appendChatMsg('assistant', displayText);
+    chatHistory.push({ role: 'assistant', content: rawText });
+
+    // Fetch inventory for each addon suggestion
+    if (addons.length > 0 && eclipseSession.token) {
+      for (const addon of addons) {
+        await fetchAddonInventory(addon);
+      }
+    }
+
+  } catch(err) {
+    thinkingEl.remove();
+    appendChatMsg('assistant', 'Sorry, something went wrong. Please try again.');
+    console.error('Chat error:', err);
+  }
+
+  chatThinking = false;
+  document.getElementById('chat-send-btn').disabled = false;
+}
+
+async function fetchAddonInventory(addon) {
+  const el = document.getElementById('chat-messages');
+  const card = document.createElement('div');
+  card.className = 'addon-card';
+  card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model">Searching Eclipse: "${addon.search}"...</div>`;
+  el.appendChild(card);
+  el.scrollTop = el.scrollHeight;
+
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'searchProducts',
+        sessionToken: eclipseSession.token,
+        keyword: addon.search
+      })
+    });
+    const data = await res.json();
+    const products = data.results || [];
+
+    if (!products.length) {
+      card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model" style="color:#999">No matching products found in Eclipse</div><div style="font-size:10px;color:#aaa;margin-top:2px">${addon.reason}</div>`;
+      return;
+    }
+
+    // Show top 3 results
+    const top = products.slice(0, 3);
+    card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div style="font-size:10px;color:#888;margin-bottom:4px">${addon.reason}</div>` +
+      top.map(p => `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-top:1px solid #eee">
+        <span class="addon-card-model">${p.id || p.model || p.catalogNumber}</span>
+        <span style="font-size:10px;color:#555;flex:1;padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name || p.description || ''}</span>
+        <span class="addon-card-inv">${p.qty != null ? p.qty + ' avail' : ''}</span>
+      </div>`).join('');
+
+  } catch(err) {
+    card.innerHTML = `<div class="addon-card-title">${addon.description}</div><div class="addon-card-model" style="color:#E24B4A">Could not check Eclipse inventory</div>`;
+  }
+  el.scrollTop = el.scrollHeight;
+}
+
+function chatKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+
+// Show/hide chat panel based on quote tab
+const _origSwitchTab = switchTab;
+function switchTab(t) {
+  _origSwitchTab(t);
+  const panel = document.getElementById('chat-panel');
+  if (panel) panel.style.display = t === 'quote' ? 'flex' : 'none';
+}
+
 </script>
 <div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
   <div class="inv-modal" onclick="event.stopPropagation()">
@@ -1656,5 +1883,21 @@ fetchData();
     </div>
   </div>
 
+
+<div class="chat-panel collapsed" id="chat-panel" style="display:none">
+  <div class="chat-header" onclick="toggleChat()">
+    <span style="font-size:16px">💬</span>
+    <div style="flex:1">
+      <div class="chat-header-title">Quote Assistant</div>
+      <div class="chat-header-sub">AI-powered add-on suggestions</div>
+    </div>
+    <button class="chat-toggle" id="chat-toggle-btn">▴</button>
+  </div>
+  <div class="chat-messages" id="chat-messages"></div>
+  <div class="chat-input-row">
+    <input class="chat-input" id="chat-input" placeholder="Ask about add-ons, products..." onkeydown="chatKeydown(event)" />
+    <button class="chat-send-btn" id="chat-send-btn" onclick="sendChat()">Send</button>
+  </div>
+</div>
 </body>
 </html>
