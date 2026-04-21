@@ -402,5 +402,43 @@ export default async function handler(req, res) {
     }
   }
 
+
+  // Get single product by ID with inventory
+  if (action === 'getProduct') {
+    try {
+      const { productId } = req.body;
+      const detailR = await fetch(`${ECLIPSE_BASE}/Products/${productId}`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!detailR.ok) return res.status(detailR.status).json({ error: 'Product not found' });
+      const detail = await detailR.json();
+
+      // Get inventory
+      let qty = null;
+      if (detail.catalogNumber) {
+        try {
+          const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(detail.catalogNumber)}&ConsiderUserAuthBranch=true`, {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (invR.ok) {
+            const invData = await invR.json();
+            qty = invData.results?.[0]?.totalWarehouseQty ?? null;
+          }
+        } catch(e) {}
+      }
+
+      return res.status(200).json({
+        id: detail.id,
+        catalogNumber: detail.catalogNumber,
+        description: detail.description?.split('\n')[0] || '',
+        qty,
+        tagAlongs: detail.tagAlongs || [],
+        substitutes: detail.substitutes || []
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   return res.status(400).json({ error: 'Unknown action' });
 }
