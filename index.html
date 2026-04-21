@@ -107,6 +107,8 @@ select:focus,input:focus{outline:none;border-color:#999}
 .inv-btn{background:none;border:1px solid #ddd;border-radius:5px;padding:2px 7px;font-size:11px;cursor:pointer;color:#185FA5;white-space:nowrap;margin-left:6px}
 .inv-btn:hover{background:#f0f5ff}
 .inv-close-btn{width:100%;margin-top:16px;padding:10px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:13px;cursor:pointer}
+.inv-two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inv-col-title{font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;font-family:'SF Mono',monospace}
 .avail-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
 .avail-yes{background:#0f6e56}
 .avail-no{background:#E24B4A}
@@ -329,7 +331,7 @@ function renderSingle() {
       <div class="card-row">
         <div style="flex:1;min-width:0">
           <div class="sys-name">${s.brand} ${s.series} — ${s.cap}K <span class="badge">${s.ref}</span></div>
-          <div class="sys-models">ODU: ${s.ou} <button class="inv-btn" onclick="showInvModal('${s.ou}','ODU')">Inv</button> · IDU: ${s.iu} <button class="inv-btn" onclick="showInvModal('${s.iu}','IDU')">Inv</button></div>
+          <div class="sys-models">ODU: ${s.ou} · IDU: ${s.iu} <button class="inv-btn" onclick="showSZInvModal('${s.ou}','${s.iu}')">Inv</button></div>
           <div class="sys-specs">
             ${s.seer2?`<div class="spec">SEER2 <b>${s.seer2}</b></div>`:''}
             ${s.hspf2?`<div class="spec">HSPF2 <b>${s.hspf2}</b></div>`:''}
@@ -1184,6 +1186,71 @@ const BRANCH_LABELS = {
   'STAM': 'Stamford', 'MILF': 'Milford', 'HART': 'Hartford',
   'CPCT': 'CP Connecticut', 'CPNY': 'CP New York', 'REDH': 'Red Hook', 'WHNY': 'White Plains'
 };
+
+
+async function showSZInvModal(ouModel, iuModel) {
+  const overlay = document.getElementById('inv-modal-overlay');
+  document.getElementById('inv-modal-title').textContent = 'Branch Inventory';
+  document.getElementById('inv-modal-model').textContent = '';
+  document.getElementById('inv-modal-body').innerHTML = '<div style="color:#888;font-size:13px;padding:8px 0">Loading...</div>';
+  overlay.classList.add('open');
+
+  try {
+    const [ouRes, iuRes] = await Promise.all([
+      fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'branchInventory', sessionToken: eclipseSession.token, catalogNumber: formatCatNumLocal(ouModel), username: eclipseSession.username })
+      }),
+      fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'branchInventory', sessionToken: eclipseSession.token, catalogNumber: formatCatNumLocal(iuModel), username: eclipseSession.username })
+      })
+    ]);
+    const ouData = await ouRes.json();
+    const iuData = await iuRes.json();
+
+    const ouBranches = ouData.branches || [];
+    const iuBranches = iuData.branches || [];
+
+    // Merge all branch codes
+    const allCodes = [...new Set([...ouBranches.map(b=>b.code), ...iuBranches.map(b=>b.code)])].sort();
+
+    if (!allCodes.length) {
+      document.getElementById('inv-modal-body').innerHTML = '<div style="color:#888;font-size:13px">No inventory data found.</div>';
+      return;
+    }
+
+    const ouMap = Object.fromEntries(ouBranches.map(b=>[b.code, b.qty]));
+    const iuMap = Object.fromEntries(iuBranches.map(b=>[b.code, b.qty]));
+
+    const rows = allCodes.map(code => {
+      const label = BRANCH_LABELS[code] ? `${code} — ${BRANCH_LABELS[code]}` : code;
+      const ouQty = ouMap[code] ?? 0;
+      const iuQty = iuMap[code] ?? 0;
+      return `<div class="inv-branch-row">
+        <span class="inv-branch-name">${label}</span>
+        <span class="inv-branch-qty ${ouQty===0?'zero':''}" style="margin-right:16px">${ouQty}</span>
+        <span class="inv-branch-qty ${iuQty===0?'zero':''}">${iuQty}</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('inv-modal-body').innerHTML = `
+      <div style="display:flex;justify-content:flex-end;gap:0;margin-bottom:4px">
+        <span style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;width:40px;text-align:right;margin-right:16px">ODU</span>
+        <span style="font-size:10px;font-weight:600;color:#888;text-transform:uppercase;width:40px;text-align:right">IDU</span>
+      </div>
+      <div style="font-size:10px;color:#aaa;font-family:monospace;margin-bottom:10px;display:flex;justify-content:flex-end;gap:0">
+        <span style="width:40px;text-align:right;margin-right:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ouModel.replace('BMS500-','')}</span>
+        <span style="width:40px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${iuModel}</span>
+      </div>
+      ${rows}`;
+
+  } catch(err) {
+    document.getElementById('inv-modal-body').innerHTML = `<div style="color:#E24B4A;font-size:13px">${err.message}</div>`;
+  }
+}
 
 async function showInvModal(model, description) {
   const overlay = document.getElementById('inv-modal-overlay');
