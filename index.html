@@ -161,13 +161,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 .chat-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
 .chat-msg.assistant{background:#f5f5f3;color:#1a1a1a;align-self:flex-start;border-radius:4px 10px 10px 10px}
 .chat-msg.user{background:#185FA5;color:#fff;align-self:flex-end;border-radius:10px 4px 10px 10px}
-.chat-msg.thinking{background:#f5f5f3;color:#999;align-self:flex-start;font-style:italic}
 .chat-input-row{display:flex;gap:6px;padding:10px 12px;border-top:1px solid #f0f0f0;flex-shrink:0}
 .chat-input{flex:1;height:34px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit}
 .chat-input:focus{outline:none;border-color:#185FA5}
 .chat-send-btn{height:34px;padding:0 14px;background:#185FA5;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:500}
 .chat-send-btn:disabled{opacity:.5;cursor:not-allowed}
-.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;font-family:inherit}
+.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;font-family:inherit}
 .chat-suggestion:hover{background:#d0e2fa}
 .addon-card{background:#f9f9f8;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;align-self:flex-start;width:100%}
 .addon-card-title{font-weight:600;color:#1a1a1a;margin-bottom:2px;font-size:11px}
@@ -1639,7 +1638,7 @@ function eclipseLogout() {
 
 fetchData();
 
-// ── Ductless Quote Chatbot (Rule-based, no AI API) ─────────────────
+// ── Ductless Quote Chatbot (Tag-Along based) ───────────────────────
 
 let chatOpen = false;
 let chatThinking = false;
@@ -1656,48 +1655,14 @@ function chatGreet() {
   const el = document.getElementById('chat-messages');
   el.innerHTML = '';
   if (!quote.length) {
-    appendChatMsg('assistant', 'Add systems to your quote and I\'ll suggest add-ons and accessories based on what\'s in stock.');
+    appendChatMsg('assistant', 'Add systems to your quote and I\'ll pull Eclipse add-on suggestions based on those exact products.');
     return;
   }
-  appendChatMsg('assistant', `I can see ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. Click below to check Eclipse for common add-ons:`);
+  appendChatMsg('assistant', `Found ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. Click below to load Eclipse add-ons:`);
   appendSuggestions([
-    { label: 'Suggest all add-ons', fn: () => suggestAll() },
-    { label: 'Lineset options', fn: () => searchAddon(getLinesetSearch(), 'Linesets') },
-    { label: 'Disconnect boxes', fn: () => searchAddon('mini split disconnect box', 'Disconnect Boxes') },
-    { label: 'Condensate pumps', fn: () => searchAddon('condensate pump mini split', 'Condensate Pumps') },
-    { label: 'Line hide / covers', fn: () => searchAddon('line set cover line hide', 'Line Hide / Covers') },
-    { label: 'Wall brackets / pads', fn: () => searchAddon('mini split wall bracket pad', 'Wall Brackets & Pads') },
-    { label: 'WiFi adapters', fn: () => searchAddon('mini split wifi adapter', 'WiFi Adapters') },
+    { label: '📦 Load Eclipse add-ons for my quote', fn: () => loadTagAlongs() },
+    { label: '🔍 Search Eclipse manually', fn: () => showSearchPrompt() },
   ]);
-}
-
-function getLinesetSearch() {
-  // Try to determine lineset size from quote pipe sizes
-  const szItem = quote.find(q => q.qtype === 'sz');
-  if (szItem && szItem.liq_pipe && szItem.gas_pipe) {
-    const liq = szItem.liq_pipe.replace(/"/g, '').trim();
-    const gas = szItem.gas_pipe.replace(/"/g, '').trim();
-    return `lineset ${liq} ${gas}`;
-  }
-  // Fall back to cap-based guess
-  const maxCap = Math.max(...quote.map(q => q.cap || 0));
-  if (maxCap <= 18) return 'lineset 1/4 1/2';
-  if (maxCap <= 36) return 'lineset 3/8 5/8';
-  return 'lineset mini split';
-}
-
-async function suggestAll() {
-  const addons = [
-    { search: getLinesetSearch(), label: 'Linesets' },
-    { search: 'mini split disconnect box', label: 'Disconnect Boxes' },
-    { search: 'condensate pump mini split', label: 'Condensate Pumps' },
-    { search: 'line set cover', label: 'Line Hide / Covers' },
-    { search: 'mini split wall bracket', label: 'Wall Brackets & Pads' },
-  ];
-  appendChatMsg('assistant', 'Checking Eclipse inventory for common add-ons...');
-  for (const addon of addons) {
-    await searchAddon(addon.search, addon.label);
-  }
 }
 
 function appendChatMsg(role, text) {
@@ -1713,7 +1678,7 @@ function appendChatMsg(role, text) {
 function appendSuggestions(suggestions) {
   const el = document.getElementById('chat-messages');
   const wrap = document.createElement('div');
-  wrap.style.cssText = 'align-self:flex-start;width:88%;display:flex;flex-direction:column;gap:4px';
+  wrap.style.cssText = 'align-self:flex-start;width:100%;display:flex;flex-direction:column;gap:4px';
   suggestions.forEach(s => {
     const btn = document.createElement('button');
     btn.className = 'chat-suggestion';
@@ -1725,14 +1690,123 @@ function appendSuggestions(suggestions) {
   el.scrollTop = el.scrollHeight;
 }
 
-async function searchAddon(keyword, label) {
+function showSearchPrompt() {
+  appendChatMsg('assistant', 'Type a product name or keyword below to search Eclipse.');
+}
+
+async function loadTagAlongs() {
+  if (chatThinking) return;
+  chatThinking = true;
+
+  // Collect all unique catalog numbers from the quote
+  const catalogNumbers = [];
+  quote.forEach(q => {
+    if (q.qtype === 'sz') {
+      if (q.ou) catalogNumbers.push(formatCatNumLocal(q.ou));
+      if (q.iu) catalogNumbers.push(formatCatNumLocal(q.iu));
+    } else {
+      if (q.ou) catalogNumbers.push(formatCatNumLocal(q.ou));
+      (q.zones || []).forEach(z => { if (z.model) catalogNumbers.push(formatCatNumLocal(z.model)); });
+    }
+  });
+
+  const unique = [...new Set(catalogNumbers.filter(Boolean))];
+  appendChatMsg('assistant', `Checking ${unique.length} products in Eclipse for tag-along accessories...`);
+
+  // Track all tag-alongs found across all products
+  const allTagAlongs = {};
+
+  for (const catNum of unique) {
+    try {
+      const res = await fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'searchProducts',
+          sessionToken: eclipseSession.token,
+          keyword: catNum
+        })
+      });
+      const data = await res.json();
+      const products = data.results || [];
+
+      for (const p of products) {
+        // Process tagAlongs
+        for (const ta of (p.tagAlongs || [])) {
+          const id = ta.tagAlongProductId || ta.id || ta.productId;
+          if (id && !allTagAlongs[id]) {
+            allTagAlongs[id] = { id, sourceModel: catNum };
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  const tagAlongIds = Object.keys(allTagAlongs);
+
+  if (!tagAlongIds.length) {
+    appendChatMsg('assistant', 'No tag-along accessories found in Eclipse for these products. Try searching manually below.');
+    chatThinking = false;
+    return;
+  }
+
+  appendChatMsg('assistant', `Found ${tagAlongIds.length} Eclipse tag-along product${tagAlongIds.length > 1 ? 's' : ''}. Loading inventory...`);
+
+  // Now look up each tag-along product
+  const el = document.getElementById('chat-messages');
+
+  for (const taId of tagAlongIds.slice(0, 10)) {
+    const card = document.createElement('div');
+    card.className = 'addon-card';
+    card.innerHTML = `<div class="addon-card-model">Loading product ${taId}...</div>`;
+    el.appendChild(card);
+    el.scrollTop = el.scrollHeight;
+
+    try {
+      // Get product details
+      const detailRes = await fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'getProduct',
+          sessionToken: eclipseSession.token,
+          productId: taId
+        })
+      });
+      const detail = await detailRes.json();
+
+      if (detail.catalogNumber) {
+        card.innerHTML = `
+          <div class="addon-card-title">${detail.description || detail.catalogNumber}</div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
+            <span class="addon-card-model">${detail.catalogNumber}</span>
+            <span class="addon-card-inv">${detail.qty != null ? detail.qty + ' avail total' : ''}</span>
+          </div>`;
+      } else {
+        card.remove();
+      }
+    } catch(e) {
+      card.remove();
+    }
+  }
+
+  el.scrollTop = el.scrollHeight;
+  chatThinking = false;
+
+  appendSuggestions([
+    { label: '🔄 Reload add-ons', fn: () => loadTagAlongs() },
+    { label: '🔍 Search Eclipse manually', fn: () => showSearchPrompt() },
+  ]);
+}
+
+async function searchAddon(keyword) {
   if (chatThinking) return;
   chatThinking = true;
 
   const el = document.getElementById('chat-messages');
   const card = document.createElement('div');
   card.className = 'addon-card';
-  card.innerHTML = `<div class="addon-card-title">${label}</div><div class="addon-card-model">Searching Eclipse for "${keyword}"...</div>`;
+  card.innerHTML = `<div class="addon-card-title">Search: "${keyword}"</div><div class="addon-card-model">Searching Eclipse...</div>`;
   el.appendChild(card);
   el.scrollTop = el.scrollHeight;
 
@@ -1750,10 +1824,10 @@ async function searchAddon(keyword, label) {
     const products = data.results || [];
 
     if (!products.length) {
-      card.innerHTML = `<div class="addon-card-title">${label}</div><div style="font-size:10px;color:#999">No matching products found in Eclipse for "${keyword}"</div>`;
+      card.innerHTML = `<div class="addon-card-title">No results for "${keyword}"</div>`;
     } else {
-      card.innerHTML = `<div class="addon-card-title">${label}</div>` +
-        products.slice(0, 4).map(p => `
+      card.innerHTML = `<div class="addon-card-title">Results for "${keyword}"</div>` +
+        products.slice(0, 5).map(p => `
           <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-top:1px solid #eee;gap:6px">
             <span class="addon-card-model" style="flex-shrink:0">${p.catalogNumber || p.id}</span>
             <span style="font-size:10px;color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>
@@ -1761,47 +1835,22 @@ async function searchAddon(keyword, label) {
           </div>`).join('');
     }
   } catch(err) {
-    card.innerHTML = `<div class="addon-card-title">${label}</div><div style="font-size:10px;color:#E24B4A">Could not reach Eclipse — are you logged in?</div>`;
+    card.innerHTML = `<div class="addon-card-title" style="color:#E24B4A">Error searching Eclipse</div>`;
   }
 
   el.scrollTop = el.scrollHeight;
   chatThinking = false;
-
-  // Show more options after each search
-  appendSuggestions([
-    { label: 'Search again', fn: () => searchAddon(keyword, label) },
-    { label: 'Show all add-ons', fn: () => chatGreet() },
-  ]);
 }
 
 function chatKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  if (e.key === 'Enter') {
     e.preventDefault();
     const input = document.getElementById('chat-input');
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
     appendChatMsg('user', text);
-    // Simple keyword matching for free-text input
-    const lower = text.toLowerCase();
-    if (lower.includes('lineset') || lower.includes('line set')) {
-      searchAddon(getLinesetSearch(), 'Linesets');
-    } else if (lower.includes('disconnect')) {
-      searchAddon('mini split disconnect box', 'Disconnect Boxes');
-    } else if (lower.includes('condensate') || lower.includes('pump')) {
-      searchAddon('condensate pump mini split', 'Condensate Pumps');
-    } else if (lower.includes('line hide') || lower.includes('cover')) {
-      searchAddon('line set cover', 'Line Hide / Covers');
-    } else if (lower.includes('bracket') || lower.includes('pad') || lower.includes('mount')) {
-      searchAddon('mini split wall bracket pad', 'Wall Brackets & Pads');
-    } else if (lower.includes('wifi') || lower.includes('wireless')) {
-      searchAddon('mini split wifi adapter', 'WiFi Adapters');
-    } else if (lower.includes('thermostat')) {
-      searchAddon('thermostat mini split', 'Thermostats');
-    } else {
-      // Search Eclipse directly with whatever they typed
-      searchAddon(text, 'Search Results');
-    }
+    searchAddon(text);
   }
 }
 
@@ -1872,7 +1921,7 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
   <div class="chat-messages" id="chat-messages"></div>
   <div class="chat-input-row">
-    <input class="chat-input" id="chat-input" placeholder="Search Eclipse (e.g. lineset, disconnect)..." onkeydown="chatKeydown(event)" />
+    <input class="chat-input" id="chat-input" placeholder="Search Eclipse by keyword..." onkeydown="chatKeydown(event)" />
     <button class="chat-send-btn" id="chat-send-btn" onclick="chatKeydown({key:'Enter',preventDefault:()=>{}})">Go</button>
   </div>
 </div>
