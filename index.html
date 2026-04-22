@@ -104,6 +104,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 .addons-error{font-size:11px;color:#E24B4A;padding:6px 0}
 .addon-line{display:flex;gap:6px;align-items:baseline;min-width:0;color:#0f6e56}
 .addon-line .q-model-label{color:#0f6e56;font-weight:600}
+.addon-category{margin-bottom:8px}
+.addon-category:last-child{margin-bottom:0}
+.addon-category-label{font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;margin-bottom:2px;padding-bottom:2px;border-bottom:1px solid #eee}
+.addon-category:first-child .addon-category-label{margin-top:0}
+.addon-required-badge{display:inline-block;font-size:9px;font-weight:600;color:#fff;background:#E24B4A;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;text-transform:uppercase;letter-spacing:.03em}
+.addon-row-required{background:#fff7f7}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.15)}
@@ -822,18 +828,29 @@ function renderQuote() {
     } else if (addonsLoaded && q.addons.length === 0) {
       addonsBody = `<div class="addons-none">No tag-along accessories found in Eclipse for this system.</div>`;
     } else if (addonsLoaded) {
-      addonsBody = q.addons.map((a, ai) => {
-        const price = getPrice(a.catalogNumber);
-        const lineTotal = price?.price ? (price.price * a.qtyNeeded) : null;
-        return `<div class="addon-row">
-          <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddon(${qi},${ai})"/>
-          <div class="addon-row-body">
-            <div class="addon-row-desc">${a.description}</div>
-            <div class="addon-row-model">${a.catalogNumber}</div>
-          </div>
-          <span class="addon-row-qty">Qty ${a.qtyNeeded}</span>
-          <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
-        </div>`;
+      // Group by category
+      const grouped = {};
+      q.addons.forEach((a, ai) => {
+        const cat = a.category || 'Other Accessories';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({a, ai});
+      });
+      addonsBody = Object.keys(grouped).map(cat => {
+        const rows = grouped[cat].map(({a, ai}) => {
+          const price = getPrice(a.catalogNumber);
+          const lineTotal = price?.price ? (price.price * a.qtyNeeded) : null;
+          const reqBadge = a.required ? '<span class="addon-required-badge">Required</span>' : '';
+          return `<div class="addon-row${a.required?' addon-row-required':''}">
+            <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddon(${qi},${ai})"/>
+            <div class="addon-row-body">
+              <div class="addon-row-desc">${a.description} ${reqBadge}</div>
+              <div class="addon-row-model">${a.catalogNumber}</div>
+            </div>
+            <span class="addon-row-qty">Qty ${a.qtyNeeded}</span>
+            <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
+          </div>`;
+        }).join('');
+        return `<div class="addon-category"><div class="addon-category-label">${cat}</div>${rows}</div>`;
       }).join('');
     }
 
@@ -860,6 +877,23 @@ function renderQuote() {
 }
 
 // ═══ Tag-along add-on support ═══════════════════════════════════════
+
+
+// Categorize add-ons by keywords in description
+function categorizeAddon(desc) {
+  const d = (desc || '').toUpperCase();
+  if (/LINESET|LINE SET|LINE-SET|REFRIGERANT LINE|\bCOMM(\s|ICATION)|\bWIRE\b|\bCABLE\b/.test(d)) return 'Linesets & Wiring';
+  if (/DISCONNECT|SAFETY SWITCH|PULL OUT|A\/C DISCONNECT/.test(d)) return 'Disconnects';
+  if (/CONDENSATE|CONDENSATE PUMP|DRAIN PAN|DRAIN LINE|DRAIN PIPE|DRAIN HOSE/.test(d)) return 'Condensate';
+  if (/LINE HIDE|LINE COVER|LINESET COVER|SLIMDUCT|COVER|TROUGH|ESCUTCHEON/.test(d)) return 'Line Hide / Covers';
+  if (/WALL BRACKET|PAD|STAND|MOUNT|BRACKET|SLEEVE|WALL SLEEVE/.test(d)) return 'Mounting & Pads';
+  if (/WIFI|WI-FI|WIRELESS ADAPTER|SMART ADAPTER|NETWORK|KUMO|AIRSTAGE|NETHOME/.test(d)) return 'WiFi & Controls';
+  if (/THERMOSTAT|WIRED REMOTE|WIRELESS REMOTE|REMOTE CONTROL/.test(d)) return 'Thermostats & Remotes';
+  if (/SURGE|FILTER DRIER|FILTER-DRIER|DRIER/.test(d)) return 'Filters & Protection';
+  if (/WALL CAP|SOFFIT|WEATHER SEAL|FOAM|SEALANT|TAPE|INSULATION|ARMAFLEX/.test(d)) return 'Seals & Insulation';
+  if (/FLARE|CAP|VALVE|ADAPTER|FITTING|NUT/.test(d)) return 'Fittings & Hardware';
+  return 'Other Accessories';
+}
 
 async function toggleAddons(qi) {
   const q = quote[qi];
@@ -890,7 +924,8 @@ async function loadAddonsForQuoteItem(qi) {
     }
 
     // For each, call searchProducts which returns tagAlongs array
-    const tagAlongCounts = {}; // productId -> count
+    // Aggregate by productId: sum orderQty across all parent products, track required flag
+    const tagAlongAgg = {}; // productId -> {qtyNeeded, required, type}
     for (const c of catalogs) {
       try {
         const res = await fetch('/api/eclipse', {
@@ -903,22 +938,24 @@ async function loadAddonsForQuoteItem(qi) {
           })
         });
         const data = await res.json();
-        console.log('[Addons] searchProducts for', c.cat, ':', data);
         const product = (data.results || []).find(p => p.catalogNumber === c.cat) || (data.results || [])[0];
-        if (!product) { console.log('[Addons] No product found for', c.cat); continue; }
-        console.log('[Addons] Product found:', product.catalogNumber, 'tagAlongs:', product.tagAlongs);
+        if (!product) continue;
         for (const ta of (product.tagAlongs || [])) {
-          console.log('[Addons] TagAlong entry structure:', ta);
           const pid = ta.tagAlongProductId || ta.productId || ta.id;
-          if (!pid) { console.log('[Addons] Could not find product ID in tag-along:', ta); continue; }
-          tagAlongCounts[pid] = (tagAlongCounts[pid] || 0) + 1;
+          if (!pid) continue;
+          const orderQty = ta.orderQty || 1;
+          if (!tagAlongAgg[pid]) {
+            tagAlongAgg[pid] = { qtyNeeded: 0, required: false, type: ta.tagAlongType || '' };
+          }
+          tagAlongAgg[pid].qtyNeeded += orderQty;
+          if (ta.requiredFlag) tagAlongAgg[pid].required = true;
         }
       } catch(e) { console.error('Tag-along fetch error:', e); }
     }
 
     // Now fetch full details for each unique tagalong ID
     const addons = [];
-    for (const pid of Object.keys(tagAlongCounts)) {
+    for (const pid of Object.keys(tagAlongAgg)) {
       try {
         const res = await fetch('/api/eclipse', {
           method: 'POST',
@@ -931,20 +968,28 @@ async function loadAddonsForQuoteItem(qi) {
         });
         const detail = await res.json();
         if (detail.catalogNumber) {
+          const agg = tagAlongAgg[pid];
           addons.push({
             productId: pid,
             catalogNumber: detail.catalogNumber,
             description: detail.description || detail.catalogNumber,
-            qtyNeeded: tagAlongCounts[pid],
+            qtyNeeded: agg.qtyNeeded,
             qty: detail.qty,
-            checked: false
+            required: agg.required,
+            tagAlongType: agg.type,
+            category: categorizeAddon(detail.description || ''),
+            checked: agg.required // auto-check required add-ons
           });
         }
       } catch(e) { console.error('Product detail fetch error:', e); }
     }
 
-    // Sort alphabetically by description
-    addons.sort((a,b) => (a.description || '').localeCompare(b.description || ''));
+    // Sort: required first, then by category, then by description
+    addons.sort((a,b) => {
+      if (a.required !== b.required) return a.required ? -1 : 1;
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return (a.description || '').localeCompare(b.description || '');
+    });
 
     q.addons = addons;
     q.addonsLoading = false;
