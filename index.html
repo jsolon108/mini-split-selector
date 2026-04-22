@@ -281,9 +281,10 @@ select:focus,input:focus{outline:none;border-color:#999}
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeEclipseModal()">Cancel</button>
-      <button class="btn-submit" id="modal-submit" onclick="pushToEclipse()">Push Order</button>
+      <button class="btn-submit" id="modal-submit" onclick="pushToEclipse()">Create Quote</button>
     </div>
     <div class="modal-status" id="modal-status"></div>
+    <button id="modal-close-btn" onclick="closeEclipseModal()" style="display:none;width:100%;margin-top:10px;padding:9px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;font-family:inherit">Close Window</button>
   </div>
 </div>
 
@@ -813,6 +814,7 @@ let customerSearchTimer = null;
 function openEclipseModal() {
   if (!quote.length) { alert('Add systems to the quote first.'); return; }
   document.getElementById('modal-status').textContent = '';
+  document.getElementById('modal-close-btn').style.display = 'none';
   document.getElementById('modal-submit').disabled = false;
   // Default branch to user's home branch
   const homeBranch = localStorage.getItem('eclipseHomeBranch');
@@ -942,6 +944,7 @@ async function pushToEclipse() {
     if (data.success) {
       statusEl.style.color = '#0f6e56';
       statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
+      document.getElementById('modal-close-btn').style.display = 'block';
     } else if (res.status === 401) {
       statusEl.style.color = '#E24B4A';
       statusEl.textContent = 'Session expired — please log out and sign in again.';
