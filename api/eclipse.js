@@ -360,7 +360,7 @@ export default async function handler(req, res) {
       for (const item of (searchData.results || []).slice(0, 3)) {
         const info = item.basicInfo || [];
         const get = key => info.find(i => i.key === key)?.value || '';
-        const productId = get('pdwItemId');
+        const productId = get('id');
         const catalogNumber = get('catalogNumber');
         const description = get('description')?.split('\n')[0] || '';
 
