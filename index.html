@@ -104,10 +104,19 @@ select:focus,input:focus{outline:none;border-color:#999}
 .addons-error{font-size:11px;color:#E24B4A;padding:6px 0}
 .addon-line{display:flex;gap:6px;align-items:baseline;min-width:0;color:#0f6e56}
 .addon-line .q-model-label{color:#0f6e56;font-weight:600}
-.addon-category{margin-bottom:8px}
+.addon-category{margin-bottom:4px;border:1px solid #e5e5e5;border-radius:6px;overflow:hidden;background:#fff}
 .addon-category:last-child{margin-bottom:0}
-.addon-category-label{font-size:10px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-top:8px;margin-bottom:2px;padding-bottom:2px;border-bottom:1px solid #eee}
-.addon-category:first-child .addon-category-label{margin-top:0}
+.addon-category-label{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none;background:#f5f5f3;transition:background .1s}
+.addon-category-label:hover{background:#ececea}
+.addon-category-chevron{font-size:10px;color:#888;transition:transform .15s;flex-shrink:0}
+.addon-category-open .addon-category-chevron{transform:rotate(90deg)}
+.addon-category-name{font-size:12px;font-weight:700;color:#1a1a1a;flex:1;text-transform:none;letter-spacing:0}
+.addon-category-chips{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.addon-cat-chip{font-size:10px;padding:2px 7px;border-radius:10px;background:#fff;color:#666;font-weight:500;border:1px solid #e0e0e0}
+.addon-cat-chip-checked{background:#e8f0fd;color:#185FA5;border-color:#c5d8f5}
+.addon-cat-chip-required{background:#fee;color:#E24B4A;border-color:#fcc}
+.addon-category-body{display:none;padding:6px 10px}
+.addon-category-open .addon-category-body{display:block}
 .addon-required-badge{display:inline-block;font-size:9px;font-weight:600;color:#fff;background:#E24B4A;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;text-transform:uppercase;letter-spacing:.03em}
 .addon-row-required{background:#fff7f7}
 .addons-loading-bg .addons-header{color:#EF9F27}
@@ -338,7 +347,7 @@ const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
 const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
-let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {};
+let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {}, equipmentCatalogs = new Set();
 let eclipseSession = { token: null, username: null, password: null };
 
 async function fetchData() {
@@ -367,6 +376,15 @@ async function fetchData() {
     MZ_COMBOS_AHU[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
   });
   MZ.forEach(o => { mzState[o.id] = Array.from({length: o.zones_max}, () => ({cap:0,type:'',model:'',liq_pipe:'',gas_pipe:''})); });
+  // Build a set of all equipment catalog numbers so we can exclude them from add-on lists
+  equipmentCatalogs = new Set();
+  SZ.forEach(s => {
+    if (s.ou) equipmentCatalogs.add(formatCatNumLocal(s.ou));
+    if (s.iu) equipmentCatalogs.add(formatCatNumLocal(s.iu));
+  });
+  MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(formatCatNumLocal(o.ou)); });
+  Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(formatCatNumLocal(r.model)); });
+  console.log('[Equipment catalogs] Loaded', equipmentCatalogs.size, 'models to exclude from add-ons');
   renderSingle();
   renderMulti();
 }
@@ -853,8 +871,18 @@ function renderQuote() {
         if (!grouped[cat]) grouped[cat] = [];
         grouped[cat].push({a, ai});
       });
+      // Track which categories are expanded (default: collapsed)
+      if (!q.expandedCategories) q.expandedCategories = {};
       addonsBody = Object.keys(grouped).map(cat => {
-        const rows = grouped[cat].map(({a, ai}) => {
+        const items = grouped[cat];
+        const checkedInCat = items.filter(({a}) => a.checked).length;
+        const requiredInCat = items.filter(({a}) => a.required).length;
+        const isOpen = q.expandedCategories[cat];
+        const chips = [];
+        if (checkedInCat) chips.push(`<span class="addon-cat-chip addon-cat-chip-checked">${checkedInCat} selected</span>`);
+        if (requiredInCat) chips.push(`<span class="addon-cat-chip addon-cat-chip-required">${requiredInCat} required</span>`);
+        chips.push(`<span class="addon-cat-chip">${items.length}</span>`);
+        const rows = items.map(({a, ai}) => {
           const price = getPrice(a.catalogNumber);
           const lineTotal = price?.price ? (price.price * a.qtyNeeded) : null;
           const reqBadge = a.required ? '<span class="addon-required-badge">Required</span>' : '';
@@ -868,7 +896,14 @@ function renderQuote() {
             <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
           </div>`;
         }).join('');
-        return `<div class="addon-category"><div class="addon-category-label">${cat}</div>${rows}</div>`;
+        return `<div class="addon-category ${isOpen?'addon-category-open':''}">
+          <div class="addon-category-label" onclick="toggleAddonCategory(${qi}, ${JSON.stringify(cat).replace(/"/g, '&quot;')})">
+            <span class="addon-category-chevron">▶</span>
+            <span class="addon-category-name">${cat}</span>
+            <span class="addon-category-chips">${chips.join('')}</span>
+          </div>
+          <div class="addon-category-body">${rows}</div>
+        </div>`;
       }).join('');
     }
 
@@ -995,6 +1030,11 @@ async function loadAddonsForQuoteItem(qi) {
         });
         const detail = await res.json();
         if (detail.catalogNumber) {
+          // Skip if this is one of our own equipment models
+          if (equipmentCatalogs.has(detail.catalogNumber)) {
+            console.log('[Addons] Skipping equipment model as add-on:', detail.catalogNumber);
+            continue;
+          }
           const agg = tagAlongAgg[pid];
           addons.push({
             productId: pid,
@@ -1034,6 +1074,12 @@ async function loadAddonsForQuoteItem(qi) {
   }
 }
 
+
+function toggleAddonCategory(qi, cat) {
+  if (!quote[qi].expandedCategories) quote[qi].expandedCategories = {};
+  quote[qi].expandedCategories[cat] = !quote[qi].expandedCategories[cat];
+  renderQuote();
+}
 function toggleAddon(qi, ai) {
   const addon = quote[qi].addons[ai];
   addon.checked = !addon.checked;
