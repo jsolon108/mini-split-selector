@@ -83,6 +83,27 @@ select:focus,input:focus{outline:none;border-color:#999}
 .qbadge{font-size:10px;padding:1px 6px;border-radius:10px;background:#e8f0fd;color:#185FA5;margin-left:6px;font-weight:500;vertical-align:middle}
 .push-btn{width:100%;padding:10px;font-size:13px;border-radius:8px;background:#185FA5;border:none;cursor:pointer;color:#fff;font-weight:500;margin-top:8px}
 .push-btn:hover{background:#1450a0}
+.addons-section{margin-top:10px;padding-top:10px;border-top:1px dashed #e5e5e5}
+.addons-header{display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;padding:4px 0;color:#185FA5;font-size:11px;font-weight:500}
+.addons-header:hover{color:#1450a0}
+.addons-chevron{display:inline-block;transition:transform .15s;font-size:10px}
+.addons-expanded .addons-chevron{transform:rotate(90deg)}
+.addons-body{display:none;margin-top:6px}
+.addons-expanded .addons-body{display:block}
+.addons-loading{font-size:11px;color:#999;padding:6px 0;font-style:italic}
+.addon-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #f5f5f3;font-size:11px}
+.addon-row:first-child{border-top:none}
+.addon-row input[type=checkbox]{flex-shrink:0;cursor:pointer;width:14px;height:14px}
+.addon-row-body{flex:1;min-width:0;overflow:hidden}
+.addon-row-desc{font-weight:500;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.addon-row-model{font-family:'SF Mono',monospace;color:#185FA5;font-size:10px}
+.addon-row-qty{flex-shrink:0;color:#666;font-size:11px;white-space:nowrap;min-width:34px;text-align:right}
+.addon-row-price{flex-shrink:0;font-size:11px;color:#0f6e56;font-weight:500;min-width:60px;text-align:right}
+.addon-row-price-missing{color:#bbb;font-size:10px}
+.addons-none{font-size:11px;color:#999;padding:6px 0;font-style:italic}
+.addons-error{font-size:11px;color:#E24B4A;padding:6px 0}
+.addon-line{display:flex;gap:6px;align-items:baseline;min-width:0;color:#0f6e56}
+.addon-line .q-model-label{color:#0f6e56;font-weight:600}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.15)}
@@ -744,39 +765,204 @@ function renderQuote() {
   const el=document.getElementById('quote-box');
   if(!quote.length){el.innerHTML='<div class="empty">No systems added yet</div>';return;}
   el.innerHTML=quote.map((q,qi)=>{
+    // Calculate addon lines (checked ones only)
+    const checkedAddons = (q.addons || []).filter(a => a.checked);
+    const addonTotal = checkedAddons.reduce((s, a) => {
+      const p = getPrice(a.catalogNumber);
+      return s + ((p?.price || 0) * a.qtyNeeded);
+    }, 0);
+
+    const addonLines = checkedAddons.map(a => {
+      const price = getPrice(a.catalogNumber);
+      const lineTotal = price?.price ? (price.price * a.qtyNeeded) : null;
+      return `<div class="q-model-row addon-line">
+        <span class="q-model-label">+ Addon</span>
+        <span>${a.catalogNumber}</span>
+        <span style="color:#888;font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.description}</span>
+        <span style="color:#888;font-size:10px">×${a.qtyNeeded}</span>
+        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+      </div>`;
+    }).join('');
+
     let models='';
+    let baseTotal=0;
     if(q.qtype==='sz'){
-      // IDU first for single zone (Eclipse add-on ordering)
       const iduPrice = getPrice(q.iu);
       const oduPrice = getPrice(q.ou);
-      const szTotal = (iduPrice?.price||0) + (oduPrice?.price||0);
+      baseTotal = (iduPrice?.price||0) + (oduPrice?.price||0);
       models=`<div class="q-model-list">
         <div class="q-model-row"><span class="q-model-label">IDU</span><span>${q.iu}</span>${q.liq_pipe?`<span class="q-pipes">Liq: ${q.liq_pipe} · Gas: ${q.gas_pipe}</span>`:''}${priceBadge(q.iu)}<button class="inv-btn" onclick="showInvModal('${q.iu}','IDU')">Inventory</button></div>
         <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${q.ahri?`<div class="q-model-row"><span class="q-model-label">AHRI</span><span>${q.ahri}</span></div>`:''}
-        ${szTotal>0?`<div class="q-total-row">System total: $${szTotal.toFixed(2)}</div>`:''}
+        ${addonLines}
       </div>`;
     } else {
       const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#999;font-size:10px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
       const oduPrice = getPrice(q.ou);
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
-      const mzTotal = (oduPrice?.price||0) + zoneTotal;
+      baseTotal = (oduPrice?.price||0) + zoneTotal;
       models=`<div class="q-model-list">
         <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${zlines}
-        ${mzTotal>0?`<div class="q-total-row">System total: $${mzTotal.toFixed(2)}</div>`:''}
+        ${addonLines}
       </div>`;
     }
+
+    const systemTotal = baseTotal + addonTotal;
+    const totalRow = systemTotal>0 ? `<div class="q-total-row">System total: $${systemTotal.toFixed(2)}${addonTotal>0?` <span style="font-weight:400;color:#888;font-size:10px;margin-left:6px">(incl. $${addonTotal.toFixed(2)} add-ons)</span>`:''}</div>` : '';
+
+    // Addon accordion section
+    const isExpanded = q.addonsExpanded;
+    const addonsLoaded = Array.isArray(q.addons);
+    let addonsBody = '';
+    if (q.addonsLoading) {
+      addonsBody = `<div class="addons-loading">Loading add-ons from Eclipse...</div>`;
+    } else if (q.addonsError) {
+      addonsBody = `<div class="addons-error">${q.addonsError}</div>`;
+    } else if (addonsLoaded && q.addons.length === 0) {
+      addonsBody = `<div class="addons-none">No tag-along accessories found in Eclipse for this system.</div>`;
+    } else if (addonsLoaded) {
+      addonsBody = q.addons.map((a, ai) => {
+        const price = getPrice(a.catalogNumber);
+        const lineTotal = price?.price ? (price.price * a.qtyNeeded) : null;
+        return `<div class="addon-row">
+          <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddon(${qi},${ai})"/>
+          <div class="addon-row-body">
+            <div class="addon-row-desc">${a.description}</div>
+            <div class="addon-row-model">${a.catalogNumber}</div>
+          </div>
+          <span class="addon-row-qty">Qty ${a.qtyNeeded}</span>
+          <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
+        </div>`;
+      }).join('');
+    }
+
+    const accordion = `<div class="addons-section ${isExpanded?'addons-expanded':''}">
+      <div class="addons-header" onclick="toggleAddons(${qi})">
+        <span class="addons-chevron">▶</span>
+        <span>Add-ons${checkedAddons.length?` (${checkedAddons.length} selected)`:addonsLoaded?` (${q.addons.length} available)`:''}</span>
+      </div>
+      <div class="addons-body">${addonsBody || ''}</div>
+    </div>`;
+
     return `<div class="quote-line">
       <input type="number" class="qty-input" min="1" value="${q.qty}" onchange="changeQty(${qi},+this.value)"/>
       <div class="q-body">
         <div class="q-name">${q.brand} ${q.series} — ${q.cap}K <span class="badge ${q.qtype==='mz'?'mz':''}">${q.qtype==='mz'?'Multi-zone':'Single zone'}</span></div>
         ${models}
+        ${totalRow}
         <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
+        ${accordion}
       </div>
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
   }).join('');
+}
+
+// ═══ Tag-along add-on support ═══════════════════════════════════════
+
+async function toggleAddons(qi) {
+  const q = quote[qi];
+  q.addonsExpanded = !q.addonsExpanded;
+  // If expanding and we haven't loaded yet, fetch them
+  if (q.addonsExpanded && !Array.isArray(q.addons) && !q.addonsLoading) {
+    q.addonsLoading = true;
+    renderQuote();
+    await loadAddonsForQuoteItem(qi);
+  } else {
+    renderQuote();
+  }
+}
+
+async function loadAddonsForQuoteItem(qi) {
+  const q = quote[qi];
+  try {
+    // Collect catalog numbers for all products in this system (ODU + IDU(s))
+    const catalogs = [];
+    if (q.qtype === 'sz') {
+      if (q.ou) catalogs.push({cat: formatCatNumLocal(q.ou), label: 'ODU'});
+      if (q.iu) catalogs.push({cat: formatCatNumLocal(q.iu), label: 'IDU'});
+    } else {
+      if (q.ou) catalogs.push({cat: formatCatNumLocal(q.ou), label: 'ODU'});
+      (q.zones || []).forEach((z) => {
+        if (z.model) catalogs.push({cat: formatCatNumLocal(z.model), label: `Zone ${z.z}`});
+      });
+    }
+
+    // For each, call searchProducts which returns tagAlongs array
+    const tagAlongCounts = {}; // productId -> count
+    for (const c of catalogs) {
+      try {
+        const res = await fetch('/api/eclipse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'searchProducts',
+            sessionToken: eclipseSession.token,
+            keyword: c.cat
+          })
+        });
+        const data = await res.json();
+        const product = (data.results || []).find(p => p.catalogNumber === c.cat) || (data.results || [])[0];
+        if (!product) continue;
+        for (const ta of (product.tagAlongs || [])) {
+          const pid = ta.tagAlongProductId || ta.productId || ta.id;
+          if (!pid) continue;
+          tagAlongCounts[pid] = (tagAlongCounts[pid] || 0) + 1;
+        }
+      } catch(e) { console.error('Tag-along fetch error:', e); }
+    }
+
+    // Now fetch full details for each unique tagalong ID
+    const addons = [];
+    for (const pid of Object.keys(tagAlongCounts)) {
+      try {
+        const res = await fetch('/api/eclipse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getProduct',
+            sessionToken: eclipseSession.token,
+            productId: pid
+          })
+        });
+        const detail = await res.json();
+        if (detail.catalogNumber) {
+          addons.push({
+            productId: pid,
+            catalogNumber: detail.catalogNumber,
+            description: detail.description || detail.catalogNumber,
+            qtyNeeded: tagAlongCounts[pid],
+            qty: detail.qty,
+            checked: false
+          });
+        }
+      } catch(e) { console.error('Product detail fetch error:', e); }
+    }
+
+    // Sort alphabetically by description
+    addons.sort((a,b) => (a.description || '').localeCompare(b.description || ''));
+
+    q.addons = addons;
+    q.addonsLoading = false;
+    q.addonsError = null;
+
+    // Refresh pricing to include new addon catalog numbers
+    renderQuote();
+    if (qSelectedCustomer) {
+      await getPricing();
+    }
+  } catch(err) {
+    q.addonsLoading = false;
+    q.addonsError = 'Failed to load add-ons: ' + err.message;
+    renderQuote();
+  }
+}
+
+function toggleAddon(qi, ai) {
+  const addon = quote[qi].addons[ai];
+  addon.checked = !addon.checked;
+  renderQuote();
 }
 
 function changeQty(i,v){quote[i].qty=Math.max(1,v||1);renderQuote();}
@@ -797,6 +983,9 @@ function copyQuote() {
       q.zones.forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`));
       lines.push(`Total indoor: ${q.totalBtu/1000}K`);
     }
+    (q.addons || []).filter(a => a.checked).forEach(a => {
+      lines.push(`Add-on: ${a.catalogNumber}  (Qty ${a.qtyNeeded * q.qty})  —  ${a.description}`);
+    });
     lines.push(`SEER2: ${q.seer2||'—'}  |  HSPF2: ${q.hspf2||'—'}  |  Ref: ${q.ref}`);
     lines.push('');
   });
@@ -921,6 +1110,10 @@ async function pushToEclipse() {
       });
       Object.values(iduGroups).forEach(g => lines.push(g));
     }
+    // Add checked addons as separate lines (qty = qtyNeeded × system qty)
+    (q.addons || []).filter(a => a.checked).forEach(a => {
+      lines.push({ model: a.catalogNumber, qty: a.qtyNeeded * q.qty, description: a.description });
+    });
   });
 
   try {
@@ -1047,6 +1240,8 @@ async function getPricing() {
       catalogNumbers.push(formatCatNum(q.ou));
       q.zones.forEach(z => catalogNumbers.push(formatCatNum(z.model)));
     }
+    // Include addon catalog numbers so they get priced too
+    (q.addons || []).forEach(a => { if (a.catalogNumber) catalogNumbers.push(formatCatNum(a.catalogNumber)); });
   });
   const unique = [...new Set(catalogNumbers.filter(Boolean))];
 
