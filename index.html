@@ -110,6 +110,10 @@ select:focus,input:focus{outline:none;border-color:#999}
 .addon-category:first-child .addon-category-label{margin-top:0}
 .addon-required-badge{display:inline-block;font-size:9px;font-weight:600;color:#fff;background:#E24B4A;padding:1px 5px;border-radius:3px;margin-left:4px;vertical-align:middle;text-transform:uppercase;letter-spacing:.03em}
 .addon-row-required{background:#fff7f7}
+.addons-loading-bg .addons-header{color:#EF9F27}
+.addons-loading-bg .addons-chevron{animation:spin 1.5s linear infinite}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.addons-expanded .addons-chevron{animation:none!important}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,.15)}
@@ -404,11 +408,19 @@ function addSZ(id) {
   const idx = quote.findIndex(q => q.id === id);
   if (idx >= 0) {
     quote.splice(idx, 1);
+    updateCount(); renderSingle(); renderQuote();
   } else {
     const s = SZ.find(x => x.id === id);
-    if (s) quote.push({...s, qty:1, qtype:'sz'});
+    if (s) {
+      quote.push({...s, qty:1, qtype:'sz'});
+      const newIdx = quote.length - 1;
+      updateCount(); renderSingle(); renderQuote();
+      // Auto-fetch tag-alongs in background to detect required add-ons
+      if (eclipseSession.token) {
+        loadAddonsForQuoteItem(newIdx).catch(e => console.error('Auto-fetch addons failed:', e));
+      }
+    }
   }
-  updateCount(); renderSingle(); renderQuote();
 }
 
 function iduRows(ouId){return MZ_IDU[ouId]||[];}
@@ -714,7 +726,13 @@ function addMZResult(ouId) {
   quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou: o.ou,
     ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz', zones, totalBtu: total,
     note: `${zones.length}-zone · ${total/1000}K total`});
+  const newIdx = quote.length - 1;
   updateCount();
+  renderQuote();
+  // Auto-fetch tag-alongs in background to detect required add-ons
+  if (eclipseSession.token) {
+    loadAddonsForQuoteItem(newIdx).catch(e => console.error('Auto-fetch addons failed:', e));
+  }
   // Reset zone inputs
   mzZoneState = mzZoneState.map(() => ({cap:0, type:'', model:'', liq_pipe:'', gas_pipe:''}));
   renderMZInputs();
@@ -854,10 +872,20 @@ function renderQuote() {
       }).join('');
     }
 
-    const accordion = `<div class="addons-section ${isExpanded?'addons-expanded':''}">
+    let addonsLabel = 'Add-ons';
+    if (q.addonsLoading && !addonsLoaded) addonsLabel = 'Checking for required add-ons...';
+    else if (addonsLoaded) {
+      const requiredCount = q.addons.filter(a => a.required).length;
+      const parts = [];
+      if (checkedAddons.length) parts.push(`${checkedAddons.length} selected`);
+      if (requiredCount) parts.push(`${requiredCount} required`);
+      parts.push(`${q.addons.length} available`);
+      addonsLabel = `Add-ons (${parts.join(', ')})`;
+    }
+    const accordion = `<div class="addons-section ${isExpanded?'addons-expanded':''}${q.addonsLoading && !addonsLoaded?' addons-loading-bg':''}">
       <div class="addons-header" onclick="toggleAddons(${qi})">
         <span class="addons-chevron">▶</span>
-        <span>Add-ons${checkedAddons.length?` (${checkedAddons.length} selected)`:addonsLoaded?` (${q.addons.length} available)`:''}</span>
+        <span>${addonsLabel}</span>
       </div>
       <div class="addons-body">${addonsBody || ''}</div>
     </div>`;
@@ -898,18 +926,17 @@ function categorizeAddon(desc) {
 async function toggleAddons(qi) {
   const q = quote[qi];
   q.addonsExpanded = !q.addonsExpanded;
-  // If expanding and we haven't loaded yet, fetch them
+  renderQuote();
+  // If expanding and we haven't loaded yet and aren't already loading, fetch them
   if (q.addonsExpanded && !Array.isArray(q.addons) && !q.addonsLoading) {
-    q.addonsLoading = true;
-    renderQuote();
     await loadAddonsForQuoteItem(qi);
-  } else {
-    renderQuote();
   }
 }
 
 async function loadAddonsForQuoteItem(qi) {
   const q = quote[qi];
+  q.addonsLoading = true;
+  renderQuote();
   try {
     // Collect catalog numbers for all products in this system (ODU + IDU(s))
     const catalogs = [];
