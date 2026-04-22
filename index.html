@@ -945,8 +945,8 @@ function renderQuote() {
 // Categorize add-ons by keywords in description
 function categorizeAddon(desc) {
   const d = (desc || '').toUpperCase();
-  if (/LINESET|LINE SET|LINE-SET|REFRIGERANT LINE|\bCOMM(\s|ICATION)|\bWIRE\b|\bCABLE\b/.test(d)) return 'Linesets & Wiring';
-  if (/DISCONNECT|SAFETY SWITCH|PULL OUT|A\/C DISCONNECT/.test(d)) return 'Disconnects';
+  if (/LINESET|LINE SET|LINE-SET|REFRIGERANT LINE|\bCOMM(\s|ICATION)|\bWIRE\b|\bCABLE\b|14\/4|14-4|18\/4|18-4|16\/4|16-4/.test(d)) return 'Linesets & Wiring';
+  if (/DISCONNECT|SAFETY SWITCH|PULL OUT|A\/C DISCONNECT|WHIP|\bR346\b|\bR126\b|R-346|R-126/.test(d)) return 'Disconnects & Whips';
   if (/CONDENSATE|CONDENSATE PUMP|DRAIN PAN|DRAIN LINE|DRAIN PIPE|DRAIN HOSE/.test(d)) return 'Condensate';
   if (/LINE HIDE|LINE COVER|LINESET COVER|SLIMDUCT|COVER|TROUGH|ESCUTCHEON/.test(d)) return 'Line Hide / Covers';
   if (/WALL BRACKET|PAD|STAND|MOUNT|BRACKET|SLEEVE|WALL SLEEVE/.test(d)) return 'Mounting & Pads';
