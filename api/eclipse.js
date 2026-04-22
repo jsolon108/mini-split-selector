@@ -362,7 +362,7 @@ export default async function handler(req, res) {
         const get = key => info.find(i => i.key === key)?.value || '';
         const productId = get('id');
         const catalogNumber = get('catalogNumber');
-        const description = get('description')?.split('\n')[0] || '';
+        const description = (get('description') || '').replace(/\n/g, ' ').trim();
 
         // Step 2: Get full product details for tagAlongs
         let tagAlongs = [], substitutes = [];
@@ -430,7 +430,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         id: detail.id,
         catalogNumber: detail.catalogNumber,
-        description: detail.description?.split('\n')[0] || '',
+        description: (detail.description || '').replace(/\n/g, ' ').trim(),
         qty,
         tagAlongs: detail.tagAlongs || [],
         substitutes: detail.substitutes || []
