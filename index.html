@@ -230,6 +230,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('quote')">Quote <span class="qbadge" id="qcount">0</span></div>
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
+    <div class="tab" onclick="switchTab('cats')" title="Manage add-on category rules">⚙️ Categories</div>
   </div>
 
   <div class="panel active" id="panel-single">
@@ -385,13 +386,16 @@ async function fetchData() {
   MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(formatCatNumLocal(o.ou)); });
   Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(formatCatNumLocal(r.model)); });
   console.log('[Equipment catalogs] Loaded', equipmentCatalogs.size, 'models to exclude from add-ons');
+  loadAddonRules(); // fire-and-forget; rules are used later when tag-alongs load
   renderSingle();
   renderMulti();
 }
 
 function switchTab(t) {
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','recent','open'][i]===t));
-  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open'][i]==='panel-'+t));
+  if (t === 'cats' && !isAdmin()) return; // silently refuse
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','recent','open','cats'][i]===t));
+  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open','panel-cats'][i]==='panel-'+t));
+  if (t === 'cats') renderCategories();
   renderQuote();
 }
 
@@ -942,20 +946,306 @@ function renderQuote() {
 // ═══ Tag-along add-on support ═══════════════════════════════════════
 
 
-// Categorize add-ons by keywords in description
-function categorizeAddon(desc) {
+// Categorize add-ons by rules loaded from Supabase addon_categories table.
+// Rules are editable via the Categories admin tab — no code changes needed.
+let ADDON_RULES = null;   // populated by loadAddonRules()
+let ADMIN_USERS = null;   // populated by loadAdminUsers(); array of lowercased usernames
+const DEFAULT_CATEGORY = 'Other Accessories';
+
+async function loadAddonRules(force=false) {
+  if (ADDON_RULES && !force) return ADDON_RULES;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_categories?active=eq.true&order=priority.asc`, { headers: H });
+    const rows = await res.json();
+    ADDON_RULES = Array.isArray(rows) ? rows : [];
+  } catch(e) {
+    console.warn('Could not load addon rules from Supabase', e);
+    ADDON_RULES = [];
+  }
+  return ADDON_RULES;
+}
+
+// Synchronous categorize using whatever rules have been loaded.
+// Description-based keyword rules and SKU-based rules are both supported.
+function categorizeAddon(desc, sku) {
   const d = (desc || '').toUpperCase();
-  if (/LINESET|LINE SET|LINE-SET|REFRIGERANT LINE|TUBING COPPER|COPPER TUBING|\bCOMM(\s|ICATION)|\bWIRE\b|\bCABLE\b|14\/4|14-4|18\/4|18-4|16\/4|16-4/.test(d)) return 'Linesets & Wiring';
-  if (/DISCONNECT|SAFETY SWITCH|PULL OUT|A\/C DISCONNECT|WHIP|\bR346\b|\bR126\b|R-346|R-126/.test(d)) return 'Disconnects & Whips';
-  if (/CONDENSATE|CONDENSATE PUMP|DRAIN PAN|DRAIN LINE|DRAIN PIPE|DRAIN HOSE/.test(d)) return 'Condensate';
-  if (/LINE HIDE|LINE COVER|LINESET COVER|SLIMDUCT|COVER|TROUGH|ESCUTCHEON/.test(d)) return 'Line Hide / Covers';
-  if (/WALL BRACKET|PAD|STAND|MOUNT|BRACKET|SLEEVE|WALL SLEEVE/.test(d)) return 'Mounting & Pads';
-  if (/THERMOSTAT|\bT-STAT\b|TSTAT|WIRED REMOTE|WIRELESS REMOTE|REMOTE CONTROL|RMT CONTROL|REMOTE CONTROLLER|WIRED CONTROLLER|WIRELESS CONTROLLER|\bRC\b|IR RECEIVER|KAGAMI|UTY-R(V|N|H|S)R/.test(d)) return 'Thermostats & Remotes';
-  if (/WIFI|WI-FI|WIRELESS ADAPTER|SMART ADAPTER|NETWORK|KUMO|AIRSTAGE|NETHOME/.test(d)) return 'WiFi & Controls';
-  if (/SURGE|FILTER DRIER|FILTER-DRIER|DRIER/.test(d)) return 'Filters & Protection';
-  if (/WALL CAP|SOFFIT|WEATHER SEAL|FOAM|SEALANT|TAPE|INSULATION|ARMAFLEX/.test(d)) return 'Seals & Insulation';
-  if (/FLARE|CAP|VALVE|ADAPTER|FITTING|NUT/.test(d)) return 'Fittings & Hardware';
-  return 'Other Accessories';
+  const s = (sku || '').toUpperCase();
+  const rules = ADDON_RULES || [];
+  for (const r of rules) {
+    const p = (r.pattern || '').toUpperCase();
+    if (!p) continue;
+    let hit = false;
+    switch (r.match_type) {
+      case 'keyword':       hit = d.includes(p); break;
+      case 'sku_prefix':    hit = s.startsWith(p); break;
+      case 'sku_exact':     hit = s === p; break;
+      case 'sku_contains':  hit = s.includes(p); break;
+    }
+    if (hit) return r.category;
+  }
+  return DEFAULT_CATEGORY;
+}
+
+// ═══ Addon Category admin UI ════════════════════════════════════════════
+// Edits go directly to the Supabase addon_categories table via PostgREST.
+
+async function loadAdminUsers(force=false) {
+  if (ADMIN_USERS && !force) return ADMIN_USERS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/admin_users?select=username,display_name,added_by,added_at,notes`, { headers: H });
+    const rows = await res.json();
+    ADMIN_USERS = Array.isArray(rows) ? rows : [];
+  } catch(e) {
+    console.warn('Could not load admin users from Supabase', e);
+    ADMIN_USERS = [];
+  }
+  return ADMIN_USERS;
+}
+
+function isAdmin() {
+  const u = (eclipseSession?.username || '').toLowerCase().trim();
+  if (!u || !ADMIN_USERS) return false;
+  return ADMIN_USERS.some(a => (a.username || '').toLowerCase().trim() === u);
+}
+
+// Show/hide the Categories tab based on admin status. Safe to call repeatedly.
+function refreshAdminUI() {
+  const catTab = document.querySelector('.tab[onclick*="switchTab(\'cats\')"]');
+  if (catTab) catTab.style.display = isAdmin() ? '' : 'none';
+}
+
+function escHtml(x) {
+  return String(x == null ? '' : x)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+const MATCH_TYPE_LABELS = {
+  keyword:      'Keyword in desc',
+  sku_prefix:   'SKU starts with',
+  sku_contains: 'SKU contains',
+  sku_exact:    'SKU exactly'
+};
+
+async function renderCategories() {
+  const rules = await loadAddonRules(true); // force refresh
+  const wrap = document.getElementById('cat-table-wrap');
+  if (!wrap) return;
+  renderAdmins(); // fire-and-forget; renders the admins table below
+
+  // Populate category datalist for the "add new" dropdown
+  const dl = document.getElementById('cat-category-list');
+  if (dl) {
+    const cats = [...new Set(rules.map(r => r.category))].sort();
+    dl.innerHTML = cats.map(c => `<option value="${escHtml(c)}">`).join('');
+  }
+
+  const filt = (document.getElementById('cat-filter')?.value || '').toLowerCase();
+  const list = rules.filter(r => {
+    if (!filt) return true;
+    return (r.category || '').toLowerCase().includes(filt)
+        || (r.pattern || '').toLowerCase().includes(filt)
+        || (r.notes || '').toLowerCase().includes(filt);
+  });
+
+  if (!list.length) {
+    wrap.innerHTML = `<div style="padding:20px;text-align:center;color:#888;font-size:13px">No rules match.</div>`;
+    return;
+  }
+
+  // Group by category for display
+  const byCat = {};
+  list.forEach(r => { (byCat[r.category] ||= []).push(r); });
+  const cats = Object.keys(byCat).sort((a,b) => {
+    const pa = Math.min(...byCat[a].map(x => x.priority || 999));
+    const pb = Math.min(...byCat[b].map(x => x.priority || 999));
+    return pa - pb || a.localeCompare(b);
+  });
+
+  wrap.innerHTML = cats.map(cat => {
+    const rows = byCat[cat].sort((a,b) => (a.priority||999)-(b.priority||999) || (a.pattern||'').localeCompare(b.pattern||''));
+    return `
+      <div style="border-bottom:1px solid #e5e5e5;padding:10px 14px;background:#f9f9f7;display:flex;align-items:center;gap:10px">
+        <span style="font-weight:600;font-size:13px">${escHtml(cat)}</span>
+        <span style="font-size:11px;color:#888">${rows.length} rule${rows.length>1?'s':''}</span>
+      </div>
+      ${rows.map(r => `
+        <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1.4fr 0.5fr 1fr auto;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid #f0f0ee;font-size:13px">
+          <input value="${escHtml(r.category)}" data-id="${r.id}" data-field="category"
+            style="height:30px;padding:0 8px;border:1px solid transparent;border-radius:4px;font-size:13px;background:transparent"
+            onchange="saveAddonRule(this)" onfocus="this.style.borderColor='#ddd';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent'"/>
+          <select data-id="${r.id}" data-field="match_type" onchange="saveAddonRule(this)"
+            style="height:30px;padding:0 4px;border:1px solid #eee;border-radius:4px;font-size:12px;background:#fff">
+            ${Object.entries(MATCH_TYPE_LABELS).map(([v,l]) => `<option value="${v}" ${r.match_type===v?'selected':''}>${l}</option>`).join('')}
+          </select>
+          <input value="${escHtml(r.pattern)}" data-id="${r.id}" data-field="pattern"
+            style="height:30px;padding:0 8px;border:1px solid transparent;border-radius:4px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:transparent"
+            onchange="saveAddonRule(this)" onfocus="this.style.borderColor='#ddd';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent'"/>
+          <input type="number" value="${r.priority}" data-id="${r.id}" data-field="priority"
+            style="height:30px;padding:0 6px;border:1px solid transparent;border-radius:4px;font-size:13px;background:transparent"
+            onchange="saveAddonRule(this)" onfocus="this.style.borderColor='#ddd';this.style.background='#fff'" onblur="this.style.borderColor='transparent';this.style.background='transparent'"/>
+          <input value="${escHtml(r.notes || '')}" placeholder="notes" data-id="${r.id}" data-field="notes"
+            style="height:30px;padding:0 8px;border:1px solid transparent;border-radius:4px;font-size:12px;color:#666;font-style:italic;background:transparent"
+            onchange="saveAddonRule(this)" onfocus="this.style.borderColor='#ddd';this.style.background='#fff';this.style.fontStyle='normal'" onblur="this.style.borderColor='transparent';this.style.background='transparent';this.style.fontStyle='italic'"/>
+          <button onclick="deleteAddonRule('${r.id}')" title="Delete rule"
+            style="height:30px;width:30px;border:1px solid #eee;border-radius:4px;background:#fff;color:#c33;cursor:pointer;font-size:14px">×</button>
+        </div>`).join('')}
+    `;
+  }).join('');
+}
+
+async function addAddonRule() {
+  const msg = document.getElementById('cat-new-msg');
+  const cat = document.getElementById('cat-new-category').value.trim();
+  const mt  = document.getElementById('cat-new-match').value;
+  const pat = document.getElementById('cat-new-pattern').value.trim();
+  const pri = parseInt(document.getElementById('cat-new-priority').value, 10) || 100;
+  if (!cat || !pat) {
+    msg.innerHTML = '<span style="color:#c33">Category and pattern are required.</span>';
+    return;
+  }
+  msg.innerHTML = '<span style="color:#888">Saving...</span>';
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_categories`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ category: cat, match_type: mt, pattern: pat, priority: pri, active: true })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    document.getElementById('cat-new-pattern').value = '';
+    msg.innerHTML = '<span style="color:#2a7">✓ Rule added. Reload page for it to take effect on already-loaded quotes.</span>';
+    setTimeout(() => { msg.innerHTML = ''; }, 4000);
+    renderCategories();
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#c33">Failed: ${escHtml(e.message)}</span>`;
+  }
+}
+
+async function saveAddonRule(inputEl) {
+  const id = inputEl.dataset.id;
+  const field = inputEl.dataset.field;
+  let value = inputEl.value;
+  if (field === 'priority') value = parseInt(value, 10) || 100;
+  if (field === 'notes' && value === '') value = null;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_categories?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...H, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    inputEl.style.outline = '2px solid #2a7';
+    setTimeout(() => { inputEl.style.outline = ''; }, 600);
+    ADDON_RULES = null; // force reload on next categorize
+  } catch(e) {
+    inputEl.style.outline = '2px solid #c33';
+    alert('Save failed: ' + e.message);
+  }
+}
+
+async function deleteAddonRule(id) {
+  if (!confirm('Delete this rule?')) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_categories?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: H
+    });
+    if (!res.ok) throw new Error(await res.text());
+    ADDON_RULES = null;
+    renderCategories();
+  } catch(e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+// ─── Admin user management ──────────────────────────────────────────────
+
+async function renderAdmins() {
+  const admins = await loadAdminUsers(true);
+  const wrap = document.getElementById('admin-table-wrap');
+  if (!wrap) return;
+  if (!admins.length) {
+    wrap.innerHTML = `<div style="padding:16px;text-align:center;color:#888;font-size:13px">No admins configured.</div>`;
+    return;
+  }
+  const sorted = [...admins].sort((a,b) => (a.username||'').localeCompare(b.username||''));
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1.4fr auto;gap:8px;padding:10px 14px;background:#f9f9f7;border-bottom:1px solid #e5e5e5;font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:0.03em">
+      <div>Username</div><div>Display name</div><div>Added by</div><div>Notes</div><div></div>
+    </div>
+    ${sorted.map(a => {
+      const isCurrent = (eclipseSession?.username || '').toLowerCase().trim() === (a.username || '').toLowerCase().trim();
+      return `
+        <div style="display:grid;grid-template-columns:1.2fr 1.4fr 1fr 1.4fr auto;gap:8px;align-items:center;padding:8px 14px;border-bottom:1px solid #f0f0ee;font-size:13px">
+          <div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${escHtml(a.username)}${isCurrent?' <span style="font-size:10px;color:#2a7;font-family:inherit">(you)</span>':''}</div>
+          <div>${escHtml(a.display_name || '')}</div>
+          <div style="color:#888;font-size:12px">${escHtml(a.added_by || '')}</div>
+          <div style="color:#666;font-size:12px;font-style:italic">${escHtml(a.notes || '')}</div>
+          <button onclick="deleteAdminUser('${encodeURIComponent(a.username)}')" title="Remove admin" ${isCurrent?'disabled':''}
+            style="height:30px;width:30px;border:1px solid #eee;border-radius:4px;background:#fff;color:${isCurrent?'#ccc':'#c33'};cursor:${isCurrent?'not-allowed':'pointer'};font-size:14px">×</button>
+        </div>`;
+    }).join('')}
+  `;
+}
+
+async function addAdminUser() {
+  const msg = document.getElementById('admin-new-msg');
+  const username = document.getElementById('admin-new-username').value.trim().toLowerCase();
+  const display = document.getElementById('admin-new-display').value.trim();
+  const notes = document.getElementById('admin-new-notes').value.trim();
+  if (!username) {
+    msg.innerHTML = '<span style="color:#c33">Username is required.</span>';
+    return;
+  }
+  msg.innerHTML = '<span style="color:#888">Saving...</span>';
+  try {
+    const body = {
+      username,
+      display_name: display || null,
+      added_by: (eclipseSession?.username || 'unknown').toLowerCase(),
+      notes: notes || null
+    };
+    const res = await fetch(`${SB_URL}/rest/v1/admin_users`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      if (txt.includes('duplicate')) throw new Error('That username is already an admin.');
+      throw new Error(txt);
+    }
+    document.getElementById('admin-new-username').value = '';
+    document.getElementById('admin-new-display').value = '';
+    document.getElementById('admin-new-notes').value = '';
+    msg.innerHTML = '<span style="color:#2a7">✓ Admin added.</span>';
+    setTimeout(() => { msg.innerHTML = ''; }, 3000);
+    ADMIN_USERS = null;
+    renderAdmins();
+  } catch(e) {
+    msg.innerHTML = `<span style="color:#c33">Failed: ${escHtml(e.message)}</span>`;
+  }
+}
+
+async function deleteAdminUser(encodedUsername) {
+  const username = decodeURIComponent(encodedUsername);
+  const current = (eclipseSession?.username || '').toLowerCase().trim();
+  if (username.toLowerCase() === current) {
+    alert('You cannot remove yourself.');
+    return;
+  }
+  if (!confirm(`Remove admin access for "${username}"?`)) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/admin_users?username=eq.${encodeURIComponent(username)}`, {
+      method: 'DELETE',
+      headers: H
+    });
+    if (!res.ok) throw new Error(await res.text());
+    ADMIN_USERS = null;
+    renderAdmins();
+  } catch(e) {
+    alert('Remove failed: ' + e.message);
+  }
 }
 
 async function toggleAddons(qi) {
@@ -1044,7 +1334,7 @@ async function loadAddonsForQuoteItem(qi) {
             qty: detail.qty,
             required: agg.required,
             tagAlongType: agg.type,
-            category: categorizeAddon(detail.description || ''),
+            category: categorizeAddon(detail.description || '', detail.catalogNumber || ''),
             checked: agg.required // auto-check required add-ons
           });
         }
@@ -1917,6 +2207,7 @@ async function doLogin() {
     document.getElementById('user-name').textContent = data.username || username;
     document.getElementById('user-badge').style.display = '';
     if (data.homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = data.homeBranch; }
+    loadAdminUsers(true).then(refreshAdminUI);
   } catch (err) {
     errEl.textContent = 'Network error — ' + err.message;
     btn.disabled = false;
@@ -1936,6 +2227,7 @@ function eclipseLogout() {
   document.getElementById('login-pass').value = '';
   document.getElementById('login-btn').disabled = false;
   document.getElementById('login-btn').textContent = 'Sign In';
+  refreshAdminUI();
 }
 
 
@@ -1950,6 +2242,7 @@ function eclipseLogout() {
     document.getElementById('user-name').textContent = username;
     document.getElementById('user-badge').style.display = '';
     if (homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = homeBranch; }
+    loadAdminUsers(true).then(refreshAdminUI);
   } else {
     document.getElementById('login-overlay').classList.add('visible');
   }
@@ -2225,6 +2518,86 @@ document.addEventListener('DOMContentLoaded', () => {
         </label>
       </div>
       <div id="oo-results"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-cats">
+    <div style="max-width:880px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h2 style="font-size:18px;font-weight:600;margin:0">Add-on Category Rules</h2>
+        <span style="font-size:12px;color:#666">Rules categorize Eclipse tag-along accessories. Lower priority = checked first.</span>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add a new rule</div>
+        <div style="display:grid;grid-template-columns:1.4fr 0.9fr 1.4fr 0.5fr auto;gap:8px;align-items:end">
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Category</label>
+            <input id="cat-new-category" list="cat-category-list" placeholder="e.g. Mounting & Pads"
+              style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            <datalist id="cat-category-list"></datalist>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Match type</label>
+            <select id="cat-new-match" style="width:100%;height:32px;padding:0 4px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
+              <option value="keyword">Keyword in description</option>
+              <option value="sku_prefix">SKU starts with</option>
+              <option value="sku_contains">SKU contains</option>
+              <option value="sku_exact">SKU exactly</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Pattern</label>
+            <input id="cat-new-pattern" placeholder="e.g. RISER or UTY-R"
+              style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Priority</label>
+            <input id="cat-new-priority" type="number" value="100"
+              style="width:100%;height:32px;padding:0 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          </div>
+          <button onclick="addAddonRule()"
+            style="height:32px;padding:0 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add rule</button>
+        </div>
+        <div id="cat-new-msg" style="font-size:12px;margin-top:8px"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <input id="cat-filter" placeholder="Filter rules..." oninput="renderCategories()"
+          style="flex:1;min-width:180px;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+        <button onclick="loadAddonRules(true).then(renderCategories)"
+          style="height:32px;padding:0 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer">↻ Reload</button>
+      </div>
+      <div id="cat-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+
+      <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <h2 style="font-size:16px;font-weight:600;margin:0">Admin Users</h2>
+          <span style="font-size:12px;color:#666">Users in this list can manage category rules and admins. Match is on Eclipse username (case-insensitive).</span>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add admin</div>
+          <div style="display:grid;grid-template-columns:1fr 1.2fr 1.4fr auto;gap:8px;align-items:end">
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Eclipse username</label>
+              <input id="admin-new-username" placeholder="e.g. jsmith"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Display name</label>
+              <input id="admin-new-display" placeholder="e.g. Jane Smith"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Notes (optional)</label>
+              <input id="admin-new-notes" placeholder="Role or reason"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <button onclick="addAdminUser()"
+              style="height:32px;padding:0 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add admin</button>
+          </div>
+          <div id="admin-new-msg" style="font-size:12px;margin-top:8px"></div>
+        </div>
+        <div id="admin-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+      </div>
     </div>
   </div>
 
