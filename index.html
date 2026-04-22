@@ -903,11 +903,14 @@ async function loadAddonsForQuoteItem(qi) {
           })
         });
         const data = await res.json();
+        console.log('[Addons] searchProducts for', c.cat, ':', data);
         const product = (data.results || []).find(p => p.catalogNumber === c.cat) || (data.results || [])[0];
-        if (!product) continue;
+        if (!product) { console.log('[Addons] No product found for', c.cat); continue; }
+        console.log('[Addons] Product found:', product.catalogNumber, 'tagAlongs:', product.tagAlongs);
         for (const ta of (product.tagAlongs || [])) {
+          console.log('[Addons] TagAlong entry structure:', ta);
           const pid = ta.tagAlongProductId || ta.productId || ta.id;
-          if (!pid) continue;
+          if (!pid) { console.log('[Addons] Could not find product ID in tag-along:', ta); continue; }
           tagAlongCounts[pid] = (tagAlongCounts[pid] || 0) + 1;
         }
       } catch(e) { console.error('Tag-along fetch error:', e); }
