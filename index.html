@@ -232,6 +232,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
     <div class="tab" onclick="switchTab('cats')" title="Manage add-on category rules">⚙️ Categories</div>
+    <div class="tab" onclick="switchTab('import')" title="Import unitary catalog (admin)">📥 Catalog Import</div>
   </div>
 
   <div class="panel active" id="panel-single">
@@ -368,20 +369,26 @@ let eclipseSession = { token: null, username: null, password: null };
 // ---- UNITARY (hidden behind ?unitary=1 URL flag) ----
 const UNITARY_ENABLED = new URLSearchParams(window.location.search).has('unitary');
 let UNITARY_CATALOG = []; // populated from Supabase in fetchData()
+let UNITARY_MATCHUPS = {}; // outdoor_model -> array of matchups (lazy-loaded)
+let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> count (loaded with catalog)
+let unitaryExpanded = {}; // outdoor_model -> bool (UI state for which cards are expanded)
 let unitaryFilter = { brand: '', category: '', tonnage: '', search: '' };
 // ---- END UNITARY ----
 
 async function fetchData() {
-  // Fetch unitary catalog in parallel if enabled
+  // Fetch unitary catalog + matchup counts in parallel if enabled
   if (UNITARY_ENABLED) {
-    fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H })
-      .then(r => r.json())
-      .then(rows => {
-        UNITARY_CATALOG = rows.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
-        console.log('[Unitary] Loaded', UNITARY_CATALOG.length, 'items from Supabase');
-        initUnitary();
-      })
-      .catch(err => console.error('[Unitary] Failed to load:', err));
+    Promise.all([
+      fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model`, { headers: H }).then(r => r.json()),
+    ]).then(([catalog, matchupRows]) => {
+      UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
+      // Tally matchup counts by outdoor model
+      UNITARY_MATCHUPS_COUNT = {};
+      matchupRows.forEach(r => { UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1; });
+      console.log('[Unitary] Loaded', UNITARY_CATALOG.length, 'items,', matchupRows.length, 'matchups across', Object.keys(UNITARY_MATCHUPS_COUNT).length, 'outdoor models');
+      initUnitary();
+    }).catch(err => console.error('[Unitary] Failed to load:', err));
   }
   const [szR, mzR, iduR, comboR, comboR2, comboR3, ahuComboR] = await Promise.all([
     fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
@@ -424,17 +431,19 @@ async function fetchData() {
 
 function switchTab(t) {
   if (t === 'cats' && !isAdmin()) return; // silently refuse
+  if (t === 'import' && !isAdmin()) return; // admin-only
   if (t === 'unitary' && !UNITARY_ENABLED) return; // hidden unless URL flag set
   // Build dynamic tab/panel order including unitary if enabled
   const tabOrder = UNITARY_ENABLED
-    ? ['single','multi','unitary','quote','recent','open','cats']
-    : ['single','multi','quote','recent','open','cats'];
+    ? ['single','multi','unitary','quote','recent','open','cats','import']
+    : ['single','multi','quote','recent','open','cats','import'];
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabOrder[i]===t));
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
   if (t === 'cats') renderCategories();
   if (t === 'unitary') renderUnitary();
+  if (t === 'import') renderImport();
   renderQuote();
 }
 
@@ -1054,10 +1063,12 @@ function isAdmin() {
   return ADMIN_USERS.some(a => (a.username || '').toLowerCase().trim() === u);
 }
 
-// Show/hide the Categories tab based on admin status. Safe to call repeatedly.
+// Show/hide admin tabs based on admin status. Safe to call repeatedly.
 function refreshAdminUI() {
   const catTab = document.querySelector('.tab[onclick*="switchTab(\'cats\')"]');
   if (catTab) catTab.style.display = isAdmin() ? '' : 'none';
+  const importTab = document.querySelector('.tab[onclick*="switchTab(\'import\')"]');
+  if (importTab) importTab.style.display = isAdmin() ? '' : 'none';
 }
 
 function escHtml(x) {
@@ -2601,12 +2612,22 @@ function renderUnitary() {
     const rows = items.map(it => {
       const inQ = quote.some(qi => qi.qtype === 'unitary' && qi.model === it.m);
       const tonBadge = it.t ? `<span style="color:#666;font-size:11px;margin-left:8px">${it.t}</span>` : '';
-      return `<div class="sys-card${inQ ? ' in-quote' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:14px">${it.d}${tonBadge}</div>
-          <div style="font-size:11px;color:#999;margin-top:2px">${it.b} • ${it.f}</div>
+      const matchCount = UNITARY_MATCHUPS_COUNT[it.m] || 0;
+      const isOutdoor = it.c === 'Condenser' || it.c === 'Heat Pump';
+      const expanded = unitaryExpanded[it.m];
+      const matchToggle = (isOutdoor && matchCount > 0) ? `
+        <button onclick="toggleMatchups('${it.m}')" style="padding:5px 10px;border-radius:6px;border:1px solid #ccc;background:#f8f8f8;color:#333;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">${expanded ? '▾' : '▸'} ${matchCount} matched ${matchCount===1?'system':'systems'}</button>` : '';
+      const matchBody = (isOutdoor && expanded) ? `<div id="matchups-${it.m}" style="margin-top:8px;padding:10px;background:#fafafa;border-radius:6px;border:1px solid #eee">${renderMatchups(it.m)}</div>` : '';
+      return `<div class="sys-card${inQ ? ' in-quote' : ''}" style="margin-bottom:6px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:14px">${it.d}${tonBadge}</div>
+            <div style="font-size:11px;color:#999;margin-top:2px">${it.b} • ${it.f}</div>
+          </div>
+          ${matchToggle}
+          <button onclick="toggleUnitary('${it.m}')" class="add-btn" style="padding:6px 14px;border-radius:6px;border:1px solid ${inQ?'#dc2626':'#0d6efd'};background:${inQ?'#fee2e2':'#0d6efd'};color:${inQ?'#dc2626':'#fff'};font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap">${inQ ? 'Remove' : 'Add'}</button>
         </div>
-        <button onclick="toggleUnitary('${it.m}')" class="add-btn" style="padding:6px 14px;border-radius:6px;border:1px solid ${inQ?'#dc2626':'#0d6efd'};background:${inQ?'#fee2e2':'#0d6efd'};color:${inQ?'#dc2626':'#fff'};font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap">${inQ ? 'Remove' : 'Add'}</button>
+        ${matchBody}
       </div>`;
     }).join('');
     return `<div style="margin-bottom:18px">
@@ -2638,6 +2659,336 @@ function toggleUnitary(model) {
   updateCount();
   renderUnitary();
   renderQuote();
+}
+
+// ---- Matchup expand/load/render ----
+async function toggleMatchups(outdoorModel) {
+  const wasExpanded = unitaryExpanded[outdoorModel];
+  if (wasExpanded) {
+    unitaryExpanded[outdoorModel] = false;
+    renderUnitary();
+    return;
+  }
+  // Need to expand: load matchups if not cached
+  unitaryExpanded[outdoorModel] = true;
+  if (!UNITARY_MATCHUPS[outdoorModel]) {
+    renderUnitary(); // show loading state
+    try {
+      const url = `${SB_URL}/rest/v1/unitary_matchups?active=eq.true&outdoor_model=eq.${encodeURIComponent(outdoorModel)}&select=*&order=system_type,seer2.desc`;
+      const res = await fetch(url, { headers: H });
+      UNITARY_MATCHUPS[outdoorModel] = await res.json();
+    } catch (e) {
+      console.error('Failed to load matchups for', outdoorModel, e);
+      UNITARY_MATCHUPS[outdoorModel] = [];
+    }
+  }
+  renderUnitary();
+}
+
+function renderMatchups(outdoorModel) {
+  const matches = UNITARY_MATCHUPS[outdoorModel];
+  if (!matches) return '<div style="color:#888;font-size:12px;padding:6px">Loading matchups...</div>';
+  if (!matches.length) return '<div style="color:#888;font-size:12px;padding:6px">No matchups found.</div>';
+
+  // Group by system type
+  const bySys = {};
+  matches.forEach(m => { (bySys[m.system_type] = bySys[m.system_type] || []).push(m); });
+
+  return Object.keys(bySys).map(sysType => {
+    const rows = bySys[sysType].map(m => {
+      const ratings = [];
+      if (m.seer2) ratings.push(`SEER2 ${m.seer2}`);
+      if (m.eer2) ratings.push(`EER2 ${m.eer2}`);
+      if (m.hspf2) ratings.push(`HSPF2 ${m.hspf2}`);
+      const cap = m.ccap2 ? `${m.ccap2} BTU` : '';
+      const ahLine = m.air_handler ? `AH: <strong>${m.air_handler}</strong>${m.ah_dims?` <span style="color:#888">(${m.ah_dims})</span>`:''}` : '';
+      const coilLine = m.coil ? `Coil: <strong>${m.coil}</strong>${m.coil_dims?` <span style="color:#888">(${m.coil_dims})</span>`:''}` : '';
+      const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong>` : '';
+      const componentLines = [ahLine, coilLine, hkLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
+      return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;font-size:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:#333">AHRI ${m.ahri_ref} &nbsp;·&nbsp; ${ratings.join(' / ')}${cap?' &nbsp;·&nbsp; '+cap:''}</div>
+          <div style="margin-top:3px;color:#555;line-height:1.5">${componentLines}</div>
+        </div>
+        <button onclick="addMatchupSystem(${m.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #16a34a;background:#16a34a;color:#fff;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">Add System</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;padding:0 4px">${sysType}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function addMatchupSystem(matchupId) {
+  // Find the matchup in the cache
+  let matchup = null;
+  for (const k of Object.keys(UNITARY_MATCHUPS)) {
+    const m = (UNITARY_MATCHUPS[k] || []).find(x => x.id === matchupId);
+    if (m) { matchup = m; break; }
+  }
+  if (!matchup) { console.error('Matchup not found:', matchupId); return; }
+
+  // Build a list of components to add: outdoor, AH, coil (optional), HK (optional)
+  const toAdd = [
+    { model: matchup.outdoor_model, fallbackCat: 'Condenser/Heat Pump' },
+    matchup.air_handler ? { model: matchup.air_handler, fallbackCat: 'Air Handler' } : null,
+    matchup.coil ? { model: matchup.coil, fallbackCat: 'Coil' } : null,
+    matchup.heat_kit ? { model: matchup.heat_kit, fallbackCat: 'Heat Kit' } : null,
+  ].filter(Boolean);
+
+  let added = 0;
+  let alreadyInQuote = 0;
+  toAdd.forEach(comp => {
+    // Skip if already in quote
+    if (quote.some(q => q.qtype === 'unitary' && q.model === comp.model)) {
+      alreadyInQuote++;
+      return;
+    }
+    // Look up full info from catalog if available
+    const it = UNITARY_CATALOG.find(x => x.m === comp.model);
+    quote.push({
+      id: 'unitary-' + comp.model + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+      qtype: 'unitary',
+      model: comp.model,
+      display: it?.d || comp.model,
+      brand: it?.b || 'Amana',
+      category: it?.c || comp.fallbackCat,
+      family: it?.f || '',
+      tonnage: it?.t || '',
+      qty: 1,
+      ahri_ref: matchup.ahri_ref, // tag the AHRI reference for traceability
+    });
+    added++;
+  });
+
+  let msg = `Added ${added} component${added===1?'':'s'} from AHRI ${matchup.ahri_ref}`;
+  if (alreadyInQuote > 0) msg += ` (${alreadyInQuote} already in quote, skipped)`;
+  console.log(msg);
+
+  updateCount();
+  renderUnitary();
+  renderQuote();
+}
+
+// ============================================================
+// CATALOG IMPORT (admin)
+// ============================================================
+let pendingImport = null; // {brand, equipment, matchups}
+
+function renderImport() {
+  // Nothing dynamic yet — all content is in the static HTML
+}
+
+function loadImportFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('import-json').value = ev.target.result;
+    parseImportPreview();
+  };
+  reader.readAsText(file);
+}
+
+function parseImportPreview() {
+  const raw = document.getElementById('import-json').value.trim();
+  const previewEl = document.getElementById('import-preview');
+  const confirmEl = document.getElementById('import-confirm');
+  const confirmMsg = document.getElementById('import-confirm-msg');
+  document.getElementById('import-result').innerHTML = '';
+
+  if (!raw) {
+    previewEl.innerHTML = '<div style="color:#888;font-size:13px">Paste JSON above and click Preview.</div>';
+    confirmEl.style.display = 'none';
+    return;
+  }
+
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    previewEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #dc2626;border-radius:6px;padding:10px;color:#dc2626;font-size:13px">JSON parse error: ${escHtml(err.message)}</div>`;
+    confirmEl.style.display = 'none';
+    return;
+  }
+
+  if (!data.brand || typeof data.brand !== 'string') {
+    previewEl.innerHTML = '<div style="color:#dc2626;font-size:13px">Missing required field: <code>brand</code></div>';
+    return;
+  }
+  if (!Array.isArray(data.equipment)) {
+    previewEl.innerHTML = '<div style="color:#dc2626;font-size:13px">Missing required field: <code>equipment</code> (array)</div>';
+    return;
+  }
+  if (!Array.isArray(data.matchups)) {
+    previewEl.innerHTML = '<div style="color:#dc2626;font-size:13px">Missing required field: <code>matchups</code> (array)</div>';
+    return;
+  }
+
+  const equipReqs = ['model', 'display', 'brand', 'category'];
+  for (let i = 0; i < data.equipment.length; i++) {
+    const r = data.equipment[i];
+    for (const f of equipReqs) {
+      if (!r[f]) {
+        previewEl.innerHTML = `<div style="color:#dc2626;font-size:13px">Equipment row ${i+1} missing field: <code>${f}</code></div>`;
+        return;
+      }
+    }
+  }
+  const matchReqs = ['outdoor_model', 'ahri_ref', 'system_type'];
+  for (let i = 0; i < data.matchups.length; i++) {
+    const r = data.matchups[i];
+    for (const f of matchReqs) {
+      if (!r[f]) {
+        previewEl.innerHTML = `<div style="color:#dc2626;font-size:13px">Matchup row ${i+1} missing field: <code>${f}</code></div>`;
+        return;
+      }
+    }
+  }
+
+  const cats = {};
+  data.equipment.forEach(r => { cats[r.category] = (cats[r.category]||0)+1; });
+  const sysTypes = {};
+  data.matchups.forEach(r => { sysTypes[r.system_type] = (sysTypes[r.system_type]||0)+1; });
+  const uniqueOutdoor = new Set(data.matchups.map(r => r.outdoor_model)).size;
+
+  const equipModels = new Set(data.equipment.map(r => r.model));
+  const orphanMatchModels = new Set();
+  data.matchups.forEach(m => {
+    if (!equipModels.has(m.outdoor_model)) orphanMatchModels.add(m.outdoor_model);
+  });
+
+  let html = `
+    <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="font-size:14px;font-weight:600">Brand: <span style="color:#0d6efd">${escHtml(data.brand)}</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:6px">Equipment (${data.equipment.length})</div>
+          <div style="font-size:12px;color:#333">
+            ${Object.keys(cats).sort().map(c => `<div>${escHtml(c)}: <strong>${cats[c]}</strong></div>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:#666;text-transform:uppercase;margin-bottom:6px">Matchups (${data.matchups.length}, ${uniqueOutdoor} outdoor units)</div>
+          <div style="font-size:12px;color:#333">
+            ${Object.keys(sysTypes).sort().map(s => `<div>${escHtml(s)}: <strong>${sysTypes[s]}</strong></div>`).join('')}
+          </div>
+        </div>
+      </div>
+      ${orphanMatchModels.size > 0 ? `
+        <div style="margin-top:10px;padding:8px 10px;background:#fef3c7;border:1px solid #fbbf24;border-radius:6px;font-size:12px;color:#7c2d12">
+          ⚠️ ${orphanMatchModels.size} outdoor model(s) referenced in matchups but not in equipment list: ${[...orphanMatchModels].slice(0,5).map(m => `<code>${escHtml(m)}</code>`).join(', ')}${orphanMatchModels.size>5?'...':''}
+        </div>` : ''}
+    </div>`;
+  previewEl.innerHTML = html;
+
+  pendingImport = data;
+  confirmMsg.innerHTML = `This will <strong>delete all existing ${escHtml(data.brand)} equipment and matchups</strong> from Supabase, then insert <strong>${data.equipment.length} equipment rows</strong> and <strong>${data.matchups.length} matchup rows</strong>. This cannot be undone.`;
+  confirmEl.style.display = 'block';
+}
+
+async function confirmImport() {
+  if (!pendingImport) return;
+  const data = pendingImport;
+  const resultEl = document.getElementById('import-result');
+  const confirmEl = document.getElementById('import-confirm');
+  confirmEl.style.display = 'none';
+  resultEl.innerHTML = '<div style="padding:10px;color:#666">Importing... please wait.</div>';
+
+  const headersJSON = { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
+
+  try {
+    const existingRes = await fetch(`${SB_URL}/rest/v1/unitary_equipment?brand=eq.${encodeURIComponent(data.brand)}&select=model`, { headers: H });
+    const existing = await existingRes.json();
+    const existingModels = existing.map(r => r.model);
+
+    if (existingModels.length > 0) {
+      const inList = existingModels.map(m => `"${m.replace(/"/g, '\\"')}"`).join(',');
+      const delMatchRes = await fetch(`${SB_URL}/rest/v1/unitary_matchups?outdoor_model=in.(${encodeURIComponent(inList)})`, { method: 'DELETE', headers: headersJSON });
+      if (!delMatchRes.ok) throw new Error(`Failed to delete old matchups: ${delMatchRes.status} ${await delMatchRes.text()}`);
+    }
+
+    const delEqRes = await fetch(`${SB_URL}/rest/v1/unitary_equipment?brand=eq.${encodeURIComponent(data.brand)}`, { method: 'DELETE', headers: headersJSON });
+    if (!delEqRes.ok) throw new Error(`Failed to delete old equipment: ${delEqRes.status} ${await delEqRes.text()}`);
+
+    const eqBatches = chunkArray(data.equipment, 200);
+    for (let i = 0; i < eqBatches.length; i++) {
+      const res = await fetch(`${SB_URL}/rest/v1/unitary_equipment`, {
+        method: 'POST',
+        headers: headersJSON,
+        body: JSON.stringify(eqBatches[i]),
+      });
+      if (!res.ok) throw new Error(`Equipment batch ${i+1} failed: ${res.status} ${await res.text()}`);
+    }
+
+    const mBatches = chunkArray(data.matchups, 200);
+    for (let i = 0; i < mBatches.length; i++) {
+      const res = await fetch(`${SB_URL}/rest/v1/unitary_matchups`, {
+        method: 'POST',
+        headers: headersJSON,
+        body: JSON.stringify(mBatches[i]),
+      });
+      if (!res.ok) throw new Error(`Matchup batch ${i+1} failed: ${res.status} ${await res.text()}`);
+    }
+
+    resultEl.innerHTML = `<div style="background:#dcfce7;border:1px solid #16a34a;border-radius:6px;padding:12px;color:#14532d;font-size:13px">
+      ✅ Imported successfully: ${data.equipment.length} equipment + ${data.matchups.length} matchups for <strong>${escHtml(data.brand)}</strong>.
+      <div style="margin-top:6px;font-size:12px">Refreshing local cache...</div>
+    </div>`;
+
+    UNITARY_MATCHUPS = {};
+    unitaryExpanded = {};
+    pendingImport = null;
+    document.getElementById('import-json').value = '';
+    document.getElementById('import-preview').innerHTML = '';
+
+    if (UNITARY_ENABLED) {
+      const [catalogRes, matchRes] = await Promise.all([
+        fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model`, { headers: H }).then(r => r.json()),
+      ]);
+      UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
+      UNITARY_MATCHUPS_COUNT = {};
+      matchRes.forEach(r => { UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1; });
+      const brandSel = document.getElementById('u-brand');
+      const catSel = document.getElementById('u-cat');
+      const tonSel = document.getElementById('u-ton');
+      if (brandSel) {
+        const brands = [...new Set(UNITARY_CATALOG.map(it => it.b))].sort();
+        brandSel.innerHTML = '<option value="">All brands</option>' + brands.map(b => `<option>${escHtml(b)}</option>`).join('');
+      }
+      if (catSel) {
+        const cats = [...new Set(UNITARY_CATALOG.map(it => it.c))].sort();
+        catSel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option>${escHtml(c)}</option>`).join('');
+      }
+      if (tonSel) {
+        const tons = [...new Set(UNITARY_CATALOG.map(it => it.t).filter(Boolean))].sort((a,b) => {
+          const an = parseFloat(a), bn = parseFloat(b);
+          if (!isNaN(an) && !isNaN(bn) && a.includes('Ton') && b.includes('Ton')) return an - bn;
+          if (a.includes('Ton') && !b.includes('Ton')) return -1;
+          if (!a.includes('Ton') && b.includes('Ton')) return 1;
+          return a.localeCompare(b);
+        });
+        tonSel.innerHTML = '<option value="">All tonnage / capacity</option>' + tons.map(t => `<option>${escHtml(t)}</option>`).join('');
+      }
+      resultEl.innerHTML += '<div style="margin-top:6px;font-size:12px;color:#14532d">✅ Cache refreshed. Switch to the Unitary tab to see the new data.</div>';
+    }
+  } catch (err) {
+    console.error('Import failed:', err);
+    resultEl.innerHTML = `<div style="background:#fee2e2;border:1px solid #dc2626;border-radius:6px;padding:12px;color:#991b1b;font-size:13px">
+      ❌ Import failed: ${escHtml(err.message)}
+      <div style="margin-top:6px;font-size:12px">Some data may have been deleted. Check Supabase Studio.</div>
+    </div>`;
+  }
+}
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
 }
 
 </script>
@@ -2760,6 +3111,42 @@ function toggleUnitary(model) {
         </div>
         <div id="admin-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
       </div>
+    </div>
+  </div>
+
+
+  <div class="panel" id="panel-import">
+    <div style="max-width:900px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h2 style="font-size:18px;font-weight:600;margin:0">Catalog Import</h2>
+        <span style="font-size:12px;color:#666">Replace a brand's equipment catalog and matchups by pasting parsed JSON.</span>
+      </div>
+
+      <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#664d03">
+        <strong>How this works:</strong> Send your catalog PDF to Claude, who runs the parser and outputs a JSON file. Paste the contents below, hit "Preview", review, then "Import" to replace the brand's data in Supabase.
+      </div>
+
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:14px">
+        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">Paste parsed catalog JSON</label>
+        <textarea id="import-json" placeholder='{"brand":"Goodman","equipment":[{...}],"matchups":[{...}]}' style="width:100%;height:160px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+          <button onclick="parseImportPreview()" style="padding:8px 16px;border-radius:6px;border:1px solid #0d6efd;background:#0d6efd;color:#fff;font-size:13px;cursor:pointer;font-weight:500;font-family:inherit">Preview</button>
+          <button onclick="document.getElementById('import-json').value='';document.getElementById('import-preview').innerHTML='';document.getElementById('import-confirm').style.display='none'" style="padding:8px 14px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#333;font-size:13px;cursor:pointer;font-family:inherit">Clear</button>
+          <span style="margin-left:auto;font-size:11px;color:#888">Or load from file:</span>
+          <input type="file" accept=".json,application/json" onchange="loadImportFile(event)" style="font-size:12px"/>
+        </div>
+      </div>
+
+      <div id="import-preview" style="margin-bottom:14px"></div>
+
+      <div id="import-confirm" style="display:none;background:#fff;border:2px solid #dc2626;border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-weight:600;font-size:14px;color:#dc2626;margin-bottom:8px">⚠️ Confirm replacement</div>
+        <div id="import-confirm-msg" style="font-size:13px;color:#333;margin-bottom:12px"></div>
+        <button onclick="confirmImport()" style="padding:8px 18px;border-radius:6px;border:1px solid #dc2626;background:#dc2626;color:#fff;font-size:13px;cursor:pointer;font-weight:600;font-family:inherit">Yes, replace data</button>
+        <button onclick="document.getElementById('import-confirm').style.display='none'" style="margin-left:8px;padding:8px 14px;border-radius:6px;border:1px solid #ccc;background:#f5f5f5;color:#333;font-size:13px;cursor:pointer;font-family:inherit">Cancel</button>
+      </div>
+
+      <div id="import-result" style="font-size:13px"></div>
     </div>
   </div>
 
