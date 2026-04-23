@@ -3131,9 +3131,18 @@ async function confirmImport() {
   const headersJSON = { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' };
 
   try {
-    const existingRes = await fetch(`${SB_URL}/rest/v1/unitary_equipment?brand=eq.${encodeURIComponent(data.brand)}&select=model`, { headers: H });
+    // Snapshot existing voltage_120 flags so manual overrides in Studio aren't lost on re-import
+    const existingRes = await fetch(`${SB_URL}/rest/v1/unitary_equipment?brand=eq.${encodeURIComponent(data.brand)}&select=model,voltage_120`, { headers: H });
     const existing = await existingRes.json();
     const existingModels = existing.map(r => r.model);
+    const existingVoltage120 = new Set(existing.filter(r => r.voltage_120 === true).map(r => r.model));
+
+    // Merge: if a row in the incoming JSON doesn't set voltage_120 but the current DB has it flagged, preserve true
+    data.equipment.forEach(r => {
+      if (r.voltage_120 !== true && existingVoltage120.has(r.model)) {
+        r.voltage_120 = true;
+      }
+    });
 
     if (existingModels.length > 0) {
       const inList = existingModels.map(m => `"${m.replace(/"/g, '\\"')}"`).join(',');
