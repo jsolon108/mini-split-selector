@@ -272,14 +272,57 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#664d03">
       <strong>BETA — Unitary catalog (Amana only).</strong> This tab is hidden from the main UI; share this URL with testers only.
     </div>
-    <div class="filters">
-      <select id="u-brand" onchange="renderUnitary()"><option value="">All brands</option><option>Amana</option></select>
-      <select id="u-cat" onchange="renderUnitary()"><option value="">All categories</option></select>
+
+    <!-- System type picker -->
+    <div id="u-type-picker" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px">
+      <button onclick="pickUnitaryType('cooling')" class="u-type-btn" data-type="cooling" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">❄️</div>
+        <div style="font-weight:600;font-size:13px">Cooling Only</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">includes Hydro Air</div>
+      </button>
+      <button onclick="pickUnitaryType('heatpump')" class="u-type-btn" data-type="heatpump" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">🌡️</div>
+        <div style="font-weight:600;font-size:13px">Heat Pump</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Heating &amp; cooling</div>
+      </button>
+      <button onclick="pickUnitaryType('condfurnace')" class="u-type-btn" data-type="condfurnace" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">🔥</div>
+        <div style="font-weight:600;font-size:13px">Condenser &amp; Furnace</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">AC + gas furnace</div>
+      </button>
+      <button onclick="pickUnitaryType('dualfuel')" class="u-type-btn" data-type="dualfuel" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">⚡</div>
+        <div style="font-weight:600;font-size:13px">Dual Fuel</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">HP + gas furnace</div>
+      </button>
+      <button onclick="pickUnitaryType('furnace')" class="u-type-btn" data-type="furnace" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">🔥</div>
+        <div style="font-weight:600;font-size:13px">Furnace Only</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Gas furnaces</div>
+      </button>
+      <button onclick="pickUnitaryType('components')" class="u-type-btn" data-type="components" style="padding:14px 10px;border:1.5px solid #e5e5e5;background:#fff;border-radius:10px;cursor:pointer;text-align:left;font-family:inherit;transition:all 0.15s">
+        <div style="font-size:20px;margin-bottom:4px">🔧</div>
+        <div style="font-weight:600;font-size:13px">Browse Components</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">Coils, AHs, kits, etc.</div>
+      </button>
+    </div>
+
+    <!-- Refinement filters (shown after a type is picked) -->
+    <div id="u-refine" class="filters" style="display:none">
+      <select id="u-brand" onchange="renderUnitary()"><option value="">All brands</option></select>
+      <select id="u-cat" onchange="renderUnitary()" style="display:none"><option value="">All categories</option></select>
       <select id="u-ton" onchange="renderUnitary()"><option value="">All tonnage / capacity</option></select>
       <input id="u-search" type="text" placeholder="Search by model #" oninput="renderUnitary()" style="flex:2"/>
+      <button onclick="pickUnitaryType(null)" style="padding:0 12px;border-radius:6px;border:1px solid #ddd;background:#f5f5f5;color:#666;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap">← Back</button>
     </div>
+
     <div id="unitary-results" class="results"></div>
   </div>
+
+  <style>
+    .u-type-btn:hover { border-color: #0d6efd !important; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .u-type-btn.active { border-color: #0d6efd !important; background: #eff6ff !important; box-shadow: 0 0 0 3px rgba(13,110,253,0.15); }
+  </style>
 
   <div class="panel" id="panel-quote">
     <div class="quote-customer-bar">
@@ -370,8 +413,10 @@ let eclipseSession = { token: null, username: null, password: null };
 const UNITARY_ENABLED = new URLSearchParams(window.location.search).has('unitary');
 let UNITARY_CATALOG = []; // populated from Supabase in fetchData()
 let UNITARY_MATCHUPS = {}; // outdoor_model -> array of matchups (lazy-loaded)
-let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> count (loaded with catalog)
+let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> total count
+let UNITARY_MATCHUPS_COUNT_BY_TYPE = {}; // outdoor_model -> {system_type: count}
 let unitaryExpanded = {}; // outdoor_model -> bool (UI state for which cards are expanded)
+let unitaryType = null; // null | 'cooling' | 'heatpump' | 'condfurnace' | 'dualfuel' | 'furnace' | 'components'
 let unitaryFilter = { brand: '', category: '', tonnage: '', search: '' };
 // ---- END UNITARY ----
 
@@ -380,12 +425,17 @@ async function fetchData() {
   if (UNITARY_ENABLED) {
     Promise.all([
       fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
-      fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
     ]).then(([catalog, matchupRows]) => {
       UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
-      // Tally matchup counts by outdoor model
+      // Tally matchup counts by outdoor model AND by (outdoor_model, system_type)
       UNITARY_MATCHUPS_COUNT = {};
-      matchupRows.forEach(r => { UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1; });
+      UNITARY_MATCHUPS_COUNT_BY_TYPE = {}; // {outdoor_model: {system_type: count}}
+      matchupRows.forEach(r => {
+        UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1;
+        if (!UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model]) UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model] = {};
+        UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] = (UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] || 0) + 1;
+      });
       console.log('[Unitary] Loaded', UNITARY_CATALOG.length, 'items,', matchupRows.length, 'matchups across', Object.keys(UNITARY_MATCHUPS_COUNT).length, 'outdoor models');
       initUnitary();
     }).catch(err => console.error('[Unitary] Failed to load:', err));
@@ -2554,20 +2604,99 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================================
 // UNITARY TAB
 // ============================================================
+// ============================================================
+// UNITARY: system-type picker + rendering
+// ============================================================
+
+// Map each picked system type to: (a) equipment categories it shows, (b) matchup system_types to display
+const UNITARY_TYPE_MAP = {
+  cooling: {
+    label: 'Cooling Only',
+    equipCats: ['Condenser'],
+    matchupTypes: ['Split Electric', 'Condenser/Coil'],
+    outdoorIsExpandable: true,
+  },
+  heatpump: {
+    label: 'Heat Pump',
+    equipCats: ['Heat Pump'],
+    matchupTypes: ['Heat Pump'],
+    outdoorIsExpandable: true,
+  },
+  condfurnace: {
+    label: 'Condenser & Furnace',
+    equipCats: ['Condenser'],
+    matchupTypes: ['Split Gas/Electric'],
+    outdoorIsExpandable: true,
+  },
+  dualfuel: {
+    label: 'Dual Fuel',
+    equipCats: ['Heat Pump'],
+    matchupTypes: ['Split Gas/Electric'],
+    outdoorIsExpandable: true,
+  },
+  furnace: {
+    label: 'Furnace Only',
+    equipCats: ['Furnace', 'Furnace (Variable Speed)'],
+    matchupTypes: [],
+    outdoorIsExpandable: false,
+  },
+  components: {
+    label: 'Browse Components',
+    equipCats: ['Air Handler', 'Air Handler (ADP)', 'Coil (Cased Upflow/Downflow)', 'Coil (Horizontal)', 'Heat Kit', 'Modular Blower', 'Thermostat', 'Accessory'],
+    matchupTypes: [],
+    outdoorIsExpandable: false,
+  },
+};
+
 function initUnitary() {
   if (!UNITARY_ENABLED) return;
   document.getElementById('tab-unitary').style.display = '';
-  // Populate category dropdown
-  const cats = [...new Set(UNITARY_CATALOG.map(it => it.c))].sort();
-  const catSel = document.getElementById('u-cat');
-  cats.forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c; opt.textContent = c;
-    catSel.appendChild(opt);
+  // Don't populate dropdowns yet — wait for pickUnitaryType()
+}
+
+function pickUnitaryType(type) {
+  unitaryType = type;
+  unitaryExpanded = {}; // reset expansion on type change
+
+  // Update picker button states
+  document.querySelectorAll('.u-type-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.type === type);
   });
-  // Populate tonnage dropdown (unique non-empty values)
-  const tons = [...new Set(UNITARY_CATALOG.map(it => it.t).filter(Boolean))];
-  // Sort: ton values first numerically, then AFUE/BTU stuff alphabetically
+
+  const refine = document.getElementById('u-refine');
+  const results = document.getElementById('unitary-results');
+
+  if (!type) {
+    // Back to picker — hide refine bar and results
+    refine.style.display = 'none';
+    results.innerHTML = '';
+    return;
+  }
+
+  refine.style.display = 'flex';
+  // Rebuild brand & tonnage dropdowns scoped to items matching this type
+  const cfg = UNITARY_TYPE_MAP[type];
+  const scopedItems = UNITARY_CATALOG.filter(it => cfg.equipCats.includes(it.c));
+
+  // Brand dropdown: only show if >1 brand
+  const brands = [...new Set(scopedItems.map(it => it.b))].sort();
+  const brandSel = document.getElementById('u-brand');
+  brandSel.innerHTML = '<option value="">All brands</option>' + brands.map(b => `<option>${escHtml(b)}</option>`).join('');
+  brandSel.style.display = brands.length > 1 ? '' : 'none';
+
+  // Category dropdown: only useful for 'components' (show the component type)
+  const catSel = document.getElementById('u-cat');
+  if (type === 'components') {
+    const cats = [...new Set(scopedItems.map(it => it.c))].sort();
+    catSel.innerHTML = '<option value="">All component types</option>' + cats.map(c => `<option>${escHtml(c)}</option>`).join('');
+    catSel.style.display = '';
+  } else {
+    catSel.style.display = 'none';
+    catSel.value = '';
+  }
+
+  // Tonnage dropdown
+  const tons = [...new Set(scopedItems.map(it => it.t).filter(Boolean))];
   tons.sort((a,b) => {
     const an = parseFloat(a), bn = parseFloat(b);
     if (!isNaN(an) && !isNaN(bn) && a.includes('Ton') && b.includes('Ton')) return an - bn;
@@ -2576,20 +2705,46 @@ function initUnitary() {
     return a.localeCompare(b);
   });
   const tonSel = document.getElementById('u-ton');
-  tons.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t; opt.textContent = t;
-    tonSel.appendChild(opt);
-  });
+  const tonLabel = type === 'furnace' ? 'All AFUE / BTU' : 'All tonnage / capacity';
+  tonSel.innerHTML = `<option value="">${tonLabel}</option>` + tons.map(t => `<option>${escHtml(t)}</option>`).join('');
+  tonSel.value = '';
+
+  // Reset search + brand selections
+  brandSel.value = '';
+  document.getElementById('u-search').value = '';
+
+  renderUnitary();
 }
 
 function renderUnitary() {
+  const el = document.getElementById('unitary-results');
+  if (!unitaryType) {
+    el.innerHTML = '';
+    return;
+  }
+  const cfg = UNITARY_TYPE_MAP[unitaryType];
+
   const brand = document.getElementById('u-brand').value;
   const cat = document.getElementById('u-cat').value;
   const ton = document.getElementById('u-ton').value;
   const q = (document.getElementById('u-search').value || '').toLowerCase().trim();
 
+  // For matchup-driven types, filter to only outdoor units that have at least one matchup of an allowed type
+  let relevantOutdoorModels = null;
+  if (cfg.outdoorIsExpandable && cfg.matchupTypes.length) {
+    relevantOutdoorModels = new Set();
+    const allowedTypes = new Set(cfg.matchupTypes);
+    for (const model of Object.keys(UNITARY_MATCHUPS_COUNT_BY_TYPE)) {
+      const byType = UNITARY_MATCHUPS_COUNT_BY_TYPE[model];
+      for (const t of Object.keys(byType)) {
+        if (allowedTypes.has(t)) { relevantOutdoorModels.add(model); break; }
+      }
+    }
+  }
+
   const filtered = UNITARY_CATALOG.filter(it => {
+    if (!cfg.equipCats.includes(it.c)) return false;
+    if (relevantOutdoorModels && !relevantOutdoorModels.has(it.m)) return false;
     if (brand && it.b !== brand) return false;
     if (cat && it.c !== cat) return false;
     if (ton && it.t !== ton) return false;
@@ -2597,13 +2752,11 @@ function renderUnitary() {
     return true;
   });
 
-  const el = document.getElementById('unitary-results');
   if (!filtered.length) {
-    el.innerHTML = '<div class="no-res">No equipment matches.</div>';
+    el.innerHTML = `<div class="no-res">No ${cfg.label.toLowerCase()} equipment matches.</div>`;
     return;
   }
 
-  // Group by category for display
   const byCat = {};
   filtered.forEach(it => { (byCat[it.c] = byCat[it.c] || []).push(it); });
 
@@ -2612,12 +2765,17 @@ function renderUnitary() {
     const rows = items.map(it => {
       const inQ = quote.some(qi => qi.qtype === 'unitary' && qi.model === it.m);
       const tonBadge = it.t ? `<span style="color:#666;font-size:11px;margin-left:8px">${it.t}</span>` : '';
-      const matchCount = UNITARY_MATCHUPS_COUNT[it.m] || 0;
-      const isOutdoor = it.c === 'Condenser' || it.c === 'Heat Pump';
+      // Count matchups of only the allowed types for this picker
+      let typedCount = 0;
+      if (cfg.outdoorIsExpandable && cfg.matchupTypes.length && UNITARY_MATCHUPS_COUNT_BY_TYPE[it.m]) {
+        cfg.matchupTypes.forEach(st => {
+          typedCount += (UNITARY_MATCHUPS_COUNT_BY_TYPE[it.m][st] || 0);
+        });
+      }
       const expanded = unitaryExpanded[it.m];
-      const matchToggle = (isOutdoor && matchCount > 0) ? `
-        <button onclick="toggleMatchups('${it.m}')" style="padding:5px 10px;border-radius:6px;border:1px solid #ccc;background:#f8f8f8;color:#333;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">${expanded ? '▾' : '▸'} ${matchCount} matched ${matchCount===1?'system':'systems'}</button>` : '';
-      const matchBody = (isOutdoor && expanded) ? `<div id="matchups-${it.m}" style="margin-top:8px;padding:10px;background:#fafafa;border-radius:6px;border:1px solid #eee">${renderMatchups(it.m)}</div>` : '';
+      const matchToggle = (cfg.outdoorIsExpandable && typedCount > 0) ? `
+        <button onclick="toggleMatchups('${it.m}')" style="padding:5px 10px;border-radius:6px;border:1px solid #ccc;background:#f8f8f8;color:#333;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">${expanded ? '▾' : '▸'} ${typedCount} matched ${typedCount===1?'system':'systems'}</button>` : '';
+      const matchBody = (cfg.outdoorIsExpandable && expanded) ? `<div id="matchups-${it.m}" style="margin-top:8px;padding:10px;background:#fafafa;border-radius:6px;border:1px solid #eee">${renderMatchups(it.m)}</div>` : '';
       return `<div class="sys-card${inQ ? ' in-quote' : ''}" style="margin-bottom:6px">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <div style="flex:1;min-width:0">
@@ -2688,11 +2846,17 @@ async function toggleMatchups(outdoorModel) {
 function renderMatchups(outdoorModel) {
   const matches = UNITARY_MATCHUPS[outdoorModel];
   if (!matches) return '<div style="color:#888;font-size:12px;padding:6px">Loading matchups...</div>';
-  if (!matches.length) return '<div style="color:#888;font-size:12px;padding:6px">No matchups found.</div>';
+
+  // Filter to only system_types relevant to the picked unitary type
+  const cfg = unitaryType ? UNITARY_TYPE_MAP[unitaryType] : null;
+  const allowed = (cfg && cfg.matchupTypes.length) ? new Set(cfg.matchupTypes) : null;
+  const shown = allowed ? matches.filter(m => allowed.has(m.system_type)) : matches;
+
+  if (!shown.length) return `<div style="color:#888;font-size:12px;padding:6px">No ${cfg ? cfg.label.toLowerCase() : ''} matchups for this unit.</div>`;
 
   // Group by system type
   const bySys = {};
-  matches.forEach(m => { (bySys[m.system_type] = bySys[m.system_type] || []).push(m); });
+  shown.forEach(m => { (bySys[m.system_type] = bySys[m.system_type] || []).push(m); });
 
   return Object.keys(bySys).map(sysType => {
     const rows = bySys[sysType].map(m => {
@@ -2948,32 +3112,18 @@ async function confirmImport() {
     if (UNITARY_ENABLED) {
       const [catalogRes, matchRes] = await Promise.all([
         fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
-        fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model`, { headers: H }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
       ]);
       UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
       UNITARY_MATCHUPS_COUNT = {};
-      matchRes.forEach(r => { UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1; });
-      const brandSel = document.getElementById('u-brand');
-      const catSel = document.getElementById('u-cat');
-      const tonSel = document.getElementById('u-ton');
-      if (brandSel) {
-        const brands = [...new Set(UNITARY_CATALOG.map(it => it.b))].sort();
-        brandSel.innerHTML = '<option value="">All brands</option>' + brands.map(b => `<option>${escHtml(b)}</option>`).join('');
-      }
-      if (catSel) {
-        const cats = [...new Set(UNITARY_CATALOG.map(it => it.c))].sort();
-        catSel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option>${escHtml(c)}</option>`).join('');
-      }
-      if (tonSel) {
-        const tons = [...new Set(UNITARY_CATALOG.map(it => it.t).filter(Boolean))].sort((a,b) => {
-          const an = parseFloat(a), bn = parseFloat(b);
-          if (!isNaN(an) && !isNaN(bn) && a.includes('Ton') && b.includes('Ton')) return an - bn;
-          if (a.includes('Ton') && !b.includes('Ton')) return -1;
-          if (!a.includes('Ton') && b.includes('Ton')) return 1;
-          return a.localeCompare(b);
-        });
-        tonSel.innerHTML = '<option value="">All tonnage / capacity</option>' + tons.map(t => `<option>${escHtml(t)}</option>`).join('');
-      }
+      UNITARY_MATCHUPS_COUNT_BY_TYPE = {};
+      matchRes.forEach(r => {
+        UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1;
+        if (!UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model]) UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model] = {};
+        UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] = (UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] || 0) + 1;
+      });
+      // Re-enter the type picker if one was active
+      if (unitaryType) pickUnitaryType(unitaryType);
       resultEl.innerHTML += '<div style="margin-top:6px;font-size:12px;color:#14532d">✅ Cache refreshed. Switch to the Unitary tab to see the new data.</div>';
     }
   } catch (err) {
