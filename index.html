@@ -3145,16 +3145,33 @@ async function confirmImport() {
     if (!delEqRes.ok) throw new Error(`Failed to delete old equipment: ${delEqRes.status} ${await delEqRes.text()}`);
 
     const eqBatches = chunkArray(data.equipment, 200);
-    for (let i = 0; i < eqBatches.length; i++) {
+    // Normalize: every row must have the same keys (PostgREST requirement for array insert).
+    // Collect all keys used across all rows, then fill missing with null.
+    const allEqKeys = new Set();
+    data.equipment.forEach(r => Object.keys(r).forEach(k => allEqKeys.add(k)));
+    const normEq = data.equipment.map(r => {
+      const out = {};
+      allEqKeys.forEach(k => { out[k] = (k in r && r[k] !== undefined) ? r[k] : null; });
+      return out;
+    });
+    const normEqBatches = chunkArray(normEq, 200);
+    for (let i = 0; i < normEqBatches.length; i++) {
       const res = await fetch(`${SB_URL}/rest/v1/unitary_equipment`, {
         method: 'POST',
         headers: headersJSON,
-        body: JSON.stringify(eqBatches[i]),
+        body: JSON.stringify(normEqBatches[i]),
       });
       if (!res.ok) throw new Error(`Equipment batch ${i+1} failed: ${res.status} ${await res.text()}`);
     }
 
-    const mBatches = chunkArray(data.matchups, 200);
+    const allMatchKeys = new Set();
+    data.matchups.forEach(r => Object.keys(r).forEach(k => allMatchKeys.add(k)));
+    const normMatch = data.matchups.map(r => {
+      const out = {};
+      allMatchKeys.forEach(k => { out[k] = (k in r && r[k] !== undefined) ? r[k] : null; });
+      return out;
+    });
+    const mBatches = chunkArray(normMatch, 200);
     for (let i = 0; i < mBatches.length; i++) {
       const res = await fetch(`${SB_URL}/rest/v1/unitary_matchups`, {
         method: 'POST',
