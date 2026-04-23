@@ -227,6 +227,7 @@ select:focus,input:focus{outline:none;border-color:#999}
   <div class="tabs">
     <div class="tab active" onclick="switchTab('single')">Single zone</div>
     <div class="tab" onclick="switchTab('multi')">Multi-zone</div>
+    <div class="tab" id="tab-unitary" style="display:none" onclick="switchTab('unitary')">Unitary</div>
     <div class="tab" onclick="switchTab('quote')">Quote <span class="qbadge" id="qcount">0</span></div>
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
@@ -264,6 +265,19 @@ select:focus,input:focus{outline:none;border-color:#999}
     </div>
     <div id="mz-zone-inputs" style="display:none;margin-bottom:16px"></div>
     <div id="multi-results"></div>
+  </div>
+
+  <div class="panel" id="panel-unitary">
+    <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#664d03">
+      <strong>BETA — Unitary catalog (Amana only).</strong> This tab is hidden from the main UI; share this URL with testers only.
+    </div>
+    <div class="filters">
+      <select id="u-brand" onchange="renderUnitary()"><option value="">All brands</option><option>Amana</option></select>
+      <select id="u-cat" onchange="renderUnitary()"><option value="">All categories</option></select>
+      <select id="u-ton" onchange="renderUnitary()"><option value="">All tonnage / capacity</option></select>
+      <input id="u-search" type="text" placeholder="Search by model #" oninput="renderUnitary()" style="flex:2"/>
+    </div>
+    <div id="unitary-results" class="results"></div>
   </div>
 
   <div class="panel" id="panel-quote">
@@ -351,6 +365,12 @@ const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {}, equipmentCatalogs = new Set();
 let eclipseSession = { token: null, username: null, password: null };
 
+// ---- UNITARY (hidden behind ?unitary=1 URL flag) ----
+const UNITARY_ENABLED = new URLSearchParams(window.location.search).has('unitary');
+const UNITARY_CATALOG = [{"m":"LPM-07","d":"LPM-07","b":"Amana","c":"Accessory","f":"LPM-","t":""},{"m":"LPM-08","d":"LPM-08","b":"Amana","c":"Accessory","f":"LPM-","t":""},{"m":"RF000142","d":"RF000142","b":"Amana","c":"Accessory","f":"RF00","t":"3.5 Ton"},{"m":"AHVE24BP0300A","d":"AHVE24BP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"2.0 Ton"},{"m":"AHVE24BP1300A","d":"AHVE24BP1300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"2.0 Ton"},{"m":"AHVE36CP0300A","d":"AHVE36CP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"3.0 Ton"},{"m":"AHVE36CP1300A","d":"AHVE36CP1300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"3.0 Ton"},{"m":"AHVE42CP0300A","d":"AHVE42CP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"3.5 Ton"},{"m":"AHVE42CP1300A","d":"AHVE42CP1300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"3.5 Ton"},{"m":"AHVE48CP0300A","d":"AHVE48CP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"4.0 Ton"},{"m":"AHVE48CP1300A","d":"AHVE48CP1300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"4.0 Ton"},{"m":"AHVE48DP0300A","d":"AHVE48DP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"4.0 Ton"},{"m":"AHVE60DP0300A","d":"AHVE60DP0300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"5.0 Ton"},{"m":"AHVE60DP1300A","d":"AHVE60DP1300A*","b":"Amana","c":"Air Handler","f":"AHVE","t":"5.0 Ton"},{"m":"AMST24BU1300A","d":"AMST24BU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"2.0 Ton"},{"m":"AMST30BU1300A","d":"AMST30BU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"2.5 Ton"},{"m":"AMST36CU1300A","d":"AMST36CU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"3.0 Ton"},{"m":"AMST42CU1300A","d":"AMST42CU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"3.5 Ton"},{"m":"AMST48CU1300A","d":"AMST48CU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"4.0 Ton"},{"m":"AMST60DU1300A","d":"AMST60DU1300A*","b":"Amana","c":"Air Handler","f":"AMST","t":"5.0 Ton"},{"m":"AMVT24BP1300A","d":"AMVT24BP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"2.0 Ton"},{"m":"AMVT30BP1300A","d":"AMVT30BP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"2.5 Ton"},{"m":"AMVT36CP1300A","d":"AMVT36CP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"3.0 Ton"},{"m":"AMVT42CP1300A","d":"AMVT42CP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"3.5 Ton"},{"m":"AMVT48CP1300A","d":"AMVT48CP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"4.0 Ton"},{"m":"AMVT60DP1300A","d":"AMVT60DP1300A*","b":"Amana","c":"Air Handler","f":"AMVT","t":"5.0 Ton"},{"m":"BCRMA4B24S3N4R","d":"BCRMA4B24S3N4R*","b":"Amana","c":"Air Handler (ADP)","f":"B-Series","t":"2.0 Ton"},{"m":"BVRMB2B25S3N4R","d":"BVRMB2B25S3N4R*","b":"Amana","c":"Air Handler (ADP)","f":"B-Series","t":""},{"m":"FEMG31B24S001R","d":"FEMG31B24S001R*","b":"Amana","c":"Air Handler (ADP)","f":"F-Series","t":"2.0 Ton"},{"m":"FEMG31B24S003R","d":"FEMG31B24S003R*","b":"Amana","c":"Air Handler (ADP)","f":"F-Series","t":"2.0 Ton"},{"m":"FEMG32B36S001R","d":"FEMG32B36S001R*","b":"Amana","c":"Air Handler (ADP)","f":"F-Series","t":"3.0 Ton"},{"m":"FEMG32B36S003R","d":"FEMG32B36S003R*","b":"Amana","c":"Air Handler (ADP)","f":"F-Series","t":"3.0 Ton"},{"m":"CAPE4860C4A","d":"CAPE4860C4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPE","t":"4.0 Ton"},{"m":"CAPE4961C4A","d":"CAPE4961C4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPE","t":""},{"m":"CAPE4961D4A","d":"CAPE4961D4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPE","t":""},{"m":"CAPEA2418B3A","d":"CAPEA2418B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.0 Ton"},{"m":"CAPEA2422B4A","d":"CAPEA2422B4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.0 Ton"},{"m":"CAPEA3022B3A","d":"CAPEA3022B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.5 Ton"},{"m":"CAPEA3022C3A","d":"CAPEA3022C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.5 Ton"},{"m":"CAPEA3026B4A","d":"CAPEA3026B4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.5 Ton"},{"m":"CAPEA3026C4A","d":"CAPEA3026C4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"2.5 Ton"},{"m":"CAPEA3626B3A","d":"CAPEA3626B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"3.0 Ton"},{"m":"CAPEA3626C3A","d":"CAPEA3626C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"3.0 Ton"},{"m":"CAPEA4830C3A","d":"CAPEA4830C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"4.0 Ton"},{"m":"CAPEA4830C4A","d":"CAPEA4830C4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"4.0 Ton"},{"m":"CAPEA4830D3A","d":"CAPEA4830D3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"4.0 Ton"},{"m":"CAPEA6030C3A","d":"CAPEA6030C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"5.0 Ton"},{"m":"CAPEA6030D3A","d":"CAPEA6030D3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"5.0 Ton"},{"m":"CAPEA6030D4A","d":"CAPEA6030D4A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPEA","t":"5.0 Ton"},{"m":"CAPTA2422A3A","d":"CAPTA2422A3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.0 Ton"},{"m":"CAPTA2422B3A","d":"CAPTA2422B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.0 Ton"},{"m":"CAPTA3022A3A","d":"CAPTA3022A3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.5 Ton"},{"m":"CAPTA3022B3A","d":"CAPTA3022B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.5 Ton"},{"m":"CAPTA3022C3A","d":"CAPTA3022C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.5 Ton"},{"m":"CAPTA3026B3A","d":"CAPTA3026B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.5 Ton"},{"m":"CAPTA3026C3A","d":"CAPTA3026C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"2.5 Ton"},{"m":"CAPTA3626B3A","d":"CAPTA3626B3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"3.0 Ton"},{"m":"CAPTA3626C3A","d":"CAPTA3626C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"3.0 Ton"},{"m":"CAPTA4230C3A","d":"CAPTA4230C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"3.5 Ton"},{"m":"CAPTA6030C3A","d":"CAPTA6030C3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"5.0 Ton"},{"m":"CAPTA6030D3A","d":"CAPTA6030D3A*","b":"Amana","c":"Coil (Cased Upflow/Downflow)","f":"CAPTA","t":"5.0 Ton"},{"m":"CAHEA3630C3A","d":"CAHEA3630C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CAHEA","t":"3.0 Ton"},{"m":"CHPE2430B4A","d":"CHPE2430B4A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPE","t":"2.0 Ton"},{"m":"CHPE3636B4A","d":"CHPE3636B4A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPE","t":"3.0 Ton"},{"m":"CHPE3642C4A","d":"CHPE3642C4A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPE","t":"3.0 Ton"},{"m":"CHPE3743C4A","d":"CHPE3743C4A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPE","t":""},{"m":"CHPE4860D4A","d":"CHPE4860D4A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPE","t":"4.0 Ton"},{"m":"CHPEA2422B3A","d":"CHPEA2422B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"2.0 Ton"},{"m":"CHPEA3026B3A","d":"CHPEA3026B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"2.5 Ton"},{"m":"CHPEA3026C3A","d":"CHPEA3026C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"2.5 Ton"},{"m":"CHPEA3626B3A","d":"CHPEA3626B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"3.0 Ton"},{"m":"CHPEA3626C3A","d":"CHPEA3626C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"3.0 Ton"},{"m":"CHPEA4830C3A","d":"CHPEA4830C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"4.0 Ton"},{"m":"CHPEA4830D3A","d":"CHPEA4830D3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"4.0 Ton"},{"m":"CHPEA6030C3A","d":"CHPEA6030C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"5.0 Ton"},{"m":"CHPEA6030D3A","d":"CHPEA6030D3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPEA","t":"5.0 Ton"},{"m":"CHPTA2426B3A","d":"CHPTA2426B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"2.0 Ton"},{"m":"CHPTA3026B3A","d":"CHPTA3026B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"2.5 Ton"},{"m":"CHPTA3026C3A","d":"CHPTA3026C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"2.5 Ton"},{"m":"CHPTA3630B3A","d":"CHPTA3630B3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"3.0 Ton"},{"m":"CHPTA3630C3A","d":"CHPTA3630C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"3.0 Ton"},{"m":"CHPTA4230C3A","d":"CHPTA4230C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"3.5 Ton"},{"m":"CHPTA4830C3A","d":"CHPTA4830C3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"4.0 Ton"},{"m":"CHPTA6030D3A","d":"CHPTA6030D3A*","b":"Amana","c":"Coil (Horizontal)","f":"CHPTA","t":"5.0 Ton"},{"m":"ALXS3BN1810A","d":"ALXS3BN1810A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"1.5 Ton"},{"m":"ALXS3BN2410A","d":"ALXS3BN2410A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"2.0 Ton"},{"m":"ALXS3BN3010A","d":"ALXS3BN3010A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"2.5 Ton"},{"m":"ALXS3BN3610A","d":"ALXS3BN3610A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"3.0 Ton"},{"m":"ALXS3BN4210A","d":"ALXS3BN4210A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"3.5 Ton"},{"m":"ALXS3BN4810A","d":"ALXS3BN4810A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"4.0 Ton"},{"m":"ALXS3BN6010A","d":"ALXS3BN6010A*","b":"Amana","c":"Condenser","f":"ALXS3","t":"5.0 Ton"},{"m":"ALXS5BA1810A","d":"ALXS5BA1810A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"1.5 Ton"},{"m":"ALXS5BA2410A","d":"ALXS5BA2410A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"2.0 Ton"},{"m":"ALXS5BA3010A","d":"ALXS5BA3010A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"2.5 Ton"},{"m":"ALXS5BA3610A","d":"ALXS5BA3610A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"3.0 Ton"},{"m":"ALXS5BA4210A","d":"ALXS5BA4210A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"3.5 Ton"},{"m":"ALXS5BA4810A","d":"ALXS5BA4810A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"4.0 Ton"},{"m":"ALXS5BA6010A","d":"ALXS5BA6010A*","b":"Amana","c":"Condenser","f":"ALXS5","t":"5.0 Ton"},{"m":"ALXT7CA2410A","d":"ALXT7CA2410A*","b":"Amana","c":"Condenser","f":"ALXT7","t":"2.0 Ton"},{"m":"ALXT7CA3610A","d":"ALXT7CA3610A*","b":"Amana","c":"Condenser","f":"ALXT7","t":"3.0 Ton"},{"m":"ALXT7CA4810A","d":"ALXT7CA4810A*","b":"Amana","c":"Condenser","f":"ALXT7","t":"4.0 Ton"},{"m":"ALXT7CA6010A","d":"ALXT7CA6010A*","b":"Amana","c":"Condenser","f":"ALXT7","t":"5.0 Ton"},{"m":"ASXS6S2410A","d":"ASXS6S2410A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"2.0 Ton"},{"m":"ASXS6S3010A","d":"ASXS6S3010A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"2.5 Ton"},{"m":"ASXS6S3610A","d":"ASXS6S3610A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"3.0 Ton"},{"m":"ASXS6S4210A","d":"ASXS6S4210A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"3.5 Ton"},{"m":"ASXS6S4810A","d":"ASXS6S4810A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"4.0 Ton"},{"m":"ASXS6S6010A","d":"ASXS6S6010A*","b":"Amana","c":"Condenser","f":"ASXS6","t":"5.0 Ton"},{"m":"AR9S800403AXA","d":"AR9S800403AXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 40k BTU"},{"m":"AR9S800603BNA","d":"AR9S800603BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 60k BTU"},{"m":"AR9S800803BXA","d":"AR9S800803BXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 80k BTU"},{"m":"AR9S800804BXA","d":"AR9S800804BXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 80k BTU"},{"m":"AR9S800804CXA","d":"AR9S800804CXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 80k BTU"},{"m":"AR9S801005CXA","d":"AR9S801005CXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 100k BTU"},{"m":"AR9S801205DXA","d":"AR9S801205DXA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 120k BTU"},{"m":"AR9T800603BNA","d":"AR9T800603BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 60k BTU"},{"m":"AR9T800803BNA","d":"AR9T800803BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 80k BTU"},{"m":"AR9T800804BNA","d":"AR9T800804BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 80k BTU"},{"m":"AR9T801005CNA","d":"AR9T801005CNA*","b":"Amana","c":"Furnace","f":"AR9","t":"80% AFUE / 100k BTU"},{"m":"AR9T960403ANA","d":"AR9T960403ANA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 40k BTU"},{"m":"AR9T960603BNA","d":"AR9T960603BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 60k BTU"},{"m":"AR9T960803BNA","d":"AR9T960803BNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 80k BTU"},{"m":"AR9T960804CNA","d":"AR9T960804CNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 80k BTU"},{"m":"AR9T961004CNA","d":"AR9T961004CNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 100k BTU"},{"m":"AR9T961005CNA","d":"AR9T961005CNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 100k BTU"},{"m":"AR9T961205DNA","d":"AR9T961205DNA*","b":"Amana","c":"Furnace","f":"AR9","t":"96% AFUE / 120k BTU"},{"m":"ARVT800603BNA","d":"ARVT800603BNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"80% AFUE / 60k BTU"},{"m":"ARVT800803BNA","d":"ARVT800803BNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"80% AFUE / 80k BTU"},{"m":"ARVT801005CNA","d":"ARVT801005CNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"80% AFUE / 100k BTU"},{"m":"ARVT960603BNA","d":"ARVT960603BNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"96% AFUE / 60k BTU"},{"m":"ARVT960803BNA","d":"ARVT960803BNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"96% AFUE / 80k BTU"},{"m":"ARVT960804CNA","d":"ARVT960804CNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"96% AFUE / 80k BTU"},{"m":"ARVT961005CNA","d":"ARVT961005CNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"96% AFUE / 100k BTU"},{"m":"ARVT961205DNA","d":"ARVT961205DNA*","b":"Amana","c":"Furnace (Variable Speed)","f":"ARV","t":"96% AFUE / 120k BTU"},{"m":"HKA-15C","d":"HKA-15C","b":"Amana","c":"Heat Kit","f":"HKA","t":"15 kW"},{"m":"HKA-20C","d":"HKA-20C","b":"Amana","c":"Heat Kit","f":"HKA","t":"20 kW"},{"m":"HKSC-1","d":"HKSC-1","b":"Amana","c":"Heat Kit","f":"HKS","t":""},{"m":"HKTAD051","d":"HKTAD051","b":"Amana","c":"Heat Kit","f":"HKTAD","t":"5 kW"},{"m":"HKTAD081","d":"HKTAD081","b":"Amana","c":"Heat Kit","f":"HKTAD","t":"8 kW"},{"m":"HKTAD101","d":"HKTAD101","b":"Amana","c":"Heat Kit","f":"HKTAD","t":"10 kW"},{"m":"HKTAD151","d":"HKTAD151","b":"Amana","c":"Heat Kit","f":"HKTAD","t":"15 kW"},{"m":"HKTAN051","d":"HKTAN051","b":"Amana","c":"Heat Kit","f":"HKTAN","t":"5 kW"},{"m":"HKTAN081","d":"HKTAN081","b":"Amana","c":"Heat Kit","f":"HKTAN","t":"8 kW"},{"m":"HKTAN101","d":"HKTAN101","b":"Amana","c":"Heat Kit","f":"HKTAN","t":"10 kW"},{"m":"WKS0502","d":"WKS0502","b":"Amana","c":"Heat Kit","f":"WKS","t":"5 kW"},{"m":"WKS0502B","d":"WKS0502B","b":"Amana","c":"Heat Kit","f":"WKS","t":""},{"m":"WKS0802","d":"WKS0802","b":"Amana","c":"Heat Kit","f":"WKS","t":"8 kW"},{"m":"WKS0802B","d":"WKS0802B","b":"Amana","c":"Heat Kit","f":"WKS","t":""},{"m":"WKS1002","d":"WKS1002","b":"Amana","c":"Heat Kit","f":"WKS","t":"10 kW"},{"m":"WKS1002B","d":"WKS1002B","b":"Amana","c":"Heat Kit","f":"WKS","t":""},{"m":"ALZS4BA1810A","d":"ALZS4BA1810A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"1.5 Ton"},{"m":"ALZS4BA2410A","d":"ALZS4BA2410A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"2.0 Ton"},{"m":"ALZS4BA3010A","d":"ALZS4BA3010A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"2.5 Ton"},{"m":"ALZS4BA3610A","d":"ALZS4BA3610A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"3.0 Ton"},{"m":"ALZS4BA4210A","d":"ALZS4BA4210A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"3.5 Ton"},{"m":"ALZS4BA4810A","d":"ALZS4BA4810A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"4.0 Ton"},{"m":"ALZS4BA6010A","d":"ALZS4BA6010A*","b":"Amana","c":"Heat Pump","f":"ALZS4","t":"5.0 Ton"},{"m":"ALZS5BA2410A","d":"ALZS5BA2410A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"2.0 Ton"},{"m":"ALZS5BA3010A","d":"ALZS5BA3010A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"2.5 Ton"},{"m":"ALZS5BA3610A","d":"ALZS5BA3610A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"3.0 Ton"},{"m":"ALZS5BA4210A","d":"ALZS5BA4210A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"3.5 Ton"},{"m":"ALZS5BA4810A","d":"ALZS5BA4810A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"4.0 Ton"},{"m":"ALZS5BA6010A","d":"ALZS5BA6010A*","b":"Amana","c":"Heat Pump","f":"ALZS5","t":"5.0 Ton"},{"m":"ALZT7CA2410A","d":"ALZT7CA2410A*","b":"Amana","c":"Heat Pump","f":"ALZT7","t":"2.0 Ton"},{"m":"ALZT7CA3610A","d":"ALZT7CA3610A*","b":"Amana","c":"Heat Pump","f":"ALZT7","t":"3.0 Ton"},{"m":"ALZT7CA4810A","d":"ALZT7CA4810A*","b":"Amana","c":"Heat Pump","f":"ALZT7","t":"4.0 Ton"},{"m":"ALZT7CA6010A","d":"ALZT7CA6010A*","b":"Amana","c":"Heat Pump","f":"ALZT7","t":"5.0 Ton"},{"m":"ASZS603010A","d":"ASZS603010A*","b":"Amana","c":"Heat Pump","f":"ASZS6","t":"2.5 Ton"},{"m":"ASZS603610A","d":"ASZS603610A*","b":"Amana","c":"Heat Pump","f":"ASZS6","t":"3.0 Ton"},{"m":"ASZS604210A","d":"ASZS604210A*","b":"Amana","c":"Heat Pump","f":"ASZS6","t":"3.5 Ton"},{"m":"ASZS604810A","d":"ASZS604810A*","b":"Amana","c":"Heat Pump","f":"ASZS6","t":"4.0 Ton"},{"m":"ASZS606010A","d":"ASZS606010A*","b":"Amana","c":"Heat Pump","f":"ASZS6","t":"5.0 Ton"},{"m":"MBVB12BP1X00A","d":"MBVB12BP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVB","t":""},{"m":"MBVB16CP1X00A","d":"MBVB16CP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVB","t":""},{"m":"MBVB20DP1X00A","d":"MBVB20DP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVB","t":""},{"m":"MBVK12BP1X00A","d":"MBVK12BP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVK","t":""},{"m":"MBVK16CP1X00A","d":"MBVK16CP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVK","t":""},{"m":"MBVK20DP1X00A","d":"MBVK20DP1X00A*","b":"Amana","c":"Modular Blower","f":"MBVK","t":""},{"m":"ATST-CWE-BL-A","d":"ATST-CWE-BL-A","b":"Amana","c":"Thermostat","f":"ATST","t":""},{"m":"DTST-CWBSA-NI-A","d":"DTST-CWBSA-NI-A","b":"Amana","c":"Thermostat","f":"DTST","t":""}];
+let unitaryFilter = { brand: '', category: '', tonnage: '', search: '' };
+// ---- END UNITARY ----
+
 async function fetchData() {
   const [szR, mzR, iduR, comboR, comboR2, comboR3, ahuComboR] = await Promise.all([
     fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
@@ -389,13 +409,22 @@ async function fetchData() {
   loadAddonRules(); // fire-and-forget; rules are used later when tag-alongs load
   renderSingle();
   renderMulti();
+  initUnitary();
 }
 
 function switchTab(t) {
   if (t === 'cats' && !isAdmin()) return; // silently refuse
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ['single','multi','quote','recent','open','cats'][i]===t));
-  document.querySelectorAll('.panel').forEach((el,i) => el.classList.toggle('active', ['panel-single','panel-multi','panel-quote','panel-recent','panel-open','panel-cats'][i]==='panel-'+t));
+  if (t === 'unitary' && !UNITARY_ENABLED) return; // hidden unless URL flag set
+  // Build dynamic tab/panel order including unitary if enabled
+  const tabOrder = UNITARY_ENABLED
+    ? ['single','multi','unitary','quote','recent','open','cats']
+    : ['single','multi','quote','recent','open','cats'];
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabOrder[i]===t));
+  document.querySelectorAll('.panel').forEach(el => {
+    el.classList.toggle('active', el.id === 'panel-' + t);
+  });
   if (t === 'cats') renderCategories();
+  if (t === 'unitary') renderUnitary();
   renderQuote();
 }
 
@@ -832,7 +861,14 @@ function renderQuote() {
 
     let models='';
     let baseTotal=0;
-    if(q.qtype==='sz'){
+    if(q.qtype==='unitary'){
+      const p = getPrice(q.model);
+      baseTotal = p?.price || 0;
+      models=`<div class="q-model-list">
+        <div class="q-model-row"><span class="q-model-label">${q.category}</span><span>${q.display}</span>${q.tonnage?`<span style="color:#999;font-size:10px;white-space:nowrap">${q.tonnage}</span>`:''}${priceBadge(q.model)}<button class="inv-btn" onclick="showInvModal('${q.model}','${q.category}')">Inventory</button></div>
+        ${addonLines}
+      </div>`;
+    } else if(q.qtype==='sz'){
       const iduPrice = getPrice(q.iu);
       const oduPrice = getPrice(q.ou);
       baseTotal = (iduPrice?.price||0) + (oduPrice?.price||0);
@@ -932,7 +968,7 @@ function renderQuote() {
     return `<div class="quote-line">
       <input type="number" class="qty-input" min="1" value="${q.qty}" onchange="changeQty(${qi},+this.value)"/>
       <div class="q-body">
-        <div class="q-name">${q.brand} ${q.series} — ${q.cap}K <span class="badge ${q.qtype==='mz'?'mz':''}">${q.qtype==='mz'?'Multi-zone':'Single zone'}</span></div>
+        <div class="q-name">${q.qtype==='unitary' ? `${q.brand} — ${q.display}` : `${q.brand} ${q.series} — ${q.cap}K`} <span class="badge ${q.qtype==='mz'?'mz':(q.qtype==='unitary'?'unitary':'')}">${q.qtype==='mz'?'Multi-zone':(q.qtype==='unitary'?'Unitary':'Single zone')}</span></div>
         ${models}
         ${totalRow}
         <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
@@ -1265,7 +1301,9 @@ async function loadAddonsForQuoteItem(qi) {
   try {
     // Collect catalog numbers for all products in this system (ODU + IDU(s))
     const catalogs = [];
-    if (q.qtype === 'sz') {
+    if (q.qtype === 'unitary') {
+      if (q.model) catalogs.push({cat: formatCatNumLocal(q.model), label: q.category});
+    } else if (q.qtype === 'sz') {
       if (q.ou) catalogs.push({cat: formatCatNumLocal(q.ou), label: 'ODU'});
       if (q.iu) catalogs.push({cat: formatCatNumLocal(q.iu), label: 'IDU'});
     } else {
@@ -1385,19 +1423,26 @@ function copyQuote() {
   const lines=['DUCTLESS QUOTE — Johnstone Supply NY/CT','Date: '+new Date().toLocaleDateString(),''];
   quote.forEach(q=>{
     lines.push('---');
-    lines.push(`QTY: ${q.qty}  |  ${q.qtype==='mz'?'Multi-zone':'Single zone'}  |  ${q.brand} ${q.series} — ${q.cap}K`);
-    lines.push(`ODU: ${q.ou}`);
-    if(q.qtype==='sz'){
-      lines.push(`IDU: ${q.iu}${q.liq_pipe?`  |  Liq: ${q.liq_pipe}  Gas: ${q.gas_pipe}`:''}`);
-      if(q.ahri) lines.push(`AHRI: ${q.ahri}`);
+    if (q.qtype === 'unitary') {
+      lines.push(`QTY: ${q.qty}  |  Unitary  |  ${q.brand} ${q.category}${q.tonnage?` — ${q.tonnage}`:''}`);
+      lines.push(`Model: ${q.display}`);
     } else {
-      q.zones.forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`));
-      lines.push(`Total indoor: ${q.totalBtu/1000}K`);
+      lines.push(`QTY: ${q.qty}  |  ${q.qtype==='mz'?'Multi-zone':'Single zone'}  |  ${q.brand} ${q.series} — ${q.cap}K`);
+      lines.push(`ODU: ${q.ou}`);
+      if(q.qtype==='sz'){
+        lines.push(`IDU: ${q.iu}${q.liq_pipe?`  |  Liq: ${q.liq_pipe}  Gas: ${q.gas_pipe}`:''}`);
+        if(q.ahri) lines.push(`AHRI: ${q.ahri}`);
+      } else {
+        q.zones.forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`));
+        lines.push(`Total indoor: ${q.totalBtu/1000}K`);
+      }
     }
     (q.addons || []).filter(a => a.checked).forEach(a => {
       lines.push(`Add-on: ${a.catalogNumber}  (Qty ${a.qtyNeeded * q.qty})  —  ${a.description}`);
     });
-    lines.push(`SEER2: ${q.seer2||'—'}  |  HSPF2: ${q.hspf2||'—'}  |  Ref: ${q.ref}`);
+    if (q.qtype !== 'unitary') {
+      lines.push(`SEER2: ${q.seer2||'—'}  |  HSPF2: ${q.hspf2||'—'}  |  Ref: ${q.ref}`);
+    }
     lines.push('');
   });
   navigator.clipboard.writeText(lines.join('\n')).then(()=>{
@@ -1509,7 +1554,9 @@ async function pushToEclipse() {
 
   const lines = [];
   quote.forEach(q => {
-    if (q.qtype === 'sz') {
+    if (q.qtype === 'unitary') {
+      lines.push({ model: q.model, qty: q.qty, description: `${q.brand} ${q.category}${q.tonnage?` ${q.tonnage}`:''}` });
+    } else if (q.qtype === 'sz') {
       lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
       lines.push({ model: q.iu, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K IDU` });
     } else {
@@ -1645,7 +1692,9 @@ async function getPricing() {
   // Collect all catalog numbers from the quote
   const catalogNumbers = [];
   quote.forEach(q => {
-    if (q.qtype === 'sz') {
+    if (q.qtype === 'unitary') {
+      if (q.model) catalogNumbers.push(formatCatNum(q.model));
+    } else if (q.qtype === 'sz') {
       catalogNumbers.push(formatCatNum(q.ou), formatCatNum(q.iu));
     } else {
       catalogNumbers.push(formatCatNum(q.ou));
@@ -2313,7 +2362,9 @@ async function loadTagAlongs() {
   // Collect all unique catalog numbers from the quote
   const catalogNumbers = [];
   quote.forEach(q => {
-    if (q.qtype === 'sz') {
+    if (q.qtype === 'unitary') {
+      if (q.model) catalogNumbers.push(formatCatNumLocal(q.model));
+    } else if (q.qtype === 'sz') {
       if (q.ou) catalogNumbers.push(formatCatNumLocal(q.ou));
       if (q.iu) catalogNumbers.push(formatCatNumLocal(q.iu));
     } else {
@@ -2477,6 +2528,107 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 });
+
+
+// ============================================================
+// UNITARY TAB
+// ============================================================
+function initUnitary() {
+  if (!UNITARY_ENABLED) return;
+  document.getElementById('tab-unitary').style.display = '';
+  // Populate category dropdown
+  const cats = [...new Set(UNITARY_CATALOG.map(it => it.c))].sort();
+  const catSel = document.getElementById('u-cat');
+  cats.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c; opt.textContent = c;
+    catSel.appendChild(opt);
+  });
+  // Populate tonnage dropdown (unique non-empty values)
+  const tons = [...new Set(UNITARY_CATALOG.map(it => it.t).filter(Boolean))];
+  // Sort: ton values first numerically, then AFUE/BTU stuff alphabetically
+  tons.sort((a,b) => {
+    const an = parseFloat(a), bn = parseFloat(b);
+    if (!isNaN(an) && !isNaN(bn) && a.includes('Ton') && b.includes('Ton')) return an - bn;
+    if (a.includes('Ton') && !b.includes('Ton')) return -1;
+    if (!a.includes('Ton') && b.includes('Ton')) return 1;
+    return a.localeCompare(b);
+  });
+  const tonSel = document.getElementById('u-ton');
+  tons.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t; opt.textContent = t;
+    tonSel.appendChild(opt);
+  });
+}
+
+function renderUnitary() {
+  const brand = document.getElementById('u-brand').value;
+  const cat = document.getElementById('u-cat').value;
+  const ton = document.getElementById('u-ton').value;
+  const q = (document.getElementById('u-search').value || '').toLowerCase().trim();
+
+  const filtered = UNITARY_CATALOG.filter(it => {
+    if (brand && it.b !== brand) return false;
+    if (cat && it.c !== cat) return false;
+    if (ton && it.t !== ton) return false;
+    if (q && !it.m.toLowerCase().includes(q) && !it.d.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const el = document.getElementById('unitary-results');
+  if (!filtered.length) {
+    el.innerHTML = '<div class="no-res">No equipment matches.</div>';
+    return;
+  }
+
+  // Group by category for display
+  const byCat = {};
+  filtered.forEach(it => { (byCat[it.c] = byCat[it.c] || []).push(it); });
+
+  el.innerHTML = Object.keys(byCat).sort().map(catName => {
+    const items = byCat[catName];
+    const rows = items.map(it => {
+      const inQ = quote.some(qi => qi.qtype === 'unitary' && qi.model === it.m);
+      const tonBadge = it.t ? `<span style="color:#666;font-size:11px;margin-left:8px">${it.t}</span>` : '';
+      return `<div class="sys-card${inQ ? ' in-quote' : ''}" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:14px">${it.d}${tonBadge}</div>
+          <div style="font-size:11px;color:#999;margin-top:2px">${it.b} • ${it.f}</div>
+        </div>
+        <button onclick="toggleUnitary('${it.m}')" class="add-btn" style="padding:6px 14px;border-radius:6px;border:1px solid ${inQ?'#dc2626':'#0d6efd'};background:${inQ?'#fee2e2':'#0d6efd'};color:${inQ?'#dc2626':'#fff'};font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap">${inQ ? 'Remove' : 'Add'}</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:18px">
+      <div style="font-size:11px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">${catName} (${items.length})</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function toggleUnitary(model) {
+  const idx = quote.findIndex(q => q.qtype === 'unitary' && q.model === model);
+  if (idx >= 0) {
+    quote.splice(idx, 1);
+  } else {
+    const it = UNITARY_CATALOG.find(x => x.m === model);
+    if (!it) return;
+    quote.push({
+      id: 'unitary-' + model + '-' + Date.now(),
+      qtype: 'unitary',
+      model: it.m,
+      display: it.d,
+      brand: it.b,
+      category: it.c,
+      family: it.f,
+      tonnage: it.t,
+      qty: 1,
+    });
+  }
+  updateCount();
+  renderUnitary();
+  renderQuote();
+}
 
 </script>
 <div class="inv-modal-overlay" id="inv-modal-overlay" onclick="closeInvModal()">
