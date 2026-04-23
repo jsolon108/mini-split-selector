@@ -289,6 +289,7 @@ select:focus,input:focus{outline:none;border-color:#999}
       <select id="u-brand" onchange="renderUnitary()"><option value="">All brands</option></select>
       <select id="u-cat" onchange="renderUnitary()" style="display:none"><option value="">All categories</option></select>
       <select id="u-ton" onchange="renderUnitary()"><option value="">All tonnage / capacity</option></select>
+      <select id="u-afue" onchange="renderUnitary()" style="display:none"><option value="">All AFUE</option><option value="80">80% AFUE</option><option value="96">96% AFUE</option></select>
       <input id="u-search" type="text" placeholder="Search by model #" oninput="renderUnitary()" style="flex:2"/>
       <button onclick="pickUnitaryType(null)" style="padding:0 12px;border-radius:6px;border:1px solid #ddd;background:#f5f5f5;color:#666;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap">← Back</button>
     </div>
@@ -2360,6 +2361,14 @@ fetchData();
 // ============================================================
 
 // Map each picked system type to: (a) equipment categories it shows, (b) matchup system_types to display
+// Extract AFUE rating ('80' or '96') from a furnace model number — returns null if not a furnace.
+// Amana convention: AR9S80/AR9T80/ARVT80 → 80% AFUE; AR9T96/ARVT96 → 96% AFUE.
+function furnaceAfue(model) {
+  if (!model) return null;
+  const m = /^(?:AR9[ST]|ARVT)(80|96)/.exec(model);
+  return m ? m[1] : null;
+}
+
 const UNITARY_TYPE_MAP = {
   cooling: {
     label: 'Cooling Only',
@@ -2460,6 +2469,12 @@ function pickUnitaryType(type) {
   tonSel.innerHTML = `<option value="">${tonLabel}</option>` + tons.map(t => `<option>${escHtml(t)}</option>`).join('');
   tonSel.value = '';
 
+  // AFUE dropdown — shown for furnace-involved types
+  const afueSel = document.getElementById('u-afue');
+  const showAfue = (type === 'condfurnace' || type === 'dualfuel' || type === 'furnace');
+  afueSel.style.display = showAfue ? '' : 'none';
+  afueSel.value = '';
+
   // Reset search + brand selections
   brandSel.value = '';
   document.getElementById('u-search').value = '';
@@ -2478,17 +2493,31 @@ function renderUnitary() {
   const brand = document.getElementById('u-brand').value;
   const cat = document.getElementById('u-cat').value;
   const ton = document.getElementById('u-ton').value;
+  const afue = document.getElementById('u-afue').value; // '', '80', '96'
   const q = (document.getElementById('u-search').value || '').toLowerCase().trim();
 
   // For matchup-driven types, filter to only outdoor units that have at least one matchup of an allowed type
+  // When AFUE is selected for condfurnace/dualfuel, also require at least one matchup with a furnace of that AFUE
   let relevantOutdoorModels = null;
   if (cfg.outdoorIsExpandable && cfg.matchupTypes.length) {
     relevantOutdoorModels = new Set();
     const allowedTypes = new Set(cfg.matchupTypes);
-    for (const model of Object.keys(UNITARY_MATCHUPS_COUNT_BY_TYPE)) {
-      const byType = UNITARY_MATCHUPS_COUNT_BY_TYPE[model];
+    // AFUE filter on matchups only applies to gas/electric or dual fuel types
+    const needsAfue = afue && (unitaryType === 'condfurnace' || unitaryType === 'dualfuel');
+    for (const outdoorModel of Object.keys(UNITARY_MATCHUPS_COUNT_BY_TYPE)) {
+      const byType = UNITARY_MATCHUPS_COUNT_BY_TYPE[outdoorModel];
       for (const t of Object.keys(byType)) {
-        if (allowedTypes.has(t)) { relevantOutdoorModels.add(model); break; }
+        if (allowedTypes.has(t)) {
+          if (needsAfue) {
+            // Must also have at least one matchup with a furnace of requested AFUE
+            const matchups = UNITARY_MATCHUPS[outdoorModel] || [];
+            const hasAfue = matchups.some(m => allowedTypes.has(m.system_type) && furnaceAfue(m.air_handler) === afue);
+            if (hasAfue) relevantOutdoorModels.add(outdoorModel);
+          } else {
+            relevantOutdoorModels.add(outdoorModel);
+          }
+          break;
+        }
       }
     }
   }
@@ -2499,6 +2528,10 @@ function renderUnitary() {
     if (brand && it.b !== brand) return false;
     if (cat && it.c !== cat) return false;
     if (ton && it.t !== ton) return false;
+    // For furnace-only type, filter by AFUE extracted from model
+    if (afue && unitaryType === 'furnace') {
+      if (furnaceAfue(it.m) !== afue) return false;
+    }
     if (q && !it.m.toLowerCase().includes(q) && !it.d.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -2608,9 +2641,9 @@ function classifyAH(ahModel) {
 
 const AH_GROUP_ORDER = ['standard', 'hydronic', 'v120'];
 const AH_GROUP_LABELS = {
-  standard: 'Standard Air Handlers',
+  standard: 'Air Handlers (230V)',
   hydronic: 'Hydronic (ADP)',
-  v120: '115V / 120V',
+  v120: 'Air Handlers (115V)',
 };
 
 function renderMatchups(outdoorModel) {
@@ -2620,9 +2653,16 @@ function renderMatchups(outdoorModel) {
   // Filter to only system_types relevant to the picked unitary type
   const cfg = unitaryType ? UNITARY_TYPE_MAP[unitaryType] : null;
   const allowed = (cfg && cfg.matchupTypes.length) ? new Set(cfg.matchupTypes) : null;
-  const shown = allowed ? matches.filter(m => allowed.has(m.system_type)) : matches;
+  let shown = allowed ? matches.filter(m => allowed.has(m.system_type)) : matches;
 
-  if (!shown.length) return `<div style="color:#888;font-size:12px;padding:6px">No ${cfg ? cfg.label.toLowerCase() : ''} matchups for this unit.</div>`;
+  // AFUE filter for condfurnace / dualfuel — trim matchups whose furnace doesn't match
+  const afueSel = document.getElementById('u-afue');
+  const afue = afueSel ? afueSel.value : '';
+  if (afue && (unitaryType === 'condfurnace' || unitaryType === 'dualfuel')) {
+    shown = shown.filter(m => furnaceAfue(m.air_handler) === afue);
+  }
+
+  if (!shown.length) return `<div style="color:#888;font-size:12px;padding:6px">No ${cfg ? cfg.label.toLowerCase() : ''} matchups for this unit${afue ? ` at ${afue}% AFUE` : ''}.</div>`;
 
   // Group by (system_type, AH-class)
   const bySys = {};
