@@ -189,29 +189,6 @@ select:focus,input:focus{outline:none;border-color:#999}
 .user-badge span{font-weight:500;color:#185FA5}
 .user-badge button{font-size:11px;color:#aaa;background:none;border:none;cursor:pointer;margin-left:6px}
 
-/* ── Chatbot Panel ─────────────────────────────────────────────── */
-.chat-panel{position:fixed;bottom:20px;right:20px;width:380px;background:#fff;border:1px solid #e5e5e5;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.15);display:none;flex-direction:column;z-index:50}
-.chat-panel.collapsed .chat-messages,.chat-panel.collapsed .chat-input-row{display:none}
-.chat-header{display:flex;align-items:center;gap:8px;padding:12px 16px;cursor:pointer;flex-shrink:0;background:#185FA5;border-radius:14px 14px 0 0;user-select:none}
-.chat-panel.collapsed .chat-header{border-radius:14px}
-.chat-header-title{font-size:13px;font-weight:600;color:#fff;flex:1}
-.chat-header-sub{font-size:11px;color:rgba(255,255,255,.7)}
-.chat-toggle{font-size:14px;color:#fff;background:none;border:none;cursor:pointer;padding:0;line-height:1}
-.chat-messages{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-height:180px;max-height:360px}
-.chat-msg{max-width:88%;padding:8px 12px;border-radius:10px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
-.chat-msg.assistant{background:#f5f5f3;color:#1a1a1a;align-self:flex-start;border-radius:4px 10px 10px 10px}
-.chat-msg.user{background:#185FA5;color:#fff;align-self:flex-end;border-radius:10px 4px 10px 10px}
-.chat-input-row{display:flex;gap:6px;padding:10px 12px;border-top:1px solid #f0f0f0;flex-shrink:0}
-.chat-input{flex:1;height:34px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:12px;font-family:inherit}
-.chat-input:focus{outline:none;border-color:#185FA5}
-.chat-send-btn{height:34px;padding:0 14px;background:#185FA5;border:none;border-radius:6px;color:#fff;font-size:12px;cursor:pointer;font-weight:500}
-.chat-send-btn:disabled{opacity:.5;cursor:not-allowed}
-.chat-suggestion{background:#e8f0fd;color:#185FA5;border:1px solid #c5d8f5;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;text-align:left;width:100%;font-family:inherit}
-.chat-suggestion:hover{background:#d0e2fa}
-.addon-card{background:#f9f9f8;border:1px solid #e5e5e5;border-radius:8px;padding:8px 10px;align-self:flex-start;width:100%}
-.addon-card-title{font-weight:600;color:#1a1a1a;margin-bottom:2px;font-size:11px}
-.addon-card-model{font-family:monospace;color:#185FA5;font-size:10px}
-.addon-card-inv{color:#0f6e56;font-size:10px}
 </style>
 </head>
 <body>
@@ -2373,235 +2350,6 @@ function eclipseLogout() {
 
 fetchData();
 
-// ── Ductless Quote Chatbot (Tag-Along based) ───────────────────────
-
-let chatOpen = false;
-let chatThinking = false;
-
-function toggleChat() {
-  chatOpen = !chatOpen;
-  const panel = document.getElementById('chat-panel');
-  panel.classList.toggle('collapsed', !chatOpen);
-  document.getElementById('chat-toggle-btn').textContent = chatOpen ? '▾' : '▴';
-  if (chatOpen) chatGreet();
-}
-
-function chatGreet() {
-  const el = document.getElementById('chat-messages');
-  el.innerHTML = '';
-  if (!quote.length) {
-    appendChatMsg('assistant', 'Add systems to your quote and I\'ll pull Eclipse add-on suggestions based on those exact products.');
-    return;
-  }
-  appendChatMsg('assistant', `Found ${quote.length} system${quote.length > 1 ? 's' : ''} in your quote. Click below to load Eclipse add-ons:`);
-  appendSuggestions([
-    { label: '📦 Load Eclipse add-ons for my quote', fn: () => loadTagAlongs() },
-    { label: '🔍 Search Eclipse manually', fn: () => showSearchPrompt() },
-  ]);
-}
-
-function appendChatMsg(role, text) {
-  const el = document.getElementById('chat-messages');
-  const div = document.createElement('div');
-  div.className = `chat-msg ${role}`;
-  div.textContent = text;
-  el.appendChild(div);
-  el.scrollTop = el.scrollHeight;
-  return div;
-}
-
-function appendSuggestions(suggestions) {
-  const el = document.getElementById('chat-messages');
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'align-self:flex-start;width:100%;display:flex;flex-direction:column;gap:4px';
-  suggestions.forEach(s => {
-    const btn = document.createElement('button');
-    btn.className = 'chat-suggestion';
-    btn.textContent = s.label;
-    btn.onclick = () => { wrap.remove(); s.fn(); };
-    wrap.appendChild(btn);
-  });
-  el.appendChild(wrap);
-  el.scrollTop = el.scrollHeight;
-}
-
-function showSearchPrompt() {
-  appendChatMsg('assistant', 'Type a product name or keyword below to search Eclipse.');
-}
-
-async function loadTagAlongs() {
-  if (chatThinking) return;
-  chatThinking = true;
-
-  // Collect all unique catalog numbers from the quote
-  const catalogNumbers = [];
-  quote.forEach(q => {
-    if (q.qtype === 'unitary') {
-      if (q.model) catalogNumbers.push(formatCatNumLocal(q.model));
-    } else if (q.qtype === 'sz') {
-      if (q.ou) catalogNumbers.push(formatCatNumLocal(q.ou));
-      if (q.iu) catalogNumbers.push(formatCatNumLocal(q.iu));
-    } else {
-      if (q.ou) catalogNumbers.push(formatCatNumLocal(q.ou));
-      (q.zones || []).forEach(z => { if (z.model) catalogNumbers.push(formatCatNumLocal(z.model)); });
-    }
-  });
-
-  const unique = [...new Set(catalogNumbers.filter(Boolean))];
-  appendChatMsg('assistant', `Checking ${unique.length} products in Eclipse for tag-along accessories...`);
-
-  // Track all tag-alongs found across all products
-  const allTagAlongs = {};
-
-  for (const catNum of unique) {
-    try {
-      const res = await fetch('/api/eclipse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'searchProducts',
-          sessionToken: eclipseSession.token,
-          keyword: catNum
-        })
-      });
-      const data = await res.json();
-      const products = data.results || [];
-
-      for (const p of products) {
-        // Process tagAlongs
-        for (const ta of (p.tagAlongs || [])) {
-          const id = ta.tagAlongProductId || ta.id || ta.productId;
-          if (id && !allTagAlongs[id]) {
-            allTagAlongs[id] = { id, sourceModel: catNum };
-          }
-        }
-      }
-    } catch(e) {}
-  }
-
-  const tagAlongIds = Object.keys(allTagAlongs);
-
-  if (!tagAlongIds.length) {
-    appendChatMsg('assistant', 'No tag-along accessories found in Eclipse for these products. Try searching manually below.');
-    chatThinking = false;
-    return;
-  }
-
-  appendChatMsg('assistant', `Found ${tagAlongIds.length} Eclipse tag-along product${tagAlongIds.length > 1 ? 's' : ''}. Loading inventory...`);
-
-  // Now look up each tag-along product
-  const el = document.getElementById('chat-messages');
-
-  for (const taId of tagAlongIds.slice(0, 10)) {
-    const card = document.createElement('div');
-    card.className = 'addon-card';
-    card.innerHTML = `<div class="addon-card-model">Loading product ${taId}...</div>`;
-    el.appendChild(card);
-    el.scrollTop = el.scrollHeight;
-
-    try {
-      // Get product details
-      const detailRes = await fetch('/api/eclipse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'getProduct',
-          sessionToken: eclipseSession.token,
-          productId: taId
-        })
-      });
-      const detail = await detailRes.json();
-
-      if (detail.catalogNumber) {
-        card.innerHTML = `
-          <div class="addon-card-title">${detail.description || detail.catalogNumber}</div>
-          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:4px">
-            <span class="addon-card-model">${detail.catalogNumber}</span>
-            <span class="addon-card-inv">${detail.qty != null ? detail.qty + ' avail total' : ''}</span>
-          </div>`;
-      } else {
-        card.remove();
-      }
-    } catch(e) {
-      card.remove();
-    }
-  }
-
-  el.scrollTop = el.scrollHeight;
-  chatThinking = false;
-
-  appendSuggestions([
-    { label: '🔄 Reload add-ons', fn: () => loadTagAlongs() },
-    { label: '🔍 Search Eclipse manually', fn: () => showSearchPrompt() },
-  ]);
-}
-
-async function searchAddon(keyword) {
-  if (chatThinking) return;
-  chatThinking = true;
-
-  const el = document.getElementById('chat-messages');
-  const card = document.createElement('div');
-  card.className = 'addon-card';
-  card.innerHTML = `<div class="addon-card-title">Search: "${keyword}"</div><div class="addon-card-model">Searching Eclipse...</div>`;
-  el.appendChild(card);
-  el.scrollTop = el.scrollHeight;
-
-  try {
-    const res = await fetch('/api/eclipse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'searchProducts',
-        sessionToken: eclipseSession.token,
-        keyword
-      })
-    });
-    const data = await res.json();
-    const products = data.results || [];
-
-    if (!products.length) {
-      card.innerHTML = `<div class="addon-card-title">No results for "${keyword}"</div>`;
-    } else {
-      card.innerHTML = `<div class="addon-card-title">Results for "${keyword}"</div>` +
-        products.slice(0, 5).map(p => `
-          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;border-top:1px solid #eee;gap:6px">
-            <span class="addon-card-model" style="flex-shrink:0">${p.catalogNumber || p.id}</span>
-            <span style="font-size:10px;color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</span>
-            <span class="addon-card-inv" style="flex-shrink:0">${p.qty != null ? p.qty + ' avail' : ''}</span>
-          </div>`).join('');
-    }
-  } catch(err) {
-    card.innerHTML = `<div class="addon-card-title" style="color:#E24B4A">Error searching Eclipse</div>`;
-  }
-
-  el.scrollTop = el.scrollHeight;
-  chatThinking = false;
-}
-
-function chatKeydown(e) {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    const input = document.getElementById('chat-input');
-    const text = input.value.trim();
-    if (!text) return;
-    input.value = '';
-    appendChatMsg('user', text);
-    searchAddon(text);
-  }
-}
-
-// Show/hide chat panel when switching tabs
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      setTimeout(() => {
-        const panel = document.getElementById('chat-panel');
-        if (panel) panel.style.display = document.getElementById('panel-quote')?.classList.contains('active') ? 'flex' : 'none';
-      }, 0);
-    });
-  });
-});
 
 
 // ============================================================
@@ -2645,7 +2393,7 @@ const UNITARY_TYPE_MAP = {
   },
   components: {
     label: 'Browse Components',
-    equipCats: ['Air Handler', 'Air Handler (ADP)', 'Coil (Cased Upflow/Downflow)', 'Coil (Horizontal)', 'Heat Kit', 'Modular Blower', 'Thermostat', 'Accessory'],
+    equipCats: ['Air Handler', 'Air Handler (ADP)', 'Coil (Cased Upflow/Downflow)', 'Coil (Horizontal)', 'Modular Blower', 'Thermostat', 'Accessory'],
     matchupTypes: [],
     outdoorIsExpandable: false,
   },
@@ -2897,16 +2645,12 @@ function renderMatchups(outdoorModel) {
         const cap = m.ccap2 ? `${m.ccap2} BTU` : '';
         const ahLine = m.air_handler ? `AH: <strong>${m.air_handler}</strong>${m.ah_dims?` <span style="color:#888">(${m.ah_dims})</span>`:''}` : '';
         const coilLine = m.coil ? `Coil: <strong>${m.coil}</strong>${m.coil_dims?` <span style="color:#888">(${m.coil_dims})</span>`:''}` : '';
-        const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong> <span style="color:#888">(optional)</span>` : '';
-        const componentLines = [ahLine, coilLine, hkLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
-        // System button adds outdoor + AH + coil (no HK). HK is a separate button if present.
-        const hkBtn = m.heat_kit ? `<button onclick="addMatchupHK(${m.id})" title="Add the optional heat kit ${escHtml(m.heat_kit)} to the quote" style="padding:5px 8px;border-radius:6px;border:1px solid #f59e0b;background:#fff;color:#92400e;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">+ HK</button>` : '';
+        const componentLines = [ahLine, coilLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
         return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;font-size:12px">
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;color:#333">AHRI ${m.ahri_ref} &nbsp;·&nbsp; ${ratings.join(' / ')}${cap?' &nbsp;·&nbsp; '+cap:''}</div>
             <div style="margin-top:3px;color:#555;line-height:1.5">${componentLines}</div>
           </div>
-          ${hkBtn}
           <button onclick="addMatchupSystem(${m.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #16a34a;background:#16a34a;color:#fff;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">Add System</button>
         </div>`;
       }).join('');
@@ -2962,7 +2706,6 @@ function addMatchupSystem(matchupId) {
 
   let msg = `Added ${added} component${added===1?'':'s'} from AHRI ${matchup.ahri_ref}`;
   if (alreadyInQuote > 0) msg += ` (${alreadyInQuote} already in quote, skipped)`;
-  if (matchup.heat_kit) msg += `. Heat kit ${matchup.heat_kit} is optional — click "+ HK" to add it.`;
   console.log(msg);
 
   updateCount();
@@ -2970,36 +2713,6 @@ function addMatchupSystem(matchupId) {
   renderQuote();
 }
 
-function addMatchupHK(matchupId) {
-  let matchup = null;
-  for (const k of Object.keys(UNITARY_MATCHUPS)) {
-    const m = (UNITARY_MATCHUPS[k] || []).find(x => x.id === matchupId);
-    if (m) { matchup = m; break; }
-  }
-  if (!matchup || !matchup.heat_kit) { console.error('No heat kit on matchup:', matchupId); return; }
-
-  const model = matchup.heat_kit;
-  if (quote.some(q => q.qtype === 'unitary' && q.model === model)) {
-    console.log(`Heat kit ${model} already in quote.`);
-    return;
-  }
-  const it = UNITARY_CATALOG.find(x => x.m === model);
-  quote.push({
-    id: 'unitary-' + model + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
-    qtype: 'unitary',
-    model,
-    display: it?.d || model,
-    brand: it?.b || 'Amana',
-    category: it?.c || 'Heat Kit',
-    family: it?.f || '',
-    tonnage: it?.t || '',
-    qty: 1,
-    ahri_ref: matchup.ahri_ref,
-  });
-  updateCount();
-  renderUnitary();
-  renderQuote();
-}
 
 // ============================================================
 // CATALOG IMPORT (admin)
@@ -3394,20 +3107,5 @@ function chunkArray(arr, size) {
   </div>
 
 
-<div class="chat-panel collapsed" id="chat-panel" style="display:none">
-  <div class="chat-header" onclick="toggleChat()">
-    <span style="font-size:16px">💬</span>
-    <div style="flex:1">
-      <div class="chat-header-title">Quote Assistant 🚧</div>
-      <div class="chat-header-sub">Under construction — coming soon</div>
-    </div>
-    <button class="chat-toggle" id="chat-toggle-btn">▴</button>
-  </div>
-  <div class="chat-messages" id="chat-messages"></div>
-  <div class="chat-input-row">
-    <input class="chat-input" id="chat-input" placeholder="Search Eclipse by keyword..." onkeydown="chatKeydown(event)" />
-    <button class="chat-send-btn" id="chat-send-btn" onclick="chatKeydown({key:'Enter',preventDefault:()=>{}})">Go</button>
-  </div>
-</div>
 </body>
 </html>
