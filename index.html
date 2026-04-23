@@ -415,6 +415,7 @@ let UNITARY_CATALOG = []; // populated from Supabase in fetchData()
 let UNITARY_MATCHUPS = {}; // outdoor_model -> array of matchups (lazy-loaded)
 let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> total count
 let UNITARY_MATCHUPS_COUNT_BY_TYPE = {}; // outdoor_model -> {system_type: count}
+let UNITARY_VOLTAGE_120 = new Set(); // set of model strings flagged as 120V
 let unitaryExpanded = {}; // outdoor_model -> bool (UI state for which cards are expanded)
 let unitaryType = null; // null | 'cooling' | 'heatpump' | 'condfurnace' | 'dualfuel' | 'furnace' | 'components'
 let unitaryFilter = { brand: '', category: '', tonnage: '', search: '' };
@@ -424,19 +425,21 @@ async function fetchData() {
   // Fetch unitary catalog + matchup counts in parallel if enabled
   if (UNITARY_ENABLED) {
     Promise.all([
-      fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120&order=category,family,model`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
     ]).then(([catalog, matchupRows]) => {
-      UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
+      UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120}));
+      // Build quick-lookup for voltage flag
+      UNITARY_VOLTAGE_120 = new Set(UNITARY_CATALOG.filter(it => it.v120).map(it => it.m));
       // Tally matchup counts by outdoor model AND by (outdoor_model, system_type)
       UNITARY_MATCHUPS_COUNT = {};
-      UNITARY_MATCHUPS_COUNT_BY_TYPE = {}; // {outdoor_model: {system_type: count}}
+      UNITARY_MATCHUPS_COUNT_BY_TYPE = {};
       matchupRows.forEach(r => {
         UNITARY_MATCHUPS_COUNT[r.outdoor_model] = (UNITARY_MATCHUPS_COUNT[r.outdoor_model] || 0) + 1;
         if (!UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model]) UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model] = {};
         UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] = (UNITARY_MATCHUPS_COUNT_BY_TYPE[r.outdoor_model][r.system_type] || 0) + 1;
       });
-      console.log('[Unitary] Loaded', UNITARY_CATALOG.length, 'items,', matchupRows.length, 'matchups across', Object.keys(UNITARY_MATCHUPS_COUNT).length, 'outdoor models');
+      console.log('[Unitary] Loaded', UNITARY_CATALOG.length, 'items,', matchupRows.length, 'matchups,', UNITARY_VOLTAGE_120.size, '120V-flagged');
       initUnitary();
     }).catch(err => console.error('[Unitary] Failed to load:', err));
   }
@@ -2843,6 +2846,22 @@ async function toggleMatchups(outdoorModel) {
   renderUnitary();
 }
 
+// Classify an air handler model into a group for display.
+// Returns one of: 'hydronic' | 'v120' | 'standard'
+function classifyAH(ahModel) {
+  if (!ahModel) return 'standard';
+  if (ahModel.startsWith('B')) return 'hydronic';
+  if (UNITARY_VOLTAGE_120.has(ahModel)) return 'v120';
+  return 'standard';
+}
+
+const AH_GROUP_ORDER = ['standard', 'hydronic', 'v120'];
+const AH_GROUP_LABELS = {
+  standard: 'Standard Air Handlers',
+  hydronic: 'Hydronic (ADP)',
+  v120: '115V / 120V',
+};
+
 function renderMatchups(outdoorModel) {
   const matches = UNITARY_MATCHUPS[outdoorModel];
   if (!matches) return '<div style="color:#888;font-size:12px;padding:6px">Loading matchups...</div>';
@@ -2854,32 +2873,44 @@ function renderMatchups(outdoorModel) {
 
   if (!shown.length) return `<div style="color:#888;font-size:12px;padding:6px">No ${cfg ? cfg.label.toLowerCase() : ''} matchups for this unit.</div>`;
 
-  // Group by system type
+  // Group by (system_type, AH-class)
   const bySys = {};
-  shown.forEach(m => { (bySys[m.system_type] = bySys[m.system_type] || []).push(m); });
+  shown.forEach(m => {
+    const sys = m.system_type;
+    if (!bySys[sys]) bySys[sys] = { standard: [], hydronic: [], v120: [] };
+    bySys[sys][classifyAH(m.air_handler)].push(m);
+  });
 
-  return Object.keys(bySys).map(sysType => {
-    const rows = bySys[sysType].map(m => {
-      const ratings = [];
-      if (m.seer2) ratings.push(`SEER2 ${m.seer2}`);
-      if (m.eer2) ratings.push(`EER2 ${m.eer2}`);
-      if (m.hspf2) ratings.push(`HSPF2 ${m.hspf2}`);
-      const cap = m.ccap2 ? `${m.ccap2} BTU` : '';
-      const ahLine = m.air_handler ? `AH: <strong>${m.air_handler}</strong>${m.ah_dims?` <span style="color:#888">(${m.ah_dims})</span>`:''}` : '';
-      const coilLine = m.coil ? `Coil: <strong>${m.coil}</strong>${m.coil_dims?` <span style="color:#888">(${m.coil_dims})</span>`:''}` : '';
-      const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong>` : '';
-      const componentLines = [ahLine, coilLine, hkLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
-      return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;font-size:12px">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;color:#333">AHRI ${m.ahri_ref} &nbsp;·&nbsp; ${ratings.join(' / ')}${cap?' &nbsp;·&nbsp; '+cap:''}</div>
-          <div style="margin-top:3px;color:#555;line-height:1.5">${componentLines}</div>
-        </div>
-        <button onclick="addMatchupSystem(${m.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #16a34a;background:#16a34a;color:#fff;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">Add System</button>
-      </div>`;
+  return Object.keys(bySys).sort().map(sysType => {
+    const groups = bySys[sysType];
+    const groupHtml = AH_GROUP_ORDER.map(groupKey => {
+      const groupRows = groups[groupKey];
+      if (!groupRows.length) return '';
+      const rows = groupRows.map(m => {
+        const ratings = [];
+        if (m.seer2) ratings.push(`SEER2 ${m.seer2}`);
+        if (m.eer2) ratings.push(`EER2 ${m.eer2}`);
+        if (m.hspf2) ratings.push(`HSPF2 ${m.hspf2}`);
+        const cap = m.ccap2 ? `${m.ccap2} BTU` : '';
+        const ahLine = m.air_handler ? `AH: <strong>${m.air_handler}</strong>${m.ah_dims?` <span style="color:#888">(${m.ah_dims})</span>`:''}` : '';
+        const coilLine = m.coil ? `Coil: <strong>${m.coil}</strong>${m.coil_dims?` <span style="color:#888">(${m.coil_dims})</span>`:''}` : '';
+        const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong>` : '';
+        const componentLines = [ahLine, coilLine, hkLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
+        return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;font-size:12px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;color:#333">AHRI ${m.ahri_ref} &nbsp;·&nbsp; ${ratings.join(' / ')}${cap?' &nbsp;·&nbsp; '+cap:''}</div>
+            <div style="margin-top:3px;color:#555;line-height:1.5">${componentLines}</div>
+          </div>
+          <button onclick="addMatchupSystem(${m.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #16a34a;background:#16a34a;color:#fff;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">Add System</button>
+        </div>`;
+      }).join('');
+      return `<div style="margin-top:8px;margin-bottom:2px;padding:4px 6px;background:#eef2ff;border-radius:4px;font-size:10px;font-weight:700;color:#3730a3;text-transform:uppercase;letter-spacing:0.5px">
+        ${AH_GROUP_LABELS[groupKey]} (${groupRows.length})
+      </div>${rows}`;
     }).join('');
     return `<div style="margin-bottom:10px">
       <div style="font-size:10px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;padding:0 4px">${sysType}</div>
-      ${rows}
+      ${groupHtml}
     </div>`;
   }).join('');
 }
@@ -3111,10 +3142,11 @@ async function confirmImport() {
 
     if (UNITARY_ENABLED) {
       const [catalogRes, matchRes] = await Promise.all([
-        fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage&order=category,family,model`, { headers: H }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120&order=category,family,model`, { headers: H }).then(r => r.json()),
         fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
       ]);
-      UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || ''}));
+      UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120}));
+      UNITARY_VOLTAGE_120 = new Set(UNITARY_CATALOG.filter(it => it.v120).map(it => it.m));
       UNITARY_MATCHUPS_COUNT = {};
       UNITARY_MATCHUPS_COUNT_BY_TYPE = {};
       matchRes.forEach(r => {
