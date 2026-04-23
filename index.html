@@ -2496,28 +2496,17 @@ function renderUnitary() {
   const afue = document.getElementById('u-afue').value; // '', '80', '96'
   const q = (document.getElementById('u-search').value || '').toLowerCase().trim();
 
-  // For matchup-driven types, filter to only outdoor units that have at least one matchup of an allowed type
-  // When AFUE is selected for condfurnace/dualfuel, also require at least one matchup with a furnace of that AFUE
+  // For matchup-driven types, filter to only outdoor units that have at least one matchup of an allowed type.
+  // Note: AFUE is intentionally NOT applied here — outdoor units aren't rated by AFUE. The AFUE dropdown
+  // only narrows which matchups appear inside an expanded outdoor unit's panel.
   let relevantOutdoorModels = null;
   if (cfg.outdoorIsExpandable && cfg.matchupTypes.length) {
     relevantOutdoorModels = new Set();
     const allowedTypes = new Set(cfg.matchupTypes);
-    // AFUE filter on matchups only applies to gas/electric or dual fuel types
-    const needsAfue = afue && (unitaryType === 'condfurnace' || unitaryType === 'dualfuel');
     for (const outdoorModel of Object.keys(UNITARY_MATCHUPS_COUNT_BY_TYPE)) {
       const byType = UNITARY_MATCHUPS_COUNT_BY_TYPE[outdoorModel];
       for (const t of Object.keys(byType)) {
-        if (allowedTypes.has(t)) {
-          if (needsAfue) {
-            // Must also have at least one matchup with a furnace of requested AFUE
-            const matchups = UNITARY_MATCHUPS[outdoorModel] || [];
-            const hasAfue = matchups.some(m => allowedTypes.has(m.system_type) && furnaceAfue(m.air_handler) === afue);
-            if (hasAfue) relevantOutdoorModels.add(outdoorModel);
-          } else {
-            relevantOutdoorModels.add(outdoorModel);
-          }
-          break;
-        }
+        if (allowedTypes.has(t)) { relevantOutdoorModels.add(outdoorModel); break; }
       }
     }
   }
