@@ -425,10 +425,10 @@ async function fetchData() {
   // Fetch unitary catalog + matchup counts in parallel if enabled
   if (UNITARY_ENABLED) {
     Promise.all([
-      fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120&order=category,family,model`, { headers: H }).then(r => r.json()),
+      fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120,description,dims,line_connections&order=category,family,model`, { headers: H }).then(r => r.json()),
       fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
     ]).then(([catalog, matchupRows]) => {
-      UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120}));
+      UNITARY_CATALOG = catalog.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120, desc: r.description || '', dims: r.dims || '', lc: r.line_connections || ''}));
       // Build quick-lookup for voltage flag
       UNITARY_VOLTAGE_120 = new Set(UNITARY_CATALOG.filter(it => it.v120).map(it => it.m));
       // Tally matchup counts by outdoor model AND by (outdoor_model, system_type)
@@ -2783,7 +2783,10 @@ function renderUnitary() {
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;font-size:14px">${it.d}${tonBadge}</div>
-            <div style="font-size:11px;color:#999;margin-top:2px">${it.b} • ${it.f}</div>
+            ${it.desc ? `<div style="font-size:12px;color:#444;margin-top:3px;line-height:1.35">${escHtml(it.desc)}</div>` : ''}
+            <div style="font-size:11px;color:#999;margin-top:3px">
+              ${it.b}${it.f?' • '+escHtml(it.f):''}${it.dims?' • <strong style="color:#666">'+escHtml(it.dims)+'</strong>':''}${it.lc?' • '+escHtml(it.lc):''}
+            </div>
           </div>
           ${matchToggle}
           <button onclick="toggleUnitary('${it.m}')" class="add-btn" style="padding:6px 14px;border-radius:6px;border:1px solid ${inQ?'#dc2626':'#0d6efd'};background:${inQ?'#fee2e2':'#0d6efd'};color:${inQ?'#dc2626':'#fff'};font-size:12px;cursor:pointer;font-weight:500;white-space:nowrap">${inQ ? 'Remove' : 'Add'}</button>
@@ -2894,13 +2897,16 @@ function renderMatchups(outdoorModel) {
         const cap = m.ccap2 ? `${m.ccap2} BTU` : '';
         const ahLine = m.air_handler ? `AH: <strong>${m.air_handler}</strong>${m.ah_dims?` <span style="color:#888">(${m.ah_dims})</span>`:''}` : '';
         const coilLine = m.coil ? `Coil: <strong>${m.coil}</strong>${m.coil_dims?` <span style="color:#888">(${m.coil_dims})</span>`:''}` : '';
-        const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong>` : '';
+        const hkLine = m.heat_kit ? `HK: <strong>${m.heat_kit}</strong> <span style="color:#888">(optional)</span>` : '';
         const componentLines = [ahLine, coilLine, hkLine].filter(Boolean).join(' &nbsp;·&nbsp; ');
-        return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;font-size:12px">
+        // System button adds outdoor + AH + coil (no HK). HK is a separate button if present.
+        const hkBtn = m.heat_kit ? `<button onclick="addMatchupHK(${m.id})" title="Add the optional heat kit ${escHtml(m.heat_kit)} to the quote" style="padding:5px 8px;border-radius:6px;border:1px solid #f59e0b;background:#fff;color:#92400e;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">+ HK</button>` : '';
+        return `<div style="padding:8px 10px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;font-size:12px">
           <div style="flex:1;min-width:0">
             <div style="font-weight:600;color:#333">AHRI ${m.ahri_ref} &nbsp;·&nbsp; ${ratings.join(' / ')}${cap?' &nbsp;·&nbsp; '+cap:''}</div>
             <div style="margin-top:3px;color:#555;line-height:1.5">${componentLines}</div>
           </div>
+          ${hkBtn}
           <button onclick="addMatchupSystem(${m.id})" style="padding:5px 10px;border-radius:6px;border:1px solid #16a34a;background:#16a34a;color:#fff;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap;font-family:inherit">Add System</button>
         </div>`;
       }).join('');
@@ -2924,23 +2930,20 @@ function addMatchupSystem(matchupId) {
   }
   if (!matchup) { console.error('Matchup not found:', matchupId); return; }
 
-  // Build a list of components to add: outdoor, AH, coil (optional), HK (optional)
+  // Heat kit is intentionally omitted — use addMatchupHK() for optional HK add
   const toAdd = [
     { model: matchup.outdoor_model, fallbackCat: 'Condenser/Heat Pump' },
     matchup.air_handler ? { model: matchup.air_handler, fallbackCat: 'Air Handler' } : null,
     matchup.coil ? { model: matchup.coil, fallbackCat: 'Coil' } : null,
-    matchup.heat_kit ? { model: matchup.heat_kit, fallbackCat: 'Heat Kit' } : null,
   ].filter(Boolean);
 
   let added = 0;
   let alreadyInQuote = 0;
   toAdd.forEach(comp => {
-    // Skip if already in quote
     if (quote.some(q => q.qtype === 'unitary' && q.model === comp.model)) {
       alreadyInQuote++;
       return;
     }
-    // Look up full info from catalog if available
     const it = UNITARY_CATALOG.find(x => x.m === comp.model);
     quote.push({
       id: 'unitary-' + comp.model + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
@@ -2952,15 +2955,47 @@ function addMatchupSystem(matchupId) {
       family: it?.f || '',
       tonnage: it?.t || '',
       qty: 1,
-      ahri_ref: matchup.ahri_ref, // tag the AHRI reference for traceability
+      ahri_ref: matchup.ahri_ref,
     });
     added++;
   });
 
   let msg = `Added ${added} component${added===1?'':'s'} from AHRI ${matchup.ahri_ref}`;
   if (alreadyInQuote > 0) msg += ` (${alreadyInQuote} already in quote, skipped)`;
+  if (matchup.heat_kit) msg += `. Heat kit ${matchup.heat_kit} is optional — click "+ HK" to add it.`;
   console.log(msg);
 
+  updateCount();
+  renderUnitary();
+  renderQuote();
+}
+
+function addMatchupHK(matchupId) {
+  let matchup = null;
+  for (const k of Object.keys(UNITARY_MATCHUPS)) {
+    const m = (UNITARY_MATCHUPS[k] || []).find(x => x.id === matchupId);
+    if (m) { matchup = m; break; }
+  }
+  if (!matchup || !matchup.heat_kit) { console.error('No heat kit on matchup:', matchupId); return; }
+
+  const model = matchup.heat_kit;
+  if (quote.some(q => q.qtype === 'unitary' && q.model === model)) {
+    console.log(`Heat kit ${model} already in quote.`);
+    return;
+  }
+  const it = UNITARY_CATALOG.find(x => x.m === model);
+  quote.push({
+    id: 'unitary-' + model + '-' + Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    qtype: 'unitary',
+    model,
+    display: it?.d || model,
+    brand: it?.b || 'Amana',
+    category: it?.c || 'Heat Kit',
+    family: it?.f || '',
+    tonnage: it?.t || '',
+    qty: 1,
+    ahri_ref: matchup.ahri_ref,
+  });
   updateCount();
   renderUnitary();
   renderQuote();
@@ -3142,10 +3177,10 @@ async function confirmImport() {
 
     if (UNITARY_ENABLED) {
       const [catalogRes, matchRes] = await Promise.all([
-        fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120&order=category,family,model`, { headers: H }).then(r => r.json()),
+        fetch(`${SB_URL}/rest/v1/unitary_equipment?active=eq.true&select=model,display,brand,category,family,tonnage,voltage_120,description,dims,line_connections&order=category,family,model`, { headers: H }).then(r => r.json()),
         fetch(`${SB_URL}/rest/v1/unitary_matchups?active=eq.true&select=outdoor_model,system_type`, { headers: H }).then(r => r.json()),
       ]);
-      UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120}));
+      UNITARY_CATALOG = catalogRes.map(r => ({m: r.model, d: r.display, b: r.brand, c: r.category, f: r.family || '', t: r.tonnage || '', v120: !!r.voltage_120, desc: r.description || '', dims: r.dims || '', lc: r.line_connections || ''}));
       UNITARY_VOLTAGE_120 = new Set(UNITARY_CATALOG.filter(it => it.v120).map(it => it.m));
       UNITARY_MATCHUPS_COUNT = {};
       UNITARY_MATCHUPS_COUNT_BY_TYPE = {};
