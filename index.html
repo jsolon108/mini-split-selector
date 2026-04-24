@@ -789,6 +789,8 @@ function renderMZResultCard(o) {
   const pct = o.ou_cap > 0 ? Math.round(total/(o.ou_cap*1000)*100) : 0;
   const barPct = Math.min(total/o.max_btu*100, 100);
   const allFilled = mzZoneState.every(z => (z.cap > 0 || z.cap === -1) && z.type);
+  // Count how many times this OU is already in the quote so user sees confirmation without losing the grid
+  const inQuoteCount = quote.filter(q => q.qtype === 'mz' && q.ou === o.ou).length;
 
   // Resolve actual model numbers for this ODU
   const zoneLines = mzZoneState.map((z, i) => {
@@ -802,8 +804,11 @@ function renderMZResultCard(o) {
     </div>`;
   }).join('');
 
-  return `<div class="mz-card">
-    <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max</div>
+  const btnLabel = !allFilled ? 'Complete all zones to add'
+    : (inQuoteCount > 0 ? `+ Add again (${inQuoteCount} in quote)` : '+ Add to quote');
+
+  return `<div class="mz-card"${inQuoteCount > 0 ? ' style="border-color:#16a34a;background:#f0fdf4"' : ''}>
+    <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max${inQuoteCount>0?` <span style="color:#16a34a;font-size:11px;font-weight:500">✓ in quote</span>`:''}</div>
     <div class="mz-sub">${o.ou}</div>
     <div class="mz-note">${o.note||''}</div>
     ${zoneLines}
@@ -811,7 +816,7 @@ function renderMZResultCard(o) {
       <div class="btu-status"><span>${total/1000}K total (${pct}%)</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
       <div class="btu-track"><div class="btu-fill btu-ok" style="width:${barPct}%"></div></div>
     </div>
-    <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'}>${allFilled?'+ Add to quote':'Complete all zones to add'}</button>
+    <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'}>${btnLabel}</button>
   </div>`;
 }
 
@@ -834,9 +839,8 @@ function addMZResult(ouId) {
   if (eclipseSession.token) {
     loadAddonsForQuoteItem(newIdx).catch(e => console.error('Auto-fetch addons failed:', e));
   }
-  // Reset zone inputs
-  mzZoneState = mzZoneState.map(() => ({cap:0, type:'', model:'', liq_pipe:'', gas_pipe:''}));
-  renderMZInputs();
+  // Keep zone inputs and results intact so the user can add another OU for the same zones.
+  // Re-render results so the newly-added card reflects "In Quote" state.
   renderMZResults();
 }
 
@@ -1467,7 +1471,7 @@ function toggleAddon(qi, ai) {
 }
 
 function changeQty(i,v){quote[i].qty=Math.max(1,v||1);renderQuote();}
-function removeQ(i){quote.splice(i,1);updateCount();renderQuote();renderSingle();}
+function removeQ(i){quote.splice(i,1);updateCount();renderQuote();renderSingle();renderMZResults();}
 function updateCount(){document.getElementById('qcount').textContent=quote.length;}
 
 function copyQuote() {
