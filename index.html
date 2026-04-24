@@ -805,7 +805,7 @@ function renderMZResultCard(o) {
   }).join('');
 
   const btnLabel = !allFilled ? 'Complete all zones to add'
-    : (inQuoteCount > 0 ? `+ Add again (${inQuoteCount} in quote)` : '+ Add to quote');
+    : (inQuoteCount > 0 ? `+ Add another (${inQuoteCount} in quote)` : '+ Add to quote');
 
   return `<div class="mz-card"${inQuoteCount > 0 ? ' style="border-color:#16a34a;background:#f0fdf4"' : ''}>
     <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max${inQuoteCount>0?` <span style="color:#16a34a;font-size:11px;font-weight:500">✓ in quote</span>`:''}</div>
@@ -816,9 +816,9 @@ function renderMZResultCard(o) {
       <div class="btu-status"><span>${total/1000}K total (${pct}%)</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
       <div class="btu-track"><div class="btu-fill btu-ok" style="width:${barPct}%"></div></div>
     </div>
-    <div style="display:flex;gap:6px">
-      <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'} style="flex:1">${btnLabel}</button>
-      ${inQuoteCount > 0 ? `<button class="mz-add-btn" onclick="removeMZFromQuote('${o.ou.replace(/'/g, "\\'")}')" title="Remove the most recently added ${o.ou} from the quote" style="flex:0 0 auto;background:#fff;border:1px solid #dc2626;color:#dc2626;padding:0 12px">✕ Remove</button>` : ''}
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <button onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'} style="flex:1;padding:7px;font-size:12px;border-radius:6px;background:#f5f5f3;border:1px solid #ddd;cursor:pointer;color:#333;white-space:nowrap;font-family:inherit" ${!allFilled?'':''}>${btnLabel}</button>
+      ${inQuoteCount > 0 ? `<button onclick="removeMZFromQuote('${o.ou.replace(/'/g, "\\'")}')" title="Remove the most recently added ${o.ou} from the quote" style="padding:7px 14px;font-size:12px;border-radius:6px;background:#fff;border:1px solid #dc2626;color:#dc2626;cursor:pointer;white-space:nowrap;font-family:inherit">✕ Remove</button>` : ''}
     </div>
   </div>`;
 }
