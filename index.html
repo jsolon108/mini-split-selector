@@ -816,8 +816,24 @@ function renderMZResultCard(o) {
       <div class="btu-status"><span>${total/1000}K total (${pct}%)</span>${o.min_btu>0?`<span style="font-size:10px;color:#bbb">${o.min_btu/1000}–${o.max_btu/1000}K valid</span>`:''}</div>
       <div class="btu-track"><div class="btu-fill btu-ok" style="width:${barPct}%"></div></div>
     </div>
-    <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'}>${btnLabel}</button>
+    <div style="display:flex;gap:6px">
+      <button class="mz-add-btn" onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'} style="flex:1">${btnLabel}</button>
+      ${inQuoteCount > 0 ? `<button class="mz-add-btn" onclick="removeMZFromQuote('${o.ou.replace(/'/g, "\\'")}')" title="Remove the most recently added ${o.ou} from the quote" style="flex:0 0 auto;background:#fff;border:1px solid #dc2626;color:#dc2626;padding:0 12px">✕ Remove</button>` : ''}
+    </div>
   </div>`;
+}
+
+// Remove the most-recently-added multizone line for a given OU
+function removeMZFromQuote(ou) {
+  for (let i = quote.length - 1; i >= 0; i--) {
+    if (quote[i].qtype === 'mz' && quote[i].ou === ou) {
+      quote.splice(i, 1);
+      updateCount();
+      renderQuote();
+      renderMZResults();
+      return;
+    }
+  }
 }
 
 function addMZResult(ouId) {
