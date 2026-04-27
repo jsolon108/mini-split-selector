@@ -473,11 +473,11 @@ function switchTab(t) {
   if (t === 'import' && !isAdmin()) return; // admin-only
   if (t === 'alerts' && !isAdmin()) return; // admin-only
   if (t === 'unitary' && !UNITARY_ENABLED) return; // hidden unless URL flag set
-  // Build dynamic tab/panel order including unitary if enabled
-  const tabOrder = UNITARY_ENABLED
-    ? ['single','multi','unitary','quote','recent','open','alerts','cats','import']
-    : ['single','multi','quote','recent','open','alerts','cats','import'];
-  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabOrder[i]===t));
+  // Match each tab by its onclick attribute — robust to DOM order changes.
+  document.querySelectorAll('.tab').forEach(el => {
+    const oc = el.getAttribute('onclick') || '';
+    el.classList.toggle('active', oc.indexOf("switchTab('" + t + "')") !== -1);
+  });
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
