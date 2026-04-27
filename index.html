@@ -8,9 +8,14 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f3;color:#1a1a1a;font-size:15px;line-height:1.5}
-.header{background:#fff;border-bottom:1px solid #e5e5e5;padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}
+.header{background:#fff;border-bottom:1px solid #e5e5e5;padding:14px 20px;display:flex;align-items:center;gap:12px}
 .header-logo{font-size:15px;font-weight:600}
 .header-sub{font-size:13px;color:#666}
+.alert-banner-wrap{position:sticky;top:0;z-index:11}
+.alert-banner{background:#fff8e1;border-bottom:1px solid #f0c94a;color:#5a4500;padding:10px 20px;font-size:13px;line-height:1.4;display:flex;align-items:center;gap:10px}
+.alert-banner + .alert-banner{border-top:1px solid #f5dd87}
+.alert-banner .alert-icon{flex:0 0 auto;font-size:14px}
+.alert-banner .alert-msg{flex:1;min-width:0}
 .container{max-width:980px;margin:0 auto;padding:20px}
 .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid #e5e5e5}
 .tab{padding:8px 18px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;color:#666;background:none}
@@ -192,6 +197,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 </style>
 </head>
 <body>
+<div class="alert-banner-wrap" id="alert-banner-wrap"></div>
 <div class="header">
   <div>
     <div class="header-logo">Johnstone Supply NY/CT</div>
@@ -208,6 +214,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('quote')">Quote <span class="qbadge" id="qcount">0</span></div>
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
+    <div class="tab" onclick="switchTab('alerts')" title="Manage header alert banners">📣 Alerts</div>
     <div class="tab" onclick="switchTab('cats')" title="Manage add-on category rules">⚙️ Categories</div>
     <div class="tab" onclick="switchTab('import')" title="Import unitary catalog (admin)">📥 Catalog Import</div>
   </div>
@@ -456,6 +463,7 @@ async function fetchData() {
   Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(formatCatNumLocal(r.model)); });
   console.log('[Equipment catalogs] Loaded', equipmentCatalogs.size, 'models to exclude from add-ons');
   loadAddonRules(); // fire-and-forget; rules are used later when tag-alongs load
+  loadActiveAlerts(); // fire-and-forget; renders banners in header
   renderSingle();
   renderMulti();
 }
@@ -463,11 +471,12 @@ async function fetchData() {
 function switchTab(t) {
   if (t === 'cats' && !isAdmin()) return; // silently refuse
   if (t === 'import' && !isAdmin()) return; // admin-only
+  if (t === 'alerts' && !isAdmin()) return; // admin-only
   if (t === 'unitary' && !UNITARY_ENABLED) return; // hidden unless URL flag set
   // Build dynamic tab/panel order including unitary if enabled
   const tabOrder = UNITARY_ENABLED
-    ? ['single','multi','unitary','quote','recent','open','cats','import']
-    : ['single','multi','quote','recent','open','cats','import'];
+    ? ['single','multi','unitary','quote','recent','open','alerts','cats','import']
+    : ['single','multi','quote','recent','open','alerts','cats','import'];
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', tabOrder[i]===t));
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
@@ -475,6 +484,7 @@ function switchTab(t) {
   if (t === 'cats') renderCategories();
   if (t === 'unitary') renderUnitary();
   if (t === 'import') renderImport();
+  if (t === 'alerts') renderAlertsAdmin();
   renderQuote();
 }
 
@@ -1108,6 +1118,142 @@ async function loadAdminUsers(force=false) {
   return ADMIN_USERS;
 }
 
+// ── ALERT BANNERS ────────────────────────────────────────────────
+// Loaded once on page load; admin edits via the Alerts tab.
+
+async function loadActiveAlerts() {
+  try {
+    const nowIso = new Date().toISOString();
+    const url = `${SB_URL}/rest/v1/alerts?active=eq.true&starts_at=lte.${nowIso}&or=(expires_at.is.null,expires_at.gt.${nowIso})&order=created_at.desc`;
+    const res = await fetch(url, { headers: H });
+    if (!res.ok) return;
+    const rows = await res.json();
+    renderActiveAlerts(rows);
+  } catch (e) {
+    console.warn('[alerts] load failed', e);
+  }
+}
+
+function renderActiveAlerts(rows) {
+  const wrap = document.getElementById('alert-banner-wrap');
+  if (!wrap) return;
+  if (!rows || !rows.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = rows.map(r => `
+    <div class="alert-banner">
+      <span class="alert-icon">📣</span>
+      <span class="alert-msg">${escHtml(r.message)}</span>
+    </div>`).join('');
+}
+
+let ALERTS_CACHE = [];
+
+async function loadAlertsAdmin() {
+  const res = await fetch(`${SB_URL}/rest/v1/alerts?order=created_at.desc`, { headers: H });
+  ALERTS_CACHE = res.ok ? await res.json() : [];
+}
+
+async function renderAlertsAdmin() {
+  await loadAlertsAdmin();
+  const wrap = document.getElementById('alerts-table-wrap');
+  if (!wrap) return;
+  if (!ALERTS_CACHE.length) {
+    wrap.innerHTML = '<div style="padding:16px;color:#888;font-size:13px">No alerts yet. Add one above.</div>';
+    return;
+  }
+  const fmt = (v) => v ? new Date(v).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' }) : '—';
+  const now = Date.now();
+  const status = (r) => {
+    if (!r.active) return ['Disabled', '#888'];
+    const start = r.starts_at ? new Date(r.starts_at).getTime() : 0;
+    const exp = r.expires_at ? new Date(r.expires_at).getTime() : Infinity;
+    if (now < start) return ['Scheduled', '#0066cc'];
+    if (now >= exp)  return ['Expired', '#888'];
+    return ['Live', '#1a7f37'];
+  };
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead style="background:#f7f7f7"><tr>
+        <th style="text-align:left;padding:8px 10px;font-weight:600;border-bottom:1px solid #e5e5e5">Status</th>
+        <th style="text-align:left;padding:8px 10px;font-weight:600;border-bottom:1px solid #e5e5e5">Message</th>
+        <th style="text-align:left;padding:8px 10px;font-weight:600;border-bottom:1px solid #e5e5e5">Starts</th>
+        <th style="text-align:left;padding:8px 10px;font-weight:600;border-bottom:1px solid #e5e5e5">Expires</th>
+        <th style="text-align:right;padding:8px 10px;font-weight:600;border-bottom:1px solid #e5e5e5">Actions</th>
+      </tr></thead>
+      <tbody>
+        ${ALERTS_CACHE.map(r => {
+          const [label, color] = status(r);
+          return `<tr>
+            <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:${color};font-weight:600">${label}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0">${escHtml(r.message)}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:#555">${fmt(r.starts_at)}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;color:#555">${fmt(r.expires_at)}</td>
+            <td style="padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:right;white-space:nowrap">
+              ${r.active
+                ? `<button onclick="setAlertActive('${r.id}', false)" style="height:26px;padding:0 10px;border:1px solid #ddd;background:#fff;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px">Disable</button>`
+                : `<button onclick="setAlertActive('${r.id}', true)"  style="height:26px;padding:0 10px;border:1px solid #ddd;background:#fff;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px">Enable</button>`}
+              <button onclick="expireAlertNow('${r.id}')" style="height:26px;padding:0 10px;border:1px solid #ddd;background:#fff;border-radius:5px;font-size:12px;cursor:pointer;margin-right:4px">Expire now</button>
+              <button onclick="deleteAlert('${r.id}')" style="height:26px;padding:0 10px;border:1px solid #f5b5b5;background:#fff;color:#a00;border-radius:5px;font-size:12px;cursor:pointer">Delete</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function addAlert() {
+  const msg = document.getElementById('alert-new-msg').value.trim();
+  const startsRaw = document.getElementById('alert-new-starts').value;
+  const expiresRaw = document.getElementById('alert-new-expires').value;
+  const out = document.getElementById('alert-new-feedback');
+  if (!msg) { out.textContent = 'Message is required.'; out.style.color = '#a00'; return; }
+
+  const body = {
+    message: msg,
+    starts_at: startsRaw ? new Date(startsRaw).toISOString() : new Date().toISOString(),
+    expires_at: expiresRaw ? new Date(expiresRaw).toISOString() : null,
+    active: true
+  };
+  const res = await fetch(`${SB_URL}/rest/v1/alerts`, {
+    method: 'POST',
+    headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) { out.textContent = 'Save failed: ' + await res.text(); out.style.color = '#a00'; return; }
+  document.getElementById('alert-new-msg').value = '';
+  document.getElementById('alert-new-starts').value = '';
+  document.getElementById('alert-new-expires').value = '';
+  out.textContent = 'Added.'; out.style.color = '#1a7f37';
+  await renderAlertsAdmin();
+  await loadActiveAlerts();
+}
+
+async function setAlertActive(id, active) {
+  await fetch(`${SB_URL}/rest/v1/alerts?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...H, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active, updated_at: new Date().toISOString() })
+  });
+  await renderAlertsAdmin();
+  await loadActiveAlerts();
+}
+
+async function expireAlertNow(id) {
+  await fetch(`${SB_URL}/rest/v1/alerts?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...H, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expires_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+  });
+  await renderAlertsAdmin();
+  await loadActiveAlerts();
+}
+
+async function deleteAlert(id) {
+  if (!confirm('Delete this alert permanently?')) return;
+  await fetch(`${SB_URL}/rest/v1/alerts?id=eq.${id}`, { method: 'DELETE', headers: H });
+  await renderAlertsAdmin();
+  await loadActiveAlerts();
+}
+
 function isAdmin() {
   const u = (eclipseSession?.username || '').toLowerCase().trim();
   if (!u || !ADMIN_USERS) return false;
@@ -1120,6 +1266,8 @@ function refreshAdminUI() {
   if (catTab) catTab.style.display = isAdmin() ? '' : 'none';
   const importTab = document.querySelector('.tab[onclick*="switchTab(\'import\')"]');
   if (importTab) importTab.style.display = isAdmin() ? '' : 'none';
+  const alertsTab = document.querySelector('.tab[onclick*="switchTab(\'alerts\')"]');
+  if (alertsTab) alertsTab.style.display = isAdmin() ? '' : 'none';
 }
 
 function escHtml(x) {
@@ -3036,6 +3184,39 @@ function chunkArray(arr, size) {
         </label>
       </div>
       <div id="oo-results"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-alerts">
+    <div style="max-width:880px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h2 style="font-size:18px;font-weight:600;margin:0">Header Alerts</h2>
+        <span style="font-size:12px;color:#666">Active alerts appear as banners above the header. Leave Expires blank for no expiration.</span>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add a new alert</div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end">
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Message</label>
+            <input id="alert-new-msg" placeholder="e.g. Holiday hours: closed Friday 11/28"
+              style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Starts (optional)</label>
+            <input id="alert-new-starts" type="datetime-local"
+              style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          </div>
+          <div>
+            <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Expires (optional)</label>
+            <input id="alert-new-expires" type="datetime-local"
+              style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          </div>
+          <button onclick="addAlert()"
+            style="height:32px;padding:0 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add alert</button>
+        </div>
+        <div id="alert-new-feedback" style="font-size:12px;margin-top:8px"></div>
+      </div>
+      <div id="alerts-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
     </div>
   </div>
 
