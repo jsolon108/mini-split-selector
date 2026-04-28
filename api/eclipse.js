@@ -280,6 +280,70 @@ export default async function handler(req, res) {
         };
       }
 
+      // ─── Fallback for items that returned no pricing results ──────
+      // Eclipse's pricing endpoint does strict catalog # matching, including whitespace
+      // (e.g. "WBB-300SS" vs "WBB-300SS " with trailing space). For pairs that returned
+      // nothing, try resolving the canonical catalog # via Products/BasicInformation
+      // (which is more lenient) and retry pricing once with the canonical form.
+      const unresolvedPairs = pairs.filter(p => !(p.order || p.cat) || !pricingMap[p.order || p.cat]);
+      const retried = [];
+      for (const { cat, order } of unresolvedPairs) {
+        const outKey = order || cat;
+        // Only retry if we haven't already gotten a real (non-empty) inventory for this key.
+        // Skip noOrderMatch entries — those are ambiguity failures, not lookup failures.
+        if (invMap[outKey]?.noOrderMatch) continue;
+        try {
+          const searchKeyword = order || cat; // order # is the more unique search term when present
+          const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(searchKeyword)}&pageSize=5`, {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (!searchR.ok) continue;
+          const searchData = await searchR.json();
+          const items = searchData.results || [];
+          if (!items.length) continue;
+          // Pick the right item: when we have an order #, find one whose description starts with it.
+          let canonical = null;
+          for (const it of items) {
+            const info = it.basicInfo || [];
+            const get = k => info.find(i => i.key === k)?.value || '';
+            const cn = get('catalogNumber');
+            const desc = (get('description') || '').replace(/\n/g, ' ').trim();
+            if (!cn) continue;
+            if (order && descMatchesOrder(desc, order)) { canonical = { cat: cn, desc }; break; }
+            if (!canonical) canonical = { cat: cn, desc };
+          }
+          if (!canonical) continue;
+
+          // Re-query pricing with the canonical catalog # (preserving whitespace)
+          const pp = new URLSearchParams();
+          pp.append('CatalogNumber', canonical.cat);
+          pp.append('Quantity', '1');
+          if (customerId) pp.append('CustomerId', customerId);
+          pp.append('CalculateOnlyForBranch', userBranch);
+          const pr = await fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pp.toString(), {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (!pr.ok) continue;
+          const pd = await pr.json();
+          const item = (pd.results || [])[0];
+          if (!item) continue;
+          pricingMap[outKey] = {
+            price: item.unitPrice?.value ?? item.productUnitPrice?.value ?? null,
+            list: item.listPrice?.value ?? item.list?.value ?? null
+          };
+          const stock = item.stockInfo || [];
+          invMap[outKey] = {
+            userQty: stock.find(s => (s.warehouse || '').startsWith(userBranch))?.warehouseQty ?? 0,
+            farmQty: stock.find(s => (s.warehouse || '').startsWith(FARM))?.warehouseQty ?? 0,
+            total: item.totalWarehouseQty ?? 0,
+            productId: item.productId,
+            ambiguous: false,
+            resolved: canonical.cat // for debugging
+          };
+          retried.push({ from: cat, to: canonical.cat, outKey });
+        } catch (e) { /* skip on error */ }
+      }
+
       return res.status(200).json({
         userBranch,
         pricing: pricingMap,
@@ -293,6 +357,7 @@ export default async function handler(req, res) {
           pairsWithOrder: pairs.filter(p => p.order).length,
           pairsWithoutOrder: pairs.filter(p => !p.order).length,
           ambiguousUnresolved: debugAmbiguous,
+          retriedViaSearch: retried,
           firstResultKeys: allResults[0] ? Object.keys(allResults[0]) : []
         }
       });
