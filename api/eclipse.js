@@ -207,9 +207,31 @@ export default async function handler(req, res) {
         pricingResults = pricingData.results || [];
       }
       const pricingMap = {};
-      pricingResults.forEach((r, i) => {
-        const catKey = catalogNumbers[i];
-        if (catKey) pricingMap[catKey] = {
+      // Build a productId → catalogNumber lookup from the inventory pass we already did,
+      // so we can reliably reverse-map pricing results back to the SKU they came from.
+      const pidToCat = {};
+      Object.entries(invMap).forEach(([cn, v]) => { if (v?.productId) pidToCat[v.productId] = cn; });
+      const requestedSet = new Set((catalogNumbers || []).map(s => String(s)));
+
+      pricingResults.forEach(r => {
+        // Try every plausible SKU field on the response row
+        const candidateKeys = [
+          r.catalogNumber, r.CatalogNumber,
+          r.productCatalogNumber, r.ProductCatalogNumber,
+          r.catalog_number,
+          // Sometimes nested under product
+          r.product?.catalogNumber, r.product?.CatalogNumber,
+          // Reverse-lookup via productId (we already have this mapping from inventory pass)
+          r.productId ? pidToCat[r.productId] : null,
+          r.ProductId ? pidToCat[r.ProductId] : null,
+        ].filter(Boolean).map(String);
+
+        // Pick the first candidate that we actually requested (so we don't accidentally
+        // store under a different normalization Eclipse echoes back)
+        let catKey = candidateKeys.find(k => requestedSet.has(k)) || candidateKeys[0];
+        if (!catKey) return; // nothing to key on, skip
+
+        pricingMap[catKey] = {
           price: r.unitPrice?.value ?? r.productUnitPrice?.value ?? null,
           list: r.listPrice?.value ?? r.list?.value ?? null
         };
@@ -219,7 +241,13 @@ export default async function handler(req, res) {
         pricing: pricingMap,
         inventory: invMap,
         rawPricing: pricingResults.slice(0, 2),
-        rawInv: Object.entries(invMap).slice(0, 2)
+        rawInv: Object.entries(invMap).slice(0, 2),
+        debug: {
+          requestedCount: catalogNumbers?.length || 0,
+          returnedCount: pricingResults.length,
+          mappedCount: Object.keys(pricingMap).length,
+          firstResultKeys: pricingResults[0] ? Object.keys(pricingResults[0]) : []
+        }
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
