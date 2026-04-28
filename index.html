@@ -1048,6 +1048,10 @@ function renderQuote() {
         if (!grouped[cat]) grouped[cat] = [];
         grouped[cat].push({a, ai});
       });
+      // Sort each category by noun signature so similar items cluster
+      Object.keys(grouped).forEach(cat => {
+        grouped[cat].sort((x, y) => addonCompare(x.a, y.a));
+      });
       // Track which categories are expanded (default: collapsed)
       if (!q.expandedCategories) q.expandedCategories = {};
       addonsBody = Object.keys(grouped).map(cat => {
@@ -1129,6 +1133,44 @@ function addonQty(a) {
   return (a && a.qtyOverride != null) ? a.qtyOverride : (a?.qtyNeeded || 0);
 }
 
+// Builds a "noun signature" sort key from a description so similar items cluster
+// (e.g. all "Condensate Pump" items, all "Drain Hose" items).
+// Strategy: strip leading SKU-like tokens & trailing measurement gunk,
+// then take the last 1-2 words as the product noun signature.
+function addonSortKey(desc) {
+  if (!desc) return '';
+  let s = String(desc);
+  // Strip leading SKU-like tokens (any token containing a digit + caps/digits/dashes)
+  const tokens = s.split(/\s+/);
+  while (tokens.length > 1 && /\d/.test(tokens[0]) && /^[A-Z0-9][A-Z0-9\-\/]*$/i.test(tokens[0])) {
+    tokens.shift();
+  }
+  s = tokens.join(' ');
+  // Strip trailing gunk iteratively (voltages, dimensions, parens, w/clauses, qty packs)
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\s+\d+(?:[\-\/]\d+)*[Vv]\b.*$/i, '');
+    s = s.replace(/\s+w\/.*$/i, '');
+    s = s.replace(/\s+\(.+?\)\s*$/, '');
+    s = s.replace(/\s+\d+\s*-?\s*pk\.?$/i, '');
+    s = s.replace(/[\.,;]+\s*$/, '');
+    // Strip any trailing token that contains a digit or quote (covers 1/2"x164ft, 18x38, 50ft, etc.)
+    s = s.replace(/\s+\S*[\d"']\S*$/, '');
+  } while (s !== prev);
+  s = s.trim();
+  const words = s.split(/\s+/).filter(Boolean);
+  return words.slice(Math.max(0, words.length - 2)).join(' ').toLowerCase();
+}
+
+// Sort comparator: signature first, then full description for stable ordering
+function addonCompare(a, b) {
+  const ka = addonSortKey(a.description || '');
+  const kb = addonSortKey(b.description || '');
+  if (ka !== kb) return ka.localeCompare(kb);
+  return (a.description || '').localeCompare(b.description || '');
+}
+
 // ═══ Quote-wide add-ons (Common Add-ons + Line Hide) ════════════════
 // State lives on `quote` itself so it clears with the quote.
 let COMMON_ADDONS = null;     // populated from Supabase: [{sku, description, default_qty}]
@@ -1196,6 +1238,10 @@ function renderCommonAddonsSummary() {
   selected.forEach(({a, qty}) => {
     const cat = categorizeAddon(a.description || '', a.sku || '') || 'Other Accessories';
     (byCat[cat] = byCat[cat] || []).push({a, qty});
+  });
+  // Sort each category by noun signature so similar items cluster
+  Object.keys(byCat).forEach(cat => {
+    byCat[cat].sort((x, y) => addonCompare(x.a, y.a));
   });
 
   let total = 0;
@@ -1342,6 +1388,10 @@ function renderCommonAddonsSection() {
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(a);
   }
+  // Sort each category by noun signature so similar items cluster
+  Object.keys(grouped).forEach(cat => {
+    grouped[cat].sort(addonCompare);
+  });
 
   const body = COMMON_ADDONS.length === 0
     ? `<div class="qw-empty">No common add-ons configured. Admins can add them in the Categories tab.</div>`
