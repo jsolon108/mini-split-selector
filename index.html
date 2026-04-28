@@ -100,7 +100,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 .lh-fig-group{margin-bottom:8px}
 .lh-fig-label{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;font-weight:600}
 /* Admin: Common Add-ons */
-.ca-row{display:grid;grid-template-columns:140px 1fr 80px auto;gap:8px;align-items:center;padding:8px;border-top:1px solid #f0f0f0;font-size:13px}
+.ca-row{display:grid;grid-template-columns:120px 120px 1fr 80px auto;gap:8px;align-items:center;padding:8px;border-top:1px solid #f0f0f0;font-size:13px}
 .ca-row:first-child{border-top:none}
 .ca-row .ca-sku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5}
 .ca-row .ca-rm{padding:4px 10px;border:1px solid #fcc;background:#fff;color:#E24B4A;border-radius:5px;font-size:12px;cursor:pointer}
@@ -962,7 +962,12 @@ function priceBadge(model) {
 
 function renderQuote() {
   const el=document.getElementById('quote-box');
-  if(!quote.length){el.innerHTML='<div class="empty">No systems added yet</div>';return;}
+  const sdSummary = renderSlimDuctSummary();
+  if(!quote.length){
+    el.innerHTML = sdSummary || '<div class="empty">No systems added yet</div>';
+    renderQuoteWideSections();
+    return;
+  }
   el.innerHTML=quote.map((q,qi)=>{
     // Calculate addon lines (checked ones only)
     const checkedAddons = (q.addons || []).filter(a => a.checked);
@@ -1106,7 +1111,7 @@ function renderQuote() {
       </div>
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
-  }).join('');
+  }).join('') + renderSlimDuctSummary();
   renderQuoteWideSections();
 }
 
@@ -1160,9 +1165,68 @@ const LH_SIZES = [77, 100, 140];
 function renderQuoteWideSections() {
   const el = document.getElementById('quote-wide-sections');
   if (!el) return;
-  // Hide entirely if quote is empty
-  if (!quote.length) { el.innerHTML = ''; return; }
+  const hasSelections = Object.keys(quoteWideState.common).length > 0 || Object.keys(quoteWideState.lineHide).length > 0;
+  // Hide when there's nothing on the quote at all
+  if (!quote.length && !hasSelections) { el.innerHTML = ''; return; }
   el.innerHTML = renderCommonAddonsSection() + renderLineHideSection();
+}
+
+// Renders a summary card showing currently-selected Slim Duct items.
+// Appears in the quote-box alongside equipment systems so the user always sees what they've added.
+function renderSlimDuctSummary() {
+  if (!LINE_HIDE_PRODUCTS) return '';
+  // Build list of selected items
+  const selected = [];
+  for (const p of LINE_HIDE_PRODUCTS) {
+    const qty = quoteWideState.lineHide[p.order_num] || 0;
+    if (qty > 0) selected.push({ p, qty });
+  }
+  if (!selected.length) return '';
+
+  // Group by color so the card mirrors the install reality (one color per run usually)
+  const byColor = {};
+  selected.forEach(({p, qty}) => { (byColor[p.color] = byColor[p.color] || []).push({p, qty}); });
+
+  let total = 0;
+  const colorBlocks = Object.keys(byColor).sort().map(color => {
+    const items = byColor[color];
+    const rows = items.map(({p, qty}) => {
+      const price = getPrice(p.mfg_num);
+      const lineTotal = price?.price ? price.price * qty : null;
+      if (lineTotal != null) total += lineTotal;
+      return `<div class="q-model-row" style="font-size:13px">
+        <span class="q-model-label">Slim Duct</span>
+        <span>${escHtml(p.mfg_num)}</span>
+        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.description)} · ${escHtml(p.size_str || '')}</span>
+        <span style="color:#888;font-size:12px">×${qty}</span>
+        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+        <button onclick="setLineHideQty('${escAttr(p.order_num)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-top:6px">
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">${escHtml(color)}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  const totalRow = total > 0 ? `<div class="q-total-row">Slim Duct total: $${total.toFixed(2)}</div>` : '';
+
+  return `<div class="quote-line">
+    <div style="width:36px;flex-shrink:0;text-align:center;font-size:18px">📐</div>
+    <div class="q-body">
+      <div class="q-name">Slim Duct / Line Hide <span class="badge" style="background:#fef3e8;color:#a8581a">Accessories</span></div>
+      <div class="q-model-list">${colorBlocks}</div>
+      ${totalRow}
+    </div>
+    <button class="rm-btn" onclick="clearAllLineHide()" title="Remove all Slim Duct items">✕</button>
+  </div>`;
+}
+
+function clearAllLineHide() {
+  if (!Object.keys(quoteWideState.lineHide).length) return;
+  if (!confirm('Remove all Slim Duct items from the quote?')) return;
+  quoteWideState.lineHide = {};
+  renderQuote();
 }
 
 function commonTotal() {
@@ -1172,7 +1236,7 @@ function commonTotal() {
     const qty = quoteWideState.common[a.sku] || 0;
     if (qty > 0) {
       count++;
-      const p = getPrice(a.sku);
+      const p = getPrice(a.mfg_num || a.sku);
       if (p?.price) total += p.price * qty;
     }
   }
@@ -1186,7 +1250,7 @@ function lineHideTotal() {
     const qty = quoteWideState.lineHide[p.order_num] || 0;
     if (qty > 0) {
       count++;
-      const pr = getPrice(p.order_num);
+      const pr = getPrice(p.mfg_num);
       if (pr?.price) total += pr.price * qty;
     }
   }
@@ -1218,7 +1282,7 @@ function renderCommonAddonsSection() {
         const rows = grouped[cat].map(a => {
           const qty = quoteWideState.common[a.sku] || 0;
           const checked = qty > 0;
-          const price = getPrice(a.sku);
+          const price = getPrice(a.mfg_num || a.sku);
           const lineTotal = price?.price ? (price.price * Math.max(qty, 1)) : null;
           return `<div class="qw-row">
             <input type="checkbox" ${checked?'checked':''} onchange="toggleCommonAddon('${escAttr(a.sku)}')"/>
@@ -1290,7 +1354,7 @@ function renderLineHideSection() {
       const items = byFig[fig];
       const rows = items.map(p => {
         const qty = quoteWideState.lineHide[p.order_num] || 0;
-        const price = getPrice(p.order_num);
+        const price = getPrice(p.mfg_num);
         const lineTotal = price?.price && qty > 0 ? (price.price * qty) : null;
         return `<div class="qw-row">
           <input type="checkbox" ${qty>0?'checked':''} onchange="toggleLineHide('${escAttr(p.order_num)}')"/>
@@ -1362,13 +1426,13 @@ function toggleLineHide(orderNum) {
   const cur = quoteWideState.lineHide[orderNum] || 0;
   if (cur > 0) delete quoteWideState.lineHide[orderNum];
   else quoteWideState.lineHide[orderNum] = 1;
-  renderQuoteWideSections();
+  renderQuote();
 }
 function setLineHideQty(orderNum, val) {
   const v = Math.max(0, Math.floor(val || 0));
   if (v === 0) delete quoteWideState.lineHide[orderNum];
   else quoteWideState.lineHide[orderNum] = v;
-  renderQuoteWideSections();
+  renderQuote();
 }
 
 // Helpers (escAttr/escHtml may already exist — check before defining)
@@ -1379,19 +1443,35 @@ if (typeof escAttr !== 'function') {
   window.escAttr = (s) => String(s ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-// Returns array of {sku, qty, description} for all quote-wide selections — used by copy/Eclipse
+// Returns array of {sku, catalogNumber, qty, description} for all quote-wide selections.
+// `sku` = Johnstone order number (display + pricing key)
+// `catalogNumber` = manufacturer part number (what Eclipse line items need to use)
 function getQuoteWideLines() {
   const lines = [];
   if (COMMON_ADDONS) {
     for (const a of COMMON_ADDONS) {
       const qty = quoteWideState.common[a.sku] || 0;
-      if (qty > 0) lines.push({ sku: a.sku, qty, description: a.description });
+      if (qty > 0) lines.push({
+        sku: a.sku,
+        catalogNumber: a.mfg_num || a.sku, // fall back to sku if no separate mfg# stored
+        qty,
+        description: a.description,
+        type: 'common'
+      });
     }
   }
   if (LINE_HIDE_PRODUCTS) {
     for (const p of LINE_HIDE_PRODUCTS) {
       const qty = quoteWideState.lineHide[p.order_num] || 0;
-      if (qty > 0) lines.push({ sku: p.order_num, qty, description: `${p.description} ${p.size_str || ''} ${p.color}`.trim() });
+      if (qty > 0) lines.push({
+        sku: p.order_num,
+        catalogNumber: p.mfg_num,
+        qty,
+        description: `${p.description} ${p.size_str || ''} ${p.color}`.trim(),
+        type: 'lineHide',
+        color: p.color,
+        size_code: p.size_code
+      });
     }
   }
   return lines;
@@ -1762,10 +1842,11 @@ async function renderCommonAddonsAdmin() {
   }
   // Header
   let html = `<div class="ca-row" style="background:#f8f8f6;font-weight:600;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em">
-    <div>SKU</div><div>Description</div><div style="text-align:center">Default Qty</div><div></div>
+    <div>SKU</div><div>Mfg #</div><div>Description</div><div style="text-align:center">Default Qty</div><div></div>
   </div>`;
   html += items.map(it => `<div class="ca-row">
     <div class="ca-sku">${escHtml(it.sku)}</div>
+    <div class="ca-sku" style="color:#666">${escHtml(it.mfg_num || '—')}</div>
     <div>${escHtml(it.description)}</div>
     <div style="text-align:center">${it.default_qty || 1}</div>
     <button class="ca-rm" onclick="removeCommonAddon(${it.id})">Remove</button>
@@ -1775,6 +1856,7 @@ async function renderCommonAddonsAdmin() {
 
 async function addCommonAddon() {
   const sku = document.getElementById('ca-new-sku').value.trim();
+  const mfg = document.getElementById('ca-new-mfg').value.trim();
   const desc = document.getElementById('ca-new-desc').value.trim();
   const qty = Math.max(1, parseInt(document.getElementById('ca-new-qty').value, 10) || 1);
   const msg = document.getElementById('ca-new-msg');
@@ -1784,10 +1866,11 @@ async function addCommonAddon() {
     const res = await fetch(`${SB_URL}/rest/v1/common_addons`, {
       method: 'POST',
       headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-      body: JSON.stringify({ sku, description: desc, default_qty: qty, added_by: (eclipseSession?.username || null) })
+      body: JSON.stringify({ sku, mfg_num: mfg || null, description: desc, default_qty: qty, added_by: (eclipseSession?.username || null) })
     });
     if (!res.ok) throw new Error(await res.text());
     document.getElementById('ca-new-sku').value = '';
+    document.getElementById('ca-new-mfg').value = '';
     document.getElementById('ca-new-desc').value = '';
     document.getElementById('ca-new-qty').value = '1';
     msg.style.color = '#0f6e56'; msg.textContent = 'Added.';
@@ -2214,8 +2297,9 @@ async function pushToEclipse() {
     });
   });
   // Quote-wide add-ons — applied once, not multiplied by any system qty
+  // Eclipse needs the manufacturer part number (catalogNumber), not the Johnstone order #
   getQuoteWideLines().forEach(l => {
-    lines.push({ model: l.sku, qty: l.qty, description: l.description });
+    lines.push({ model: l.catalogNumber, qty: l.qty, description: l.description });
   });
 
   try {
@@ -2347,14 +2431,18 @@ async function getPricing() {
     // Include addon catalog numbers so they get priced too
     (q.addons || []).forEach(a => { if (a.catalogNumber) catalogNumbers.push(formatCatNum(a.catalogNumber)); });
   });
-  // Include quote-wide SKUs (common addons + line hide) so they get priced
-  getQuoteWideLines().forEach(l => { if (l.sku) catalogNumbers.push(formatCatNum(l.sku)); });
-  // Also pre-fetch all common addons + line hide products visible to user, so prices show before they check anything
-  if (COMMON_ADDONS) COMMON_ADDONS.forEach(a => { if (a.sku) catalogNumbers.push(formatCatNum(a.sku)); });
+  // Include quote-wide items (common addons + line hide) so they get priced
+  // Eclipse keys on manufacturer part numbers (catalogNumber), not Johnstone order #s
+  getQuoteWideLines().forEach(l => { if (l.catalogNumber) catalogNumbers.push(formatCatNum(l.catalogNumber)); });
+  // Also pre-fetch all visible common addons + line hide products so prices show before user checks anything
+  if (COMMON_ADDONS) COMMON_ADDONS.forEach(a => {
+    const cn = a.mfg_num || a.sku;
+    if (cn) catalogNumbers.push(formatCatNum(cn));
+  });
   if (LINE_HIDE_PRODUCTS && quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
     LINE_HIDE_PRODUCTS
       .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize)
-      .forEach(p => catalogNumbers.push(formatCatNum(p.order_num)));
+      .forEach(p => { if (p.mfg_num) catalogNumbers.push(formatCatNum(p.mfg_num)); });
   }
   const unique = [...new Set(catalogNumbers.filter(Boolean))];
 
@@ -3709,10 +3797,15 @@ function chunkArray(arr, size) {
         </div>
         <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:10px">
           <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add a common add-on</div>
-          <div style="display:grid;grid-template-columns:160px 1fr 90px auto;gap:8px;align-items:end">
+          <div style="display:grid;grid-template-columns:140px 140px 1fr 80px auto;gap:8px;align-items:end">
             <div>
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">SKU / Order #</label>
               <input id="ca-new-sku" placeholder="e.g. B14-475"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Mfg # (Eclipse)</label>
+              <input id="ca-new-mfg" placeholder="e.g. NFP75"
                 style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"/>
             </div>
             <div>
