@@ -932,30 +932,33 @@ function formatCatNumLocal(model) {
   return model;
 }
 
-// Tries several key variants to look up pricing/inventory, since Eclipse may normalize keys
-// (case, dashes, leading zeros) and our local code might not match exactly.
+// Tries several key variants to look up pricing/inventory.
+// Exact-match candidates (case/dash-preserving) are tried first and trusted unconditionally.
+// Fuzzy fallbacks (dash-stripped, case-insensitive) are only used when there is exactly ONE match —
+// this prevents wrong matches like WBB-300SS ↔ WBB-300 in catalogs that contain both.
 function _lookupPricingKey(map, model) {
   if (!map || !model) return null;
   const m = String(model);
-  // Try direct, formatCatNumLocal, upper, lower, dashes-stripped
-  const candidates = [
-    m,
-    formatCatNumLocal(m),
-    m.toUpperCase(),
-    m.toLowerCase(),
-    m.replace(/-/g, ''),
-    m.replace(/-/g, '').toUpperCase(),
-  ];
-  for (const c of candidates) {
+  // Exact-match candidates — try these first, return on first hit
+  const exact = [m, formatCatNumLocal(m)];
+  for (const c of exact) {
     if (c && map[c] != null) return map[c];
   }
-  // Last resort: case-insensitive scan (slower but rare)
-  const lower = m.toLowerCase();
-  const lowerNoDash = lower.replace(/-/g, '');
+  // Fuzzy fallbacks — only return if EXACTLY ONE match exists across the map
+  const targetUpper = m.toUpperCase();
+  const targetLower = m.toLowerCase();
+  const targetNoDash = targetUpper.replace(/-/g, '');
+  const matches = [];
   for (const k of Object.keys(map)) {
-    const kl = k.toLowerCase();
-    if (kl === lower || kl.replace(/-/g, '') === lowerNoDash) return map[k];
+    const ku = k.toUpperCase();
+    if (ku === targetUpper || ku.replace(/-/g, '') === targetNoDash) {
+      matches.push(map[k]);
+    }
   }
+  // Dedupe by reference
+  const unique = [...new Set(matches)];
+  if (unique.length === 1) return unique[0];
+  // 0 matches → genuinely missing; >1 matches → ambiguous, refuse to guess
   return null;
 }
 
