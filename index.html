@@ -68,6 +68,43 @@ select:focus,input:focus{outline:none;border-color:#999}
 .grp-label{font-size:11px;color:#888;font-weight:600;margin:16px 0 8px;text-transform:uppercase;letter-spacing:.05em;border-top:1px solid #eee;padding-top:14px}
 .grp-label:first-child{border-top:none;padding-top:0;margin-top:0}
 .quote-box{background:#fff;border:1px solid #e5e5e5;border-radius:10px;margin-bottom:16px;overflow:hidden}
+/* Quote-wide sections (Common Add-ons, Line Hide) */
+.qw-section{background:#fff;border:1px solid #e5e5e5;border-radius:10px;margin-bottom:12px;padding:12px 16px}
+.qw-header{display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:2px 0}
+.qw-header h3{margin:0;font-size:14px;font-weight:600;color:#1a1a1a}
+.qw-header-meta{margin-left:auto;font-size:12px;color:#888}
+.qw-chevron{font-size:11px;color:#888;transition:transform .15s}
+.qw-section.qw-open .qw-chevron{transform:rotate(90deg)}
+.qw-body{display:none;margin-top:10px}
+.qw-section.qw-open .qw-body{display:block}
+.qw-empty{font-size:12px;color:#999;padding:6px 0;font-style:italic}
+.qw-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #f5f5f3;font-size:12px}
+.qw-row:first-child{border-top:none}
+.qw-row input[type=checkbox]{flex-shrink:0;cursor:pointer;width:14px;height:14px}
+.qw-row-body{flex:1;min-width:0;overflow:hidden}
+.qw-row-desc{font-weight:500;color:#333;font-size:13px}
+.qw-row-model{font-family:'SF Mono',monospace;color:#185FA5;font-size:12px}
+.qw-row-qty input{width:46px;padding:3px 5px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;text-align:center}
+.qw-row-qty input:focus{outline:none;border-color:#185FA5}
+.qw-row-price{flex-shrink:0;font-size:12px;color:#0f6e56;font-weight:500;min-width:60px;text-align:right}
+.qw-row-price-missing{color:#bbb;font-size:11px}
+/* Line hide drill-down */
+.lh-step{margin-bottom:10px}
+.lh-step-label{font-size:12px;color:#666;margin-bottom:5px;font-weight:500}
+.lh-options{display:flex;gap:8px;flex-wrap:wrap}
+.lh-opt{padding:6px 14px;border:1px solid #d5d5d5;border-radius:6px;background:#fff;font-size:12px;cursor:pointer;font-family:inherit;color:#333}
+.lh-opt:hover{background:#f5f5f3;border-color:#bbb}
+.lh-opt.selected{background:#185FA5;color:#fff;border-color:#185FA5;font-weight:600}
+.lh-color-swatch{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid rgba(0,0,0,0.15);vertical-align:middle;margin-right:6px}
+.lh-products{margin-top:10px;border-top:1px solid #eee;padding-top:8px}
+.lh-fig-group{margin-bottom:8px}
+.lh-fig-label{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;font-weight:600}
+/* Admin: Common Add-ons */
+.ca-row{display:grid;grid-template-columns:140px 1fr 80px auto;gap:8px;align-items:center;padding:8px;border-top:1px solid #f0f0f0;font-size:13px}
+.ca-row:first-child{border-top:none}
+.ca-row .ca-sku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5}
+.ca-row .ca-rm{padding:4px 10px;border:1px solid #fcc;background:#fff;color:#E24B4A;border-radius:5px;font-size:12px;cursor:pointer}
+.ca-row .ca-rm:hover{background:#fee}
 .quote-line{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #f0f0f0}
 .quote-line:last-child{border-bottom:none}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
@@ -327,6 +364,7 @@ select:focus,input:focus{outline:none;border-color:#999}
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
+    <div id="quote-wide-sections"></div>
     <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A;margin-bottom:10px">Clear quote</button>
     <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
     <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
@@ -467,6 +505,8 @@ async function fetchData() {
   Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(formatCatNumLocal(r.model)); });
   console.log('[Equipment catalogs] Loaded', equipmentCatalogs.size, 'models to exclude from add-ons');
   loadAddonRules(); // fire-and-forget; rules are used later when tag-alongs load
+  loadCommonAddons(); // preload for quote-wide common add-ons
+  loadLineHideProducts(); // preload line hide catalog
   loadActiveAlerts(); // fire-and-forget; renders banners in header
   renderSingle();
   renderMulti();
@@ -485,7 +525,7 @@ function switchTab(t) {
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
-  if (t === 'cats') renderCategories();
+  if (t === 'cats') { renderCategories(); renderCommonAddonsAdmin(); }
   if (t === 'unitary') renderUnitary();
   if (t === 'import') renderImport();
   if (t === 'alerts') renderAlertsAdmin();
@@ -1067,6 +1107,7 @@ function renderQuote() {
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
   }).join('');
+  renderQuoteWideSections();
 }
 
 // ═══ Tag-along add-on support ═══════════════════════════════════════
@@ -1075,6 +1116,287 @@ function renderQuote() {
 function addonQty(a) {
   return (a && a.qtyOverride != null) ? a.qtyOverride : (a?.qtyNeeded || 0);
 }
+
+// ═══ Quote-wide add-ons (Common Add-ons + Line Hide) ════════════════
+// State lives on `quote` itself so it clears with the quote.
+let COMMON_ADDONS = null;     // populated from Supabase: [{sku, description, default_qty}]
+let LINE_HIDE_PRODUCTS = null; // populated from Supabase
+// Per-quote selections — keyed by sku/order_num, value = qty (0/missing = not selected)
+let quoteWideState = {
+  common: {},           // {sku: qty}
+  lineHide: {},         // {order_num: qty}
+  lineHideColor: null,  // 'White' | 'Ivory' | 'Brown' | 'Black'
+  lineHideSize: null,   // 77 | 100 | 140
+  commonOpen: false,
+  lineHideOpen: false,
+};
+
+async function loadCommonAddons(force=false) {
+  if (COMMON_ADDONS && !force) return COMMON_ADDONS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H });
+    COMMON_ADDONS = await res.json();
+  } catch(e) { console.warn('Could not load common addons', e); COMMON_ADDONS = []; }
+  return COMMON_ADDONS;
+}
+
+async function loadLineHideProducts(force=false) {
+  if (LINE_HIDE_PRODUCTS && !force) return LINE_HIDE_PRODUCTS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/line_hide_products?active=eq.true&order=sort_order.asc`, { headers: H });
+    LINE_HIDE_PRODUCTS = await res.json();
+  } catch(e) { console.warn('Could not load line hide', e); LINE_HIDE_PRODUCTS = []; }
+  return LINE_HIDE_PRODUCTS;
+}
+
+// Available colors per spec: White, Ivory, Brown (Black is in DB but hidden by default)
+const LH_COLORS = [
+  { name: 'White', hex: '#fafafa', border: '#ccc' },
+  { name: 'Ivory', hex: '#f5ecd5', border: '#d4c890' },
+  { name: 'Brown', hex: '#6b4423', border: '#5a3919' },
+];
+const LH_SIZES = [77, 100, 140];
+
+function renderQuoteWideSections() {
+  const el = document.getElementById('quote-wide-sections');
+  if (!el) return;
+  // Hide entirely if quote is empty
+  if (!quote.length) { el.innerHTML = ''; return; }
+  el.innerHTML = renderCommonAddonsSection() + renderLineHideSection();
+}
+
+function commonTotal() {
+  if (!COMMON_ADDONS) return { total: 0, count: 0 };
+  let total = 0, count = 0;
+  for (const a of COMMON_ADDONS) {
+    const qty = quoteWideState.common[a.sku] || 0;
+    if (qty > 0) {
+      count++;
+      const p = getPrice(a.sku);
+      if (p?.price) total += p.price * qty;
+    }
+  }
+  return { total, count };
+}
+
+function lineHideTotal() {
+  if (!LINE_HIDE_PRODUCTS) return { total: 0, count: 0 };
+  let total = 0, count = 0;
+  for (const p of LINE_HIDE_PRODUCTS) {
+    const qty = quoteWideState.lineHide[p.order_num] || 0;
+    if (qty > 0) {
+      count++;
+      const pr = getPrice(p.order_num);
+      if (pr?.price) total += pr.price * qty;
+    }
+  }
+  return { total, count };
+}
+
+function renderCommonAddonsSection() {
+  if (!COMMON_ADDONS) {
+    loadCommonAddons().then(() => renderQuoteWideSections());
+    return `<div class="qw-section"><div class="qw-header"><span class="qw-chevron">▶</span><h3>Common Add-ons</h3><span class="qw-header-meta">Loading…</span></div></div>`;
+  }
+  const isOpen = quoteWideState.commonOpen;
+  const { total, count } = commonTotal();
+  const meta = COMMON_ADDONS.length === 0
+    ? 'No items configured (add via Categories tab)'
+    : `${count} selected${total>0?` · $${total.toFixed(2)}`:''} · ${COMMON_ADDONS.length} available`;
+
+  // Group by category using the same categorizeAddon rules
+  const grouped = {};
+  for (const a of COMMON_ADDONS) {
+    const cat = categorizeAddon(a.description || '', a.sku || '') || 'Other Accessories';
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(a);
+  }
+
+  const body = COMMON_ADDONS.length === 0
+    ? `<div class="qw-empty">No common add-ons configured. Admins can add them in the Categories tab.</div>`
+    : Object.keys(grouped).sort().map(cat => {
+        const rows = grouped[cat].map(a => {
+          const qty = quoteWideState.common[a.sku] || 0;
+          const checked = qty > 0;
+          const price = getPrice(a.sku);
+          const lineTotal = price?.price ? (price.price * Math.max(qty, 1)) : null;
+          return `<div class="qw-row">
+            <input type="checkbox" ${checked?'checked':''} onchange="toggleCommonAddon('${escAttr(a.sku)}')"/>
+            <div class="qw-row-body">
+              <div class="qw-row-desc">${escHtml(a.description)}</div>
+              <div class="qw-row-model">${escHtml(a.sku)}</div>
+            </div>
+            <span class="qw-row-qty"><input type="number" min="0" value="${qty || a.default_qty || 1}" onchange="setCommonAddonQty('${escAttr(a.sku)}', +this.value)"/></span>
+            <span class="qw-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="qw-row-price-missing">—</span>`}</span>
+          </div>`;
+        }).join('');
+        return `<div style="margin-top:8px">
+          <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${escHtml(cat)}</div>
+          ${rows}
+        </div>`;
+      }).join('');
+
+  return `<div class="qw-section ${isOpen?'qw-open':''}">
+    <div class="qw-header" onclick="toggleQWSection('common')">
+      <span class="qw-chevron">▶</span>
+      <h3>Common Add-ons</h3>
+      <span class="qw-header-meta">${meta}</span>
+    </div>
+    <div class="qw-body">${body}</div>
+  </div>`;
+}
+
+function renderLineHideSection() {
+  if (!LINE_HIDE_PRODUCTS) {
+    loadLineHideProducts().then(() => renderQuoteWideSections());
+    return `<div class="qw-section"><div class="qw-header"><span class="qw-chevron">▶</span><h3>Line Hide</h3><span class="qw-header-meta">Loading…</span></div></div>`;
+  }
+  const isOpen = quoteWideState.lineHideOpen;
+  const { total, count } = lineHideTotal();
+  const meta = `${count} selected${total>0?` · $${total.toFixed(2)}`:''}`;
+
+  // Step 1: color buttons
+  const colorBtns = LH_COLORS.map(c => {
+    const sel = quoteWideState.lineHideColor === c.name;
+    return `<button class="lh-opt ${sel?'selected':''}" onclick="setLineHideColor('${c.name}')">
+      <span class="lh-color-swatch" style="background:${c.hex};border-color:${c.border}"></span>${c.name}
+    </button>`;
+  }).join('');
+
+  // Step 2: size buttons (only if color picked)
+  let sizeStep = '';
+  if (quoteWideState.lineHideColor) {
+    const sizeBtns = LH_SIZES.map(s => {
+      const sel = quoteWideState.lineHideSize === s;
+      // count available products in this color+size
+      const avail = LINE_HIDE_PRODUCTS.filter(p => p.color === quoteWideState.lineHideColor && p.size_code === s).length;
+      return `<button class="lh-opt ${sel?'selected':''}" onclick="setLineHideSize(${s})" ${avail===0?'disabled style="opacity:0.4;cursor:not-allowed"':''}>${s} <span style="font-size:10px;color:${sel?'#fff':'#999'}">(${avail})</span></button>`;
+    }).join('');
+    sizeStep = `<div class="lh-step">
+      <div class="lh-step-label">Size</div>
+      <div class="lh-options">${sizeBtns}</div>
+    </div>`;
+  }
+
+  // Step 3: product list
+  let productList = '';
+  if (quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
+    const products = LINE_HIDE_PRODUCTS
+      .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize);
+    // Group by fig
+    const byFig = {};
+    products.forEach(p => { (byFig[p.fig] = byFig[p.fig] || []).push(p); });
+    const groups = Object.keys(byFig).sort().map(fig => {
+      const items = byFig[fig];
+      const rows = items.map(p => {
+        const qty = quoteWideState.lineHide[p.order_num] || 0;
+        const price = getPrice(p.order_num);
+        const lineTotal = price?.price && qty > 0 ? (price.price * qty) : null;
+        return `<div class="qw-row">
+          <input type="checkbox" ${qty>0?'checked':''} onchange="toggleLineHide('${escAttr(p.order_num)}')"/>
+          <div class="qw-row-body">
+            <div class="qw-row-desc">${escHtml(p.description)} <span style="color:#999;font-weight:400;font-size:11px">${escHtml(p.size_str || '')}</span></div>
+            <div class="qw-row-model">${escHtml(p.order_num)} · ${escHtml(p.mfg_num)}</div>
+          </div>
+          <span class="qw-row-qty"><input type="number" min="0" value="${qty || 1}" onchange="setLineHideQty('${escAttr(p.order_num)}', +this.value)"/></span>
+          <span class="qw-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="qw-row-price-missing">—</span>`}</span>
+        </div>`;
+      }).join('');
+      return `<div class="lh-fig-group">
+        <div class="lh-fig-label">${items[0].description} (Fig ${fig})</div>
+        ${rows}
+      </div>`;
+    }).join('');
+    productList = `<div class="lh-products">${groups || '<div class="qw-empty">No products in this combination.</div>'}</div>`;
+  }
+
+  return `<div class="qw-section ${isOpen?'qw-open':''}">
+    <div class="qw-header" onclick="toggleQWSection('lineHide')">
+      <span class="qw-chevron">▶</span>
+      <h3>Line Hide / Slim Duct</h3>
+      <span class="qw-header-meta">${meta}</span>
+    </div>
+    <div class="qw-body">
+      <div class="lh-step">
+        <div class="lh-step-label">Color</div>
+        <div class="lh-options">${colorBtns}</div>
+      </div>
+      ${sizeStep}
+      ${productList}
+    </div>
+  </div>`;
+}
+
+// ── Quote-wide handlers ───────────────────────────────────────────
+function toggleQWSection(which) {
+  const key = which === 'common' ? 'commonOpen' : 'lineHideOpen';
+  quoteWideState[key] = !quoteWideState[key];
+  renderQuoteWideSections();
+}
+function toggleCommonAddon(sku) {
+  const cur = quoteWideState.common[sku] || 0;
+  if (cur > 0) {
+    delete quoteWideState.common[sku];
+  } else {
+    const a = (COMMON_ADDONS || []).find(x => x.sku === sku);
+    quoteWideState.common[sku] = (a?.default_qty) || 1;
+  }
+  renderQuoteWideSections();
+}
+function setCommonAddonQty(sku, val) {
+  const v = Math.max(0, Math.floor(val || 0));
+  if (v === 0) delete quoteWideState.common[sku];
+  else quoteWideState.common[sku] = v;
+  renderQuoteWideSections();
+}
+function setLineHideColor(color) {
+  quoteWideState.lineHideColor = color;
+  // Don't reset size — user may want to switch color but keep size
+  renderQuoteWideSections();
+}
+function setLineHideSize(size) {
+  quoteWideState.lineHideSize = size;
+  renderQuoteWideSections();
+}
+function toggleLineHide(orderNum) {
+  const cur = quoteWideState.lineHide[orderNum] || 0;
+  if (cur > 0) delete quoteWideState.lineHide[orderNum];
+  else quoteWideState.lineHide[orderNum] = 1;
+  renderQuoteWideSections();
+}
+function setLineHideQty(orderNum, val) {
+  const v = Math.max(0, Math.floor(val || 0));
+  if (v === 0) delete quoteWideState.lineHide[orderNum];
+  else quoteWideState.lineHide[orderNum] = v;
+  renderQuoteWideSections();
+}
+
+// Helpers (escAttr/escHtml may already exist — check before defining)
+if (typeof escHtml !== 'function') {
+  window.escHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+if (typeof escAttr !== 'function') {
+  window.escAttr = (s) => String(s ?? '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// Returns array of {sku, qty, description} for all quote-wide selections — used by copy/Eclipse
+function getQuoteWideLines() {
+  const lines = [];
+  if (COMMON_ADDONS) {
+    for (const a of COMMON_ADDONS) {
+      const qty = quoteWideState.common[a.sku] || 0;
+      if (qty > 0) lines.push({ sku: a.sku, qty, description: a.description });
+    }
+  }
+  if (LINE_HIDE_PRODUCTS) {
+    for (const p of LINE_HIDE_PRODUCTS) {
+      const qty = quoteWideState.lineHide[p.order_num] || 0;
+      if (qty > 0) lines.push({ sku: p.order_num, qty, description: `${p.description} ${p.size_str || ''} ${p.color}`.trim() });
+    }
+  }
+  return lines;
+}
+
 
 
 // Categorize add-ons by rules loaded from Supabase addon_categories table.
@@ -1429,6 +1751,68 @@ async function deleteAddonRule(id) {
   }
 }
 
+// ─── Common Add-ons admin ───────────────────────────────────────────
+async function renderCommonAddonsAdmin() {
+  const wrap = document.getElementById('ca-table-wrap');
+  if (!wrap) return;
+  const items = await loadCommonAddons(true);
+  if (!items.length) {
+    wrap.innerHTML = `<div style="padding:16px;text-align:center;color:#888;font-size:13px">No common add-ons configured yet. Add one above.</div>`;
+    return;
+  }
+  // Header
+  let html = `<div class="ca-row" style="background:#f8f8f6;font-weight:600;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em">
+    <div>SKU</div><div>Description</div><div style="text-align:center">Default Qty</div><div></div>
+  </div>`;
+  html += items.map(it => `<div class="ca-row">
+    <div class="ca-sku">${escHtml(it.sku)}</div>
+    <div>${escHtml(it.description)}</div>
+    <div style="text-align:center">${it.default_qty || 1}</div>
+    <button class="ca-rm" onclick="removeCommonAddon(${it.id})">Remove</button>
+  </div>`).join('');
+  wrap.innerHTML = html;
+}
+
+async function addCommonAddon() {
+  const sku = document.getElementById('ca-new-sku').value.trim();
+  const desc = document.getElementById('ca-new-desc').value.trim();
+  const qty = Math.max(1, parseInt(document.getElementById('ca-new-qty').value, 10) || 1);
+  const msg = document.getElementById('ca-new-msg');
+  if (!sku || !desc) { msg.style.color = '#E24B4A'; msg.textContent = 'SKU and description are required.'; return; }
+  msg.style.color = '#666'; msg.textContent = 'Saving...';
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/common_addons`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ sku, description: desc, default_qty: qty, added_by: (eclipseSession?.username || null) })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    document.getElementById('ca-new-sku').value = '';
+    document.getElementById('ca-new-desc').value = '';
+    document.getElementById('ca-new-qty').value = '1';
+    msg.style.color = '#0f6e56'; msg.textContent = 'Added.';
+    COMMON_ADDONS = null;
+    await renderCommonAddonsAdmin();
+    renderQuoteWideSections();
+  } catch(e) {
+    msg.style.color = '#E24B4A';
+    msg.textContent = 'Failed: ' + (e.message.includes('duplicate') ? 'SKU already exists.' : e.message);
+  }
+}
+
+async function removeCommonAddon(id) {
+  if (!confirm('Remove this common add-on?')) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/common_addons?id=eq.${id}`, { method: 'DELETE', headers: H });
+    if (!res.ok) throw new Error(await res.text());
+    COMMON_ADDONS = null;
+    await renderCommonAddonsAdmin();
+    renderQuoteWideSections();
+  } catch(e) {
+    alert('Remove failed: ' + e.message);
+  }
+}
+
 // ─── Admin user management ──────────────────────────────────────────────
 
 async function renderAdmins() {
@@ -1694,6 +2078,13 @@ function copyQuote() {
     }
     lines.push('');
   });
+  // Quote-wide add-ons (common + line hide) — apply once, not per system
+  const qwLines = getQuoteWideLines();
+  if (qwLines.length) {
+    lines.push('--- Quote-wide add-ons ---');
+    qwLines.forEach(l => lines.push(`${l.sku}  (Qty ${l.qty})  —  ${l.description}`));
+    lines.push('');
+  }
   navigator.clipboard.writeText(lines.join('\n')).then(()=>{
     const btn=document.querySelector('.copy-btn');
     btn.textContent='Copied!';
@@ -1821,6 +2212,10 @@ async function pushToEclipse() {
     (q.addons || []).filter(a => a.checked).forEach(a => {
       lines.push({ model: a.catalogNumber, qty: addonQty(a) * q.qty, description: a.description });
     });
+  });
+  // Quote-wide add-ons — applied once, not multiplied by any system qty
+  getQuoteWideLines().forEach(l => {
+    lines.push({ model: l.sku, qty: l.qty, description: l.description });
   });
 
   try {
@@ -1952,6 +2347,15 @@ async function getPricing() {
     // Include addon catalog numbers so they get priced too
     (q.addons || []).forEach(a => { if (a.catalogNumber) catalogNumbers.push(formatCatNum(a.catalogNumber)); });
   });
+  // Include quote-wide SKUs (common addons + line hide) so they get priced
+  getQuoteWideLines().forEach(l => { if (l.sku) catalogNumbers.push(formatCatNum(l.sku)); });
+  // Also pre-fetch all common addons + line hide products visible to user, so prices show before they check anything
+  if (COMMON_ADDONS) COMMON_ADDONS.forEach(a => { if (a.sku) catalogNumbers.push(formatCatNum(a.sku)); });
+  if (LINE_HIDE_PRODUCTS && quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
+    LINE_HIDE_PRODUCTS
+      .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize)
+      .forEach(p => catalogNumbers.push(formatCatNum(p.order_num)));
+  }
   const unique = [...new Set(catalogNumbers.filter(Boolean))];
 
   const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
@@ -2255,6 +2659,7 @@ function clearQuote() {
   if (!quote.length) return;
   if (!confirm('Clear all systems from the quote?')) return;
   quote = [];
+  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false };
   updateCount();
   renderQuote();
   quotePricing = {};
@@ -2430,6 +2835,7 @@ function clearQuote() {
   if (!confirm('Clear all items from the quote?')) return;
   quote = [];
   quotePricing = {};
+  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false };
   updateCount();
   renderQuote();
 }
@@ -3295,6 +3701,37 @@ function chunkArray(arr, size) {
           style="height:32px;padding:0 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer">↻ Reload</button>
       </div>
       <div id="cat-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+
+      <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <h2 style="font-size:16px;font-weight:600;margin:0">Common Add-ons</h2>
+          <span style="font-size:12px;color:#666">Items here appear on every quote in the "Common Add-ons" section. Categorized by the rules above.</span>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add a common add-on</div>
+          <div style="display:grid;grid-template-columns:160px 1fr 90px auto;gap:8px;align-items:end">
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">SKU / Order #</label>
+              <input id="ca-new-sku" placeholder="e.g. B14-475"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Description</label>
+              <input id="ca-new-desc" placeholder="e.g. NFP75 Wall Sleeve"
+                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Default qty</label>
+              <input id="ca-new-qty" type="number" value="1" min="1"
+                style="width:100%;height:32px;padding:0 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <button onclick="addCommonAddon()"
+              style="height:32px;padding:0 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add</button>
+          </div>
+          <div id="ca-new-msg" style="font-size:12px;margin-top:8px"></div>
+        </div>
+        <div id="ca-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+      </div>
 
       <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
