@@ -193,18 +193,25 @@ export default async function handler(req, res) {
       const productIds = Object.values(invMap).map(v => v.productId).filter(Boolean);
       let pricingResults = [];
       if (productIds.length > 0) {
-        const pricingByIdParams = new URLSearchParams();
-        catalogNumbers.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
-        pricingByIdParams.append('Quantity', '1');
-        if (customerId) pricingByIdParams.append('CustomerId', customerId);
-        pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
-        const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
-        const pricingRes = await fetch(pricingUrl, {
-          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-        });
-        const pricingText = await pricingRes.text();
-        const pricingData = pricingRes.ok ? JSON.parse(pricingText) : {};
-        pricingResults = pricingData.results || [];
+        // Eclipse's ProductInventoryPricingMassInquiry appears to cap returned results
+        // (observed ~20-25 max), so batch the request to avoid silent truncation.
+        const BATCH_SIZE = 20;
+        for (let i = 0; i < catalogNumbers.length; i += BATCH_SIZE) {
+          const batch = catalogNumbers.slice(i, i + BATCH_SIZE);
+          const pricingByIdParams = new URLSearchParams();
+          batch.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
+          pricingByIdParams.append('Quantity', '1');
+          if (customerId) pricingByIdParams.append('CustomerId', customerId);
+          pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
+          const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
+          const pricingRes = await fetch(pricingUrl, {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (!pricingRes.ok) continue;
+          const pricingText = await pricingRes.text();
+          const pricingData = JSON.parse(pricingText);
+          pricingResults = pricingResults.concat(pricingData.results || []);
+        }
       }
       const pricingMap = {};
       // Build a productId → catalogNumber lookup from the inventory pass we already did,
