@@ -166,13 +166,45 @@ export default async function handler(req, res) {
   // Get pricing and inventory
   if (action === 'pricing') {
     try {
-      const { customerId, userId, userBranch, catalogNumbers } = req.body;
+      const { customerId, userId, userBranch, catalogNumbers, catalogPairs } = req.body;
       const userIdUpper = (userId || '').toUpperCase();
       const FARM = 'FARM';
+
+      // Normalize input. If `catalogPairs` was sent (new clients), use it. Otherwise
+      // fall back to `catalogNumbers` (older clients) as pairs with no order #.
+      // Each pair is { cat, order }: cat = what to send to Eclipse; order = unique
+      // Johnstone order # used to disambiguate Eclipse responses and key the output map.
+      const pairs = Array.isArray(catalogPairs) && catalogPairs.length
+        ? catalogPairs.filter(p => p && p.cat).map(p => ({ cat: String(p.cat), order: p.order ? String(p.order) : null }))
+        : (catalogNumbers || []).filter(Boolean).map(cn => ({ cat: String(cn), order: null }));
+
+      // Helper: does Eclipse's productDescription include this Johnstone order # as a token?
+      // Eclipse stores descriptions like "G38-428 711 1/2\" SEALING LOCKNUT...", so if the
+      // order # appears at the start (or as a whole word), we know it's the right product.
+      const descMatchesOrder = (desc, order) => {
+        if (!desc || !order) return false;
+        const d = String(desc).toUpperCase();
+        const o = String(order).toUpperCase();
+        // Most reliable: starts with order # followed by space/separator
+        if (d.startsWith(o + ' ') || d.startsWith(o + '-') || d.startsWith(o + ':')) return true;
+        // Or exact whole-word match anywhere
+        const re = new RegExp('(^|[^A-Z0-9])' + o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Z0-9])');
+        return re.test(d);
+      };
+
+      // ─── Inventory pass ──────────────────────────────────────────
+      // Output map is keyed by `order` if present, else `cat`. This is what the front end
+      // will use to look up prices/inventory (e.g. getPrice('G38-428') for common addons,
+      // getPrice('AAS036-1CSXLD') for equipment).
       const invMap = {};
-      for (const cn of catalogNumbers) {
+      // Also keep a parallel map: outputKey → productId, used by the pricing pass to
+      // re-associate Eclipse pricing results back to the right output key.
+      const productIdToOutKey = {};
+
+      for (const { cat, order } of pairs) {
+        const outKey = order || cat;
         const params = new URLSearchParams();
-        params.append('CatalogNumber', cn);
+        params.append('CatalogNumber', cat);
         params.append('ConsiderUserAuthBranch', 'true');
         if (userIdUpper) params.append('UserId', userIdUpper);
         const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
@@ -181,83 +213,85 @@ export default async function handler(req, res) {
         if (!r.ok) continue;
         const d = await r.json();
         const results = d.results || [];
-        // Eclipse may return multiple matches for a short/ambiguous catalog number (e.g. "711"
-        // matching B7711-XXX). Find the result that EXACTLY matches what we asked for; reject the rest.
-        const cnLower = String(cn).toLowerCase();
-        const item = results.find(it => {
-          // Try every plausible catalog field on the result
-          const candidates = [
-            it.catalogNumber, it.CatalogNumber,
-            it.productCatalogNumber, it.ProductCatalogNumber,
-            it.product?.catalogNumber, it.product?.CatalogNumber,
-          ].filter(Boolean).map(s => String(s).toLowerCase());
-          return candidates.includes(cnLower);
-        }) || results[0]; // fall back to first if no field-match available
-        if (!item) { invMap[cn] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
+
+        // Pick the correct product when Eclipse returns multiple matches.
+        // Strategy:
+        //  1. If we have an order #, prefer the result whose description matches it (UNIQUE).
+        //  2. Else if Eclipse exposes catalogNumber on each result, prefer exact catalog match.
+        //  3. Else fall back to the first result.
+        let item = null;
+        if (order) {
+          item = results.find(it => descMatchesOrder(it.productDescription, order));
+        }
+        if (!item) {
+          const catLower = cat.toLowerCase();
+          item = results.find(it => {
+            const candidates = [
+              it.catalogNumber, it.CatalogNumber,
+              it.productCatalogNumber, it.ProductCatalogNumber,
+              it.product?.catalogNumber, it.product?.CatalogNumber,
+            ].filter(Boolean).map(s => String(s).toLowerCase());
+            return candidates.includes(catLower);
+          });
+        }
+        // If we have an order # but found NO match, refuse to substitute — return zeros.
+        // (Wrong inventory is worse than no inventory.)
+        if (!item && order && results.length > 0) {
+          invMap[outKey] = { userQty: 0, farmQty: 0, total: 0, ambiguous: true, noOrderMatch: true };
+          continue;
+        }
+        if (!item) item = results[0];
+        if (!item) { invMap[outKey] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
+
         const branches = item.branchAvailableQuantity || [];
-        invMap[cn] = {
+        invMap[outKey] = {
           userQty: branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? 0,
           farmQty: branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? 0,
           total: item.totalWarehouseQty ?? 0,
           productId: item.productId,
-          // Track how many results Eclipse actually returned for this catalog#
-          // (helpful for debugging short/ambiguous SKUs)
           ambiguous: results.length > 1
         };
+        if (item.productId) productIdToOutKey[item.productId] = outKey;
       }
-      const productIds = Object.values(invMap).map(v => v.productId).filter(Boolean);
+
+      // ─── Pricing pass ────────────────────────────────────────────
+      // Eclipse caps results around ~20-25 per call, so batch.
       let pricingResults = [];
-      if (productIds.length > 0) {
-        // Eclipse's ProductInventoryPricingMassInquiry appears to cap returned results
-        // (observed ~20-25 max), so batch the request to avoid silent truncation.
-        const BATCH_SIZE = 20;
-        for (let i = 0; i < catalogNumbers.length; i += BATCH_SIZE) {
-          const batch = catalogNumbers.slice(i, i + BATCH_SIZE);
-          const pricingByIdParams = new URLSearchParams();
-          batch.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
-          pricingByIdParams.append('Quantity', '1');
-          if (customerId) pricingByIdParams.append('CustomerId', customerId);
-          pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
-          const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
-          const pricingRes = await fetch(pricingUrl, {
-            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-          });
-          if (!pricingRes.ok) continue;
-          const pricingText = await pricingRes.text();
+      const cats = pairs.map(p => p.cat);
+      const BATCH_SIZE = 20;
+      for (let i = 0; i < cats.length; i += BATCH_SIZE) {
+        const batch = cats.slice(i, i + BATCH_SIZE);
+        const pricingByIdParams = new URLSearchParams();
+        batch.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
+        pricingByIdParams.append('Quantity', '1');
+        if (customerId) pricingByIdParams.append('CustomerId', customerId);
+        pricingByIdParams.append('CalculateOnlyForBranch', userBranch);
+        const pricingUrl = `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingByIdParams.toString();
+        const pricingRes = await fetch(pricingUrl, {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        if (!pricingRes.ok) continue;
+        const pricingText = await pricingRes.text();
+        try {
           const pricingData = JSON.parse(pricingText);
           pricingResults = pricingResults.concat(pricingData.results || []);
-        }
+        } catch { /* ignore parse errors on a single batch */ }
       }
+
+      // Map pricing results to output keys via productId — the only reliable join,
+      // since Eclipse pricing rows expose productId but inconsistent catalogNumber fields.
       const pricingMap = {};
-      // Build a productId → catalogNumber lookup from the inventory pass we already did,
-      // so we can reliably reverse-map pricing results back to the SKU they came from.
-      const pidToCat = {};
-      Object.entries(invMap).forEach(([cn, v]) => { if (v?.productId) pidToCat[v.productId] = cn; });
-      const requestedSet = new Set((catalogNumbers || []).map(s => String(s)));
-
-      pricingResults.forEach(r => {
-        // Try every plausible SKU field on the response row
-        const candidateKeys = [
-          r.catalogNumber, r.CatalogNumber,
-          r.productCatalogNumber, r.ProductCatalogNumber,
-          r.catalog_number,
-          // Sometimes nested under product
-          r.product?.catalogNumber, r.product?.CatalogNumber,
-          // Reverse-lookup via productId (we already have this mapping from inventory pass)
-          r.productId ? pidToCat[r.productId] : null,
-          r.ProductId ? pidToCat[r.ProductId] : null,
-        ].filter(Boolean).map(String);
-
-        // Pick the first candidate that we actually requested (so we don't accidentally
-        // store under a different normalization Eclipse echoes back)
-        let catKey = candidateKeys.find(k => requestedSet.has(k)) || candidateKeys[0];
-        if (!catKey) return; // nothing to key on, skip
-
-        pricingMap[catKey] = {
+      for (const r of pricingResults) {
+        const pid = r.productId || r.ProductId;
+        if (!pid) continue;
+        const outKey = productIdToOutKey[pid];
+        if (!outKey) continue; // pricing returned for a product we can't tie back; skip
+        pricingMap[outKey] = {
           price: r.unitPrice?.value ?? r.productUnitPrice?.value ?? null,
           list: r.listPrice?.value ?? r.list?.value ?? null
         };
-      });
+      }
+
       return res.status(200).json({
         userBranch,
         pricing: pricingMap,
@@ -265,9 +299,11 @@ export default async function handler(req, res) {
         rawPricing: pricingResults.slice(0, 2),
         rawInv: Object.entries(invMap).slice(0, 2),
         debug: {
-          requestedCount: catalogNumbers?.length || 0,
-          returnedCount: pricingResults.length,
+          requestedCount: pairs.length,
+          pricingReturned: pricingResults.length,
           mappedCount: Object.keys(pricingMap).length,
+          pairsWithOrder: pairs.filter(p => p.order).length,
+          pairsWithoutOrder: pairs.filter(p => !p.order).length,
           firstResultKeys: pricingResults[0] ? Object.keys(pricingResults[0]) : []
         }
       });
