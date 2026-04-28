@@ -101,6 +101,11 @@ select:focus,input:focus{outline:none;border-color:#999}
 .lh-fig-label{font-size:11px;color:#999;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;font-weight:600}
 /* Admin: Common Add-ons */
 .ca-row{display:grid;grid-template-columns:120px 120px 1fr 80px auto;gap:8px;align-items:center;padding:8px;border-top:1px solid #f0f0f0;font-size:13px}
+.ca-edit{width:100%;height:30px;padding:0 8px;border:1px solid transparent;border-radius:5px;font-size:13px;background:transparent;color:#333;font-family:inherit}
+.ca-edit:hover{background:#fafafa;border-color:#e5e5e5}
+.ca-edit:focus{outline:none;background:#fff;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,.1)}
+.ca-edit-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5}
+.ca-edit-qty{text-align:center}
 .ca-row:first-child{border-top:none}
 .ca-row .ca-sku{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5}
 .ca-row .ca-rm{padding:4px 10px;border:1px solid #fcc;background:#fff;color:#E24B4A;border-radius:5px;font-size:12px;cursor:pointer}
@@ -1844,14 +1849,72 @@ async function renderCommonAddonsAdmin() {
   let html = `<div class="ca-row" style="background:#f8f8f6;font-weight:600;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em">
     <div>SKU</div><div>Mfg #</div><div>Description</div><div style="text-align:center">Default Qty</div><div></div>
   </div>`;
-  html += items.map(it => `<div class="ca-row">
-    <div class="ca-sku">${escHtml(it.sku)}</div>
-    <div class="ca-sku" style="color:#666">${escHtml(it.mfg_num || '—')}</div>
-    <div>${escHtml(it.description)}</div>
-    <div style="text-align:center">${it.default_qty || 1}</div>
-    <button class="ca-rm" onclick="removeCommonAddon(${it.id})">Remove</button>
+  // Inline-editable rows. Each input autosaves on blur (or Enter).
+  html += items.map(it => `<div class="ca-row" data-id="${it.id}">
+    <input class="ca-edit ca-edit-mono" data-field="sku" value="${escAttr(it.sku || '')}"
+      onblur="saveCommonAddonField(${it.id}, 'sku', this.value, this)"
+      onkeydown="if(event.key==='Enter')this.blur()"/>
+    <input class="ca-edit ca-edit-mono" data-field="mfg_num" value="${escAttr(it.mfg_num || '')}" placeholder="—"
+      onblur="saveCommonAddonField(${it.id}, 'mfg_num', this.value, this)"
+      onkeydown="if(event.key==='Enter')this.blur()"/>
+    <input class="ca-edit" data-field="description" value="${escAttr(it.description || '')}"
+      onblur="saveCommonAddonField(${it.id}, 'description', this.value, this)"
+      onkeydown="if(event.key==='Enter')this.blur()"/>
+    <input class="ca-edit ca-edit-qty" data-field="default_qty" type="number" min="1" value="${it.default_qty || 1}"
+      onblur="saveCommonAddonField(${it.id}, 'default_qty', +this.value, this)"
+      onkeydown="if(event.key==='Enter')this.blur()"/>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="ca-status" id="ca-status-${it.id}" style="font-size:11px;color:#0f6e56;opacity:0;transition:opacity .2s"></span>
+      <button class="ca-rm" onclick="removeCommonAddon(${it.id})">Remove</button>
+    </div>
   </div>`).join('');
   wrap.innerHTML = html;
+}
+
+// Autosave helper: PATCH a single field. Highlights success/failure on the row.
+async function saveCommonAddonField(id, field, value, inputEl) {
+  // Trim strings; for sku/description keep prior value if empty (don't allow blanking required fields)
+  const item = (COMMON_ADDONS || []).find(x => x.id === id);
+  if (!item) return;
+  let newVal = value;
+  if (typeof newVal === 'string') newVal = newVal.trim();
+  if (field === 'default_qty') newVal = Math.max(1, parseInt(newVal, 10) || 1);
+  if ((field === 'sku' || field === 'description') && !newVal) {
+    // Revert to previous value
+    inputEl.value = item[field] || '';
+    flashStatus(id, 'Required', '#E24B4A');
+    return;
+  }
+  // No-op if unchanged
+  const cur = item[field] == null ? '' : item[field];
+  if (newVal === cur || (cur === '' && newVal === null)) return;
+  // For mfg_num blank means null
+  const payloadVal = (field === 'mfg_num' && newVal === '') ? null : newVal;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/common_addons?id=eq.${id}`, {
+      method: 'PATCH',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+      body: JSON.stringify({ [field]: payloadVal })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    item[field] = payloadVal; // update cache in place
+    flashStatus(id, 'Saved', '#0f6e56');
+    renderQuoteWideSections(); // refresh quote tab so changes show immediately
+  } catch(e) {
+    inputEl.value = item[field] == null ? '' : item[field]; // revert
+    flashStatus(id, 'Failed', '#E24B4A');
+    console.error('Save failed', e);
+  }
+}
+
+function flashStatus(id, text, color) {
+  const el = document.getElementById('ca-status-' + id);
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, 1500);
 }
 
 async function addCommonAddon() {
