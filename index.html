@@ -932,17 +932,42 @@ function formatCatNumLocal(model) {
   return model;
 }
 
+// Tries several key variants to look up pricing/inventory, since Eclipse may normalize keys
+// (case, dashes, leading zeros) and our local code might not match exactly.
+function _lookupPricingKey(map, model) {
+  if (!map || !model) return null;
+  const m = String(model);
+  // Try direct, formatCatNumLocal, upper, lower, dashes-stripped
+  const candidates = [
+    m,
+    formatCatNumLocal(m),
+    m.toUpperCase(),
+    m.toLowerCase(),
+    m.replace(/-/g, ''),
+    m.replace(/-/g, '').toUpperCase(),
+  ];
+  for (const c of candidates) {
+    if (c && map[c] != null) return map[c];
+  }
+  // Last resort: case-insensitive scan (slower but rare)
+  const lower = m.toLowerCase();
+  const lowerNoDash = lower.replace(/-/g, '');
+  for (const k of Object.keys(map)) {
+    const kl = k.toLowerCase();
+    if (kl === lower || kl.replace(/-/g, '') === lowerNoDash) return map[k];
+  }
+  return null;
+}
+
 function getPrice(model) {
   if (!quotePricing?.pricing || !model) return null;
-  const key = formatCatNumLocal(model);
-  return quotePricing.pricing[key] || quotePricing.pricing[model] || null;
+  return _lookupPricingKey(quotePricing.pricing, model);
 }
 
 function priceBadge(model) {
   if (!quotePricing?.pricing || !model) return '';
-  const key = formatCatNumLocal(model);
-  const p = quotePricing.pricing[key] || quotePricing.pricing[model];
-  const inv = quotePricing.inventory?.[key] || quotePricing.inventory?.[model];
+  const p = _lookupPricingKey(quotePricing.pricing, model);
+  const inv = _lookupPricingKey(quotePricing.inventory, model);
   if (!p && !inv) return '';
   let priceHtml = '';
   if (p?.price != null) {
@@ -2610,6 +2635,9 @@ async function getPricing() {
   const btn = document.getElementById('get-pricing-btn');
   btn.textContent = 'Loading...';
   btn.disabled = true;
+
+  // Make sure quote-wide catalogs are loaded so we include them in the pricing request
+  await Promise.all([loadCommonAddons(), loadLineHideProducts()]);
 
   // Collect all catalog numbers from the quote
   const catalogNumbers = [];
