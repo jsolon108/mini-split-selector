@@ -44,9 +44,9 @@ select:focus,input:focus{outline:none;border-color:#999}
 .mz-filter select{flex:1;min-width:130px}
 .mz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;margin-bottom:16px}
 .mz-card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:16px}
-.mz-title{font-size:14px;font-weight:600;margin-bottom:3px}
-.mz-sub{font-size:12px;color:#666;font-family:'SF Mono',monospace;margin-bottom:3px}
-.mz-note{font-size:11px;color:#999;margin-bottom:12px}
+.mz-title{font-size:15px;font-weight:600;margin-bottom:4px}
+.mz-sub{font-size:14px;color:#666;font-family:'SF Mono',monospace;margin-bottom:3px}
+.mz-note{font-size:13px;color:#999;margin-bottom:12px}
 .zone-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .zone-label{width:50px;color:#666;font-size:13px;flex-shrink:0}
 .zone-selects{display:flex;flex-direction:row;gap:6px;flex:1;min-width:0}
@@ -72,12 +72,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 .quote-line:last-child{border-bottom:none}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
 .q-name{font-weight:600;font-size:13px;margin-bottom:4px}
-.q-model-list{font-family:'SF Mono',monospace;font-size:12px;color:#555;display:flex;flex-direction:column;gap:3px}
+.q-model-list{font-family:'SF Mono',monospace;font-size:14px;color:#555;display:flex;flex-direction:column;gap:4px}
 .q-model-row{display:flex;gap:6px;align-items:baseline;min-width:0}
 .q-model-row .q-price{margin-left:auto;text-align:right;white-space:nowrap;flex-shrink:0}
 .q-total-row{display:flex;justify-content:flex-end;border-top:1px solid #eee;margin-top:6px;padding-top:6px;font-size:12px;font-weight:600;color:#333}
-.q-model-label{color:#999;font-size:11px;width:55px;flex-shrink:0}
-.q-pipes{font-size:12px;color:#888;white-space:nowrap;flex-shrink:0}
+.q-model-label{color:#999;font-size:13px;width:60px;flex-shrink:0}
+.q-pipes{font-size:13px;color:#888;white-space:nowrap;flex-shrink:0}
 .q-note{font-size:11px;color:#999;margin-top:4px;white-space:normal}
 .rm-btn{font-size:13px;color:#ccc;cursor:pointer;padding:2px 4px;border:none;background:none;flex-shrink:0}
 .rm-btn:hover{color:#E24B4A}
@@ -938,8 +938,8 @@ function renderQuote() {
       return `<div class="q-model-row addon-line">
         <span class="q-model-label">+ Addon</span>
         <span>${a.catalogNumber}</span>
-        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.description}</span>
-        <span style="color:#888;font-size:12px">×${qty}</span>
+        <span style="color:#888;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.description}</span>
+        <span style="color:#888;font-size:13px">×${qty}</span>
         ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
       </div>`;
     }).join('');
@@ -950,7 +950,7 @@ function renderQuote() {
       const p = getPrice(q.model);
       baseTotal = p?.price || 0;
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">${q.category}</span><span>${q.display}</span>${q.tonnage?`<span style="color:#888;font-size:12px;white-space:nowrap">${q.tonnage}</span>`:''}${priceBadge(q.model)}<button class="inv-btn" onclick="showInvModal('${q.model}','${q.category}')">Inventory</button></div>
+        <div class="q-model-row"><span class="q-model-label">${q.category}</span><span>${q.display}</span>${q.tonnage?`<span style="color:#888;font-size:13px;white-space:nowrap">${q.tonnage}</span>`:''}${priceBadge(q.model)}<button class="inv-btn" onclick="showInvModal('${q.model}','${q.category}')">Inventory</button></div>
         ${addonLines}
       </div>`;
     } else if(q.qtype==='sz'){
@@ -964,7 +964,7 @@ function renderQuote() {
         ${addonLines}
       </div>`;
     } else {
-      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#888;font-size:12px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
+      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#888;font-size:13px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
       const oduPrice = getPrice(q.ou);
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
       baseTotal = (oduPrice?.price||0) + zoneTotal;
