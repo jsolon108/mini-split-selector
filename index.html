@@ -44,14 +44,15 @@ select:focus,input:focus{outline:none;border-color:#999}
 .mz-filter select{flex:1;min-width:130px}
 .mz-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px;margin-bottom:16px}
 .mz-card{background:#fff;border:1px solid #e5e5e5;border-radius:10px;padding:16px}
-.mz-title{font-size:13px;font-weight:600;margin-bottom:3px}
-.mz-sub{font-size:11px;color:#666;font-family:'SF Mono',monospace;margin-bottom:3px}
-.mz-note{font-size:10px;color:#999;margin-bottom:12px}
-.zone-row{display:flex;align-items:flex-start;gap:6px;margin-bottom:8px}
-.zone-label{width:50px;color:#666;font-size:12px;flex-shrink:0;padding-top:8px}
-.zone-selects{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-.zone-selects select{height:30px;font-size:12px}
-.zone-model{font-size:10px;color:#185FA5;font-family:'SF Mono',monospace;padding:2px 4px;background:#f0f5ff;border-radius:3px;display:none;word-break:break-all}
+.mz-title{font-size:14px;font-weight:600;margin-bottom:3px}
+.mz-sub{font-size:12px;color:#666;font-family:'SF Mono',monospace;margin-bottom:3px}
+.mz-note{font-size:11px;color:#999;margin-bottom:12px}
+.zone-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+.zone-label{width:50px;color:#666;font-size:13px;flex-shrink:0}
+.zone-selects{display:flex;flex-direction:row;gap:6px;flex:1;min-width:0}
+.zone-selects select{height:30px;font-size:12px;flex:1;min-width:0}
+.zone-selects select:first-child{flex:0 0 110px}
+.zone-model{font-size:11px;color:#185FA5;font-family:'SF Mono',monospace;padding:2px 4px;background:#f0f5ff;border-radius:3px;display:none;word-break:break-all}
 .zone-model.visible{display:block}
 .zone-pipes{font-size:10px;color:#888}
 .btu-bar{margin:10px 0}
@@ -71,11 +72,11 @@ select:focus,input:focus{outline:none;border-color:#999}
 .quote-line:last-child{border-bottom:none}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
 .q-name{font-weight:600;font-size:13px;margin-bottom:4px}
-.q-model-list{font-family:'SF Mono',monospace;font-size:11px;color:#555;display:flex;flex-direction:column;gap:3px}
+.q-model-list{font-family:'SF Mono',monospace;font-size:12px;color:#555;display:flex;flex-direction:column;gap:3px}
 .q-model-row{display:flex;gap:6px;align-items:baseline;min-width:0}
 .q-model-row .q-price{margin-left:auto;text-align:right;white-space:nowrap;flex-shrink:0}
 .q-total-row{display:flex;justify-content:flex-end;border-top:1px solid #eee;margin-top:6px;padding-top:6px;font-size:12px;font-weight:600;color:#333}
-.q-model-label{color:#999;font-size:10px;width:55px;flex-shrink:0}
+.q-model-label{color:#999;font-size:11px;width:55px;flex-shrink:0}
 .q-pipes{font-size:10px;color:#aaa;white-space:nowrap;flex-shrink:0}
 .q-note{font-size:11px;color:#999;margin-top:4px;white-space:normal}
 .rm-btn{font-size:13px;color:#ccc;cursor:pointer;padding:2px 4px;border:none;background:none;flex-shrink:0}
@@ -101,7 +102,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 .addon-row input[type=checkbox]{flex-shrink:0;cursor:pointer;width:14px;height:14px}
 .addon-row-body{flex:1;min-width:0;overflow:hidden;max-width:calc(100% - 110px)}
 .addon-row-desc{font-weight:500;color:#333;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25;word-break:break-word}
-.addon-row-model{font-family:'SF Mono',monospace;color:#185FA5;font-size:10px}
+.addon-row-model{font-family:'SF Mono',monospace;color:#185FA5;font-size:12px}
 .addon-row-qty{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:1px;min-width:54px}
 .addon-row-qty input{width:44px;padding:2px 4px;border:1px solid #d0d0d0;border-radius:4px;font-size:11px;text-align:center;background:#fff;color:#333}
 .addon-row-qty input:focus{outline:none;border-color:#185FA5}
@@ -807,12 +808,12 @@ function renderMZResultCard(o) {
 
   // Resolve actual model numbers for this ODU
   const zoneLines = mzZoneState.map((z, i) => {
-    if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:12px;padding-top:8px">— empty —</div></div>`;
+    if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:13px">— empty —</div></div>`;
     const row = iduRow(o.id, z.cap, z.type) || iduRows(o.id).find(r => r.cap===z.cap && r.type===z.type);
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <div style="font-size:12px;padding-top:6px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}</div>
+        <div style="font-size:13px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}</div>
       </div>
     </div>`;
   }).join('');
