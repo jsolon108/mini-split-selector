@@ -214,33 +214,38 @@ export default async function handler(req, res) {
         const d = await r.json();
         const results = d.results || [];
 
-        // Pick the correct product when Eclipse returns multiple matches.
-        // Strategy:
-        //  1. If we have an order #, prefer the result whose description matches it (UNIQUE).
-        //  2. Else if Eclipse exposes catalogNumber on each result, prefer exact catalog match.
-        //  3. Else fall back to the first result.
+        // Pick the correct product:
+        //  - 1 result → trust it (Eclipse found exactly one product for this catalog #)
+        //  - 2+ results AND we have an order # → require the description to match the order #
+        //    (this is the only way to disambiguate cases like "711" matching multiple SKUs)
+        //  - 2+ results without an order # → fall back to first (best we can do)
         let item = null;
-        if (order) {
-          item = results.find(it => descMatchesOrder(it.productDescription, order));
+        if (results.length === 1) {
+          item = results[0];
+        } else if (results.length > 1) {
+          if (order) {
+            item = results.find(it => descMatchesOrder(it.productDescription, order));
+          }
+          // Try exact-catalog field match as a secondary disambiguator
+          if (!item) {
+            const catLower = cat.toLowerCase();
+            item = results.find(it => {
+              const candidates = [
+                it.catalogNumber, it.CatalogNumber,
+                it.productCatalogNumber, it.ProductCatalogNumber,
+                it.product?.catalogNumber, it.product?.CatalogNumber,
+              ].filter(Boolean).map(s => String(s).toLowerCase());
+              return candidates.includes(catLower);
+            });
+          }
+          // If we have an order # and STILL no match among multiple results,
+          // refuse to substitute — return zeros (better than wrong data).
+          if (!item && order) {
+            invMap[outKey] = { userQty: 0, farmQty: 0, total: 0, ambiguous: true, noOrderMatch: true };
+            continue;
+          }
+          if (!item) item = results[0];
         }
-        if (!item) {
-          const catLower = cat.toLowerCase();
-          item = results.find(it => {
-            const candidates = [
-              it.catalogNumber, it.CatalogNumber,
-              it.productCatalogNumber, it.ProductCatalogNumber,
-              it.product?.catalogNumber, it.product?.CatalogNumber,
-            ].filter(Boolean).map(s => String(s).toLowerCase());
-            return candidates.includes(catLower);
-          });
-        }
-        // If we have an order # but found NO match, refuse to substitute — return zeros.
-        // (Wrong inventory is worse than no inventory.)
-        if (!item && order && results.length > 0) {
-          invMap[outKey] = { userQty: 0, farmQty: 0, total: 0, ambiguous: true, noOrderMatch: true };
-          continue;
-        }
-        if (!item) item = results[0];
         if (!item) { invMap[outKey] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
 
         const branches = item.branchAvailableQuantity || [];
