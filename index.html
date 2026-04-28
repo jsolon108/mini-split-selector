@@ -968,8 +968,10 @@ function priceBadge(model) {
 function renderQuote() {
   const el=document.getElementById('quote-box');
   const sdSummary = renderSlimDuctSummary();
+  const caSummary = renderCommonAddonsSummary();
+  const summaries = caSummary + sdSummary;
   if(!quote.length){
-    el.innerHTML = sdSummary || '<div class="empty">No systems added yet</div>';
+    el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
     return;
   }
@@ -1116,7 +1118,7 @@ function renderQuote() {
       </div>
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
-  }).join('') + renderSlimDuctSummary();
+  }).join('') + caSummary + sdSummary;
   renderQuoteWideSections();
 }
 
@@ -1178,6 +1180,66 @@ function renderQuoteWideSections() {
 
 // Renders a summary card showing currently-selected Slim Duct items.
 // Appears in the quote-box alongside equipment systems so the user always sees what they've added.
+// Renders a summary card showing currently-selected Common Add-ons.
+// Mirrors renderSlimDuctSummary — appears in the quote-box alongside equipment systems.
+function renderCommonAddonsSummary() {
+  if (!COMMON_ADDONS) return '';
+  const selected = [];
+  for (const a of COMMON_ADDONS) {
+    const qty = quoteWideState.common[a.sku] || 0;
+    if (qty > 0) selected.push({ a, qty });
+  }
+  if (!selected.length) return '';
+
+  // Group by category using the same rules as everywhere else
+  const byCat = {};
+  selected.forEach(({a, qty}) => {
+    const cat = categorizeAddon(a.description || '', a.sku || '') || 'Other Accessories';
+    (byCat[cat] = byCat[cat] || []).push({a, qty});
+  });
+
+  let total = 0;
+  const catBlocks = Object.keys(byCat).sort().map(cat => {
+    const items = byCat[cat];
+    const rows = items.map(({a, qty}) => {
+      const price = getPrice(a.mfg_num || a.sku);
+      const lineTotal = price?.price ? price.price * qty : null;
+      if (lineTotal != null) total += lineTotal;
+      return `<div class="q-model-row" style="font-size:13px">
+        <span class="q-model-label">Add-on</span>
+        <span>${escHtml(a.sku)}</span>
+        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.description)}</span>
+        <span style="color:#888;font-size:12px">×${qty}</span>
+        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+        <button onclick="setCommonAddonQty('${escAttr(a.sku)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+      </div>`;
+    }).join('');
+    return `<div style="margin-top:6px">
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">${escHtml(cat)}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  const totalRow = total > 0 ? `<div class="q-total-row">Common add-ons total: $${total.toFixed(2)}</div>` : '';
+
+  return `<div class="quote-line">
+    <div style="width:36px;flex-shrink:0;text-align:center;font-size:18px">🧰</div>
+    <div class="q-body">
+      <div class="q-name">Common Add-ons <span class="badge" style="background:#eef5ee;color:#2a7;">Accessories</span></div>
+      <div class="q-model-list">${catBlocks}</div>
+      ${totalRow}
+    </div>
+    <button class="rm-btn" onclick="clearAllCommonAddons()" title="Remove all common add-ons">✕</button>
+  </div>`;
+}
+
+function clearAllCommonAddons() {
+  if (!Object.keys(quoteWideState.common).length) return;
+  if (!confirm('Remove all common add-ons from the quote?')) return;
+  quoteWideState.common = {};
+  renderQuote();
+}
+
 function renderSlimDuctSummary() {
   if (!LINE_HIDE_PRODUCTS) return '';
   // Build list of selected items
@@ -1410,13 +1472,13 @@ function toggleCommonAddon(sku) {
     const a = (COMMON_ADDONS || []).find(x => x.sku === sku);
     quoteWideState.common[sku] = (a?.default_qty) || 1;
   }
-  renderQuoteWideSections();
+  renderQuote();
 }
 function setCommonAddonQty(sku, val) {
   const v = Math.max(0, Math.floor(val || 0));
   if (v === 0) delete quoteWideState.common[sku];
   else quoteWideState.common[sku] = v;
-  renderQuoteWideSections();
+  renderQuote();
 }
 function setLineHideColor(color) {
   quoteWideState.lineHideColor = color;
