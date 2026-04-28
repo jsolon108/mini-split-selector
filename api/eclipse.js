@@ -180,14 +180,29 @@ export default async function handler(req, res) {
         });
         if (!r.ok) continue;
         const d = await r.json();
-        const item = (d.results || [])[0];
+        const results = d.results || [];
+        // Eclipse may return multiple matches for a short/ambiguous catalog number (e.g. "711"
+        // matching B7711-XXX). Find the result that EXACTLY matches what we asked for; reject the rest.
+        const cnLower = String(cn).toLowerCase();
+        const item = results.find(it => {
+          // Try every plausible catalog field on the result
+          const candidates = [
+            it.catalogNumber, it.CatalogNumber,
+            it.productCatalogNumber, it.ProductCatalogNumber,
+            it.product?.catalogNumber, it.product?.CatalogNumber,
+          ].filter(Boolean).map(s => String(s).toLowerCase());
+          return candidates.includes(cnLower);
+        }) || results[0]; // fall back to first if no field-match available
         if (!item) { invMap[cn] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
         const branches = item.branchAvailableQuantity || [];
         invMap[cn] = {
           userQty: branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? 0,
           farmQty: branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? 0,
           total: item.totalWarehouseQty ?? 0,
-          productId: item.productId
+          productId: item.productId,
+          // Track how many results Eclipse actually returned for this catalog#
+          // (helpful for debugging short/ambiguous SKUs)
+          ambiguous: results.length > 1
         };
       }
       const productIds = Object.values(invMap).map(v => v.productId).filter(Boolean);
