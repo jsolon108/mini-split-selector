@@ -170,102 +170,36 @@ export default async function handler(req, res) {
       const userIdUpper = (userId || '').toUpperCase();
       const FARM = 'FARM';
 
-      // Normalize input. If `catalogPairs` was sent (new clients), use it. Otherwise
-      // fall back to `catalogNumbers` (older clients) as pairs with no order #.
-      // Each pair is { cat, order }: cat = what to send to Eclipse; order = unique
-      // Johnstone order # used to disambiguate Eclipse responses and key the output map.
+      // Normalize input. New clients send `catalogPairs: [{cat, order}]`.
+      // Old clients send `catalogNumbers: [...]` — we treat each as a pair with no order #.
       const pairs = Array.isArray(catalogPairs) && catalogPairs.length
         ? catalogPairs.filter(p => p && p.cat).map(p => ({ cat: String(p.cat), order: p.order ? String(p.order) : null }))
         : (catalogNumbers || []).filter(Boolean).map(cn => ({ cat: String(cn), order: null }));
 
-      // Helper: does Eclipse's productDescription include this Johnstone order # as a token?
-      // Eclipse stores descriptions like "G38-428 711 1/2\" SEALING LOCKNUT...", so if the
-      // order # appears at the start (or as a whole word), we know it's the right product.
+      // Helper: does Eclipse's productDescription identify this product as the one we want
+      // (i.e. starts with the Johnstone order #)? Eclipse stores descriptions like
+      // "G38-428 711 1/2IN SEALING LOCKNUT" — order # is a leading token.
       const descMatchesOrder = (desc, order) => {
         if (!desc || !order) return false;
-        const d = String(desc).toUpperCase();
-        const o = String(order).toUpperCase();
-        // Most reliable: starts with order # followed by space/separator
+        const d = String(desc).toUpperCase().trim();
+        const o = String(order).toUpperCase().trim();
         if (d.startsWith(o + ' ') || d.startsWith(o + '-') || d.startsWith(o + ':')) return true;
-        // Or exact whole-word match anywhere
         const re = new RegExp('(^|[^A-Z0-9])' + o.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^A-Z0-9])');
         return re.test(d);
       };
 
-      // ─── Inventory pass ──────────────────────────────────────────
-      // Output map is keyed by `order` if present, else `cat`. This is what the front end
-      // will use to look up prices/inventory (e.g. getPrice('G38-428') for common addons,
-      // getPrice('AAS036-1CSXLD') for equipment).
-      const invMap = {};
-      // Also keep a parallel map: outputKey → productId, used by the pricing pass to
-      // re-associate Eclipse pricing results back to the right output key.
-      const productIdToOutKey = {};
-
-      for (const { cat, order } of pairs) {
-        const outKey = order || cat;
-        const params = new URLSearchParams();
-        params.append('CatalogNumber', cat);
-        params.append('ConsiderUserAuthBranch', 'true');
-        if (userIdUpper) params.append('UserId', userIdUpper);
-        const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
-          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-        });
-        if (!r.ok) continue;
-        const d = await r.json();
-        const results = d.results || [];
-
-        // Pick the correct product:
-        //  - 1 result → trust it (Eclipse found exactly one product for this catalog #)
-        //  - 2+ results AND we have an order # → require the description to match the order #
-        //    (this is the only way to disambiguate cases like "711" matching multiple SKUs)
-        //  - 2+ results without an order # → fall back to first (best we can do)
-        let item = null;
-        if (results.length === 1) {
-          item = results[0];
-        } else if (results.length > 1) {
-          if (order) {
-            item = results.find(it => descMatchesOrder(it.productDescription, order));
-          }
-          // Try exact-catalog field match as a secondary disambiguator
-          if (!item) {
-            const catLower = cat.toLowerCase();
-            item = results.find(it => {
-              const candidates = [
-                it.catalogNumber, it.CatalogNumber,
-                it.productCatalogNumber, it.ProductCatalogNumber,
-                it.product?.catalogNumber, it.product?.CatalogNumber,
-              ].filter(Boolean).map(s => String(s).toLowerCase());
-              return candidates.includes(catLower);
-            });
-          }
-          // If we have an order # and STILL no match among multiple results,
-          // refuse to substitute — return zeros (better than wrong data).
-          if (!item && order) {
-            invMap[outKey] = { userQty: 0, farmQty: 0, total: 0, ambiguous: true, noOrderMatch: true };
-            continue;
-          }
-          if (!item) item = results[0];
-        }
-        if (!item) { invMap[outKey] = { userQty: 0, farmQty: 0, total: 0 }; continue; }
-
-        const branches = item.branchAvailableQuantity || [];
-        invMap[outKey] = {
-          userQty: branches.find(b => b.warehouse.startsWith(userBranch))?.warehouseQty ?? 0,
-          farmQty: branches.find(b => b.warehouse.startsWith(FARM))?.warehouseQty ?? 0,
-          total: item.totalWarehouseQty ?? 0,
-          productId: item.productId,
-          ambiguous: results.length > 1
-        };
-        if (item.productId) productIdToOutKey[item.productId] = outKey;
-      }
-
-      // ─── Pricing pass ────────────────────────────────────────────
+      // ─── Pricing pass (also yields inventory via stockInfo) ──────────
+      // The pricing endpoint returns price, productDescription, totalWarehouseQty,
+      // and per-warehouse stockInfo — everything we need in one call.
+      // This replaces the previous separate inventory pass, which used a different
+      // endpoint that returned different/missing fields and broke disambiguation.
       // Eclipse caps results around ~20-25 per call, so batch.
-      let pricingResults = [];
       const cats = pairs.map(p => p.cat);
+      const uniqueCats = [...new Set(cats)];
+      let allResults = [];
       const BATCH_SIZE = 20;
-      for (let i = 0; i < cats.length; i += BATCH_SIZE) {
-        const batch = cats.slice(i, i + BATCH_SIZE);
+      for (let i = 0; i < uniqueCats.length; i += BATCH_SIZE) {
+        const batch = uniqueCats.slice(i, i + BATCH_SIZE);
         const pricingByIdParams = new URLSearchParams();
         batch.forEach(cn => pricingByIdParams.append('CatalogNumber', cn));
         pricingByIdParams.append('Quantity', '1');
@@ -279,21 +213,70 @@ export default async function handler(req, res) {
         const pricingText = await pricingRes.text();
         try {
           const pricingData = JSON.parse(pricingText);
-          pricingResults = pricingResults.concat(pricingData.results || []);
+          allResults = allResults.concat(pricingData.results || []);
         } catch { /* ignore parse errors on a single batch */ }
       }
 
-      // Map pricing results to output keys via productId — the only reliable join,
-      // since Eclipse pricing rows expose productId but inconsistent catalogNumber fields.
+      // Map each pair to the right result(s).
+      // For each pair we filter Eclipse's results down to ones that "belong" to it.
+      // Eclipse may return multiple products for an ambiguous catalog # like "711" —
+      // we use the order # (when present) to pick the right one via descMatchesOrder.
       const pricingMap = {};
-      for (const r of pricingResults) {
-        const pid = r.productId || r.ProductId;
-        if (!pid) continue;
-        const outKey = productIdToOutKey[pid];
-        if (!outKey) continue; // pricing returned for a product we can't tie back; skip
+      const invMap = {};
+      const debugAmbiguous = [];
+
+      for (const { cat, order } of pairs) {
+        const outKey = order || cat;
+        // Pricing endpoint doesn't echo back the requested catalog #, but multiple results
+        // for the same query share that query context. We need to identify which results
+        // came from THIS catalog query. Approach: look at all returned descriptions and
+        // find ones whose description CONTAINS the catalog # as a token. (Eclipse's
+        // descriptions reliably embed the manufacturer part #.)
+        const catUpper = cat.toUpperCase();
+        const candidatesForCat = allResults.filter(r => {
+          const desc = String(r.productDescription || '').toUpperCase();
+          // Match the cat as a whole word (handles dashes/no-dashes, e.g. "AAS036-1CSXLD" → "AAS0361CSXLD")
+          const noDashCat = catUpper.replace(/-/g, '');
+          const noDashDesc = desc.replace(/-/g, '');
+          return desc.includes(catUpper) || noDashDesc.includes(noDashCat);
+        });
+
+        let item = null;
+        if (candidatesForCat.length === 1) {
+          item = candidatesForCat[0];
+        } else if (candidatesForCat.length > 1) {
+          // Disambiguate via order #
+          if (order) {
+            item = candidatesForCat.find(r => descMatchesOrder(r.productDescription, order));
+          }
+          if (!item) {
+            // No order # or order # didn't match — record for debug, refuse to guess
+            debugAmbiguous.push({
+              cat, order,
+              descriptions: candidatesForCat.map(r => r.productDescription)
+            });
+            invMap[outKey] = { userQty: 0, farmQty: 0, total: 0, ambiguous: true, noOrderMatch: !!order };
+            continue;
+          }
+        } else {
+          // 0 results — not found in Eclipse at all
+          invMap[outKey] = { userQty: 0, farmQty: 0, total: 0 };
+          continue;
+        }
+
+        // Got one. Extract pricing.
         pricingMap[outKey] = {
-          price: r.unitPrice?.value ?? r.productUnitPrice?.value ?? null,
-          list: r.listPrice?.value ?? r.list?.value ?? null
+          price: item.unitPrice?.value ?? item.productUnitPrice?.value ?? null,
+          list: item.listPrice?.value ?? item.list?.value ?? null
+        };
+        // Extract inventory from stockInfo / totalWarehouseQty
+        const stock = item.stockInfo || [];
+        invMap[outKey] = {
+          userQty: stock.find(s => (s.warehouse || '').startsWith(userBranch))?.warehouseQty ?? 0,
+          farmQty: stock.find(s => (s.warehouse || '').startsWith(FARM))?.warehouseQty ?? 0,
+          total: item.totalWarehouseQty ?? 0,
+          productId: item.productId,
+          ambiguous: candidatesForCat.length > 1
         };
       }
 
@@ -301,15 +284,16 @@ export default async function handler(req, res) {
         userBranch,
         pricing: pricingMap,
         inventory: invMap,
-        rawPricing: pricingResults.slice(0, 2),
+        rawPricing: allResults.slice(0, 2),
         rawInv: Object.entries(invMap).slice(0, 2),
         debug: {
           requestedCount: pairs.length,
-          pricingReturned: pricingResults.length,
+          pricingReturned: allResults.length,
           mappedCount: Object.keys(pricingMap).length,
           pairsWithOrder: pairs.filter(p => p.order).length,
           pairsWithoutOrder: pairs.filter(p => !p.order).length,
-          firstResultKeys: pricingResults[0] ? Object.keys(pricingResults[0]) : []
+          ambiguousUnresolved: debugAmbiguous,
+          firstResultKeys: allResults[0] ? Object.keys(allResults[0]) : []
         }
       });
     } catch (err) {
