@@ -1278,7 +1278,7 @@ function renderCommonAddonsSummary() {
   const catBlocks = Object.keys(byCat).sort().map(cat => {
     const items = byCat[cat];
     const rows = items.map(({a, qty}) => {
-      const price = getPrice(a.mfg_num || a.sku);
+      const price = getPrice(a.sku);
       const lineTotal = price?.price ? price.price * qty : null;
       if (lineTotal != null) total += lineTotal;
       return `<div class="q-model-row" style="font-size:13px">
@@ -1334,7 +1334,7 @@ function renderSlimDuctSummary() {
   const colorBlocks = Object.keys(byColor).sort().map(color => {
     const items = byColor[color];
     const rows = items.map(({p, qty}) => {
-      const price = getPrice(p.mfg_num);
+      const price = getPrice(p.order_num);
       const lineTotal = price?.price ? price.price * qty : null;
       if (lineTotal != null) total += lineTotal;
       return `<div class="q-model-row" style="font-size:13px">
@@ -1379,7 +1379,7 @@ function commonTotal() {
     const qty = quoteWideState.common[a.sku] || 0;
     if (qty > 0) {
       count++;
-      const p = getPrice(a.mfg_num || a.sku);
+      const p = getPrice(a.sku);
       if (p?.price) total += p.price * qty;
     }
   }
@@ -1393,7 +1393,7 @@ function lineHideTotal() {
     const qty = quoteWideState.lineHide[p.order_num] || 0;
     if (qty > 0) {
       count++;
-      const pr = getPrice(p.mfg_num);
+      const pr = getPrice(p.order_num);
       if (pr?.price) total += pr.price * qty;
     }
   }
@@ -1429,7 +1429,7 @@ function renderCommonAddonsSection() {
         const rows = grouped[cat].map(a => {
           const qty = quoteWideState.common[a.sku] || 0;
           const checked = qty > 0;
-          const price = getPrice(a.mfg_num || a.sku);
+          const price = getPrice(a.sku);
           const lineTotal = price?.price ? (price.price * Math.max(qty, 1)) : null;
           return `<div class="qw-row">
             <input type="checkbox" ${checked?'checked':''} onchange="toggleCommonAddon('${escAttr(a.sku)}')"/>
@@ -1501,7 +1501,7 @@ function renderLineHideSection() {
       const items = byFig[fig];
       const rows = items.map(p => {
         const qty = quoteWideState.lineHide[p.order_num] || 0;
-        const price = getPrice(p.mfg_num);
+        const price = getPrice(p.order_num);
         const lineTotal = price?.price && qty > 0 ? (price.price * qty) : null;
         return `<div class="qw-row">
           <input type="checkbox" ${qty>0?'checked':''} onchange="toggleLineHide('${escAttr(p.order_num)}')"/>
@@ -2625,34 +2625,42 @@ async function getPricing() {
   // Make sure quote-wide catalogs are loaded so we include them in the pricing request
   await Promise.all([loadCommonAddons(), loadLineHideProducts()]);
 
-  // Collect all catalog numbers from the quote
-  const catalogNumbers = [];
+  // Collect all catalog numbers PLUS their Johnstone order # so the backend can validate
+  // matches when Eclipse returns multiple products for an ambiguous catalog # (e.g. "711").
+  // Each entry: { cat: '<eclipse catalog #>', order: '<Johnstone order # or null>' }
+  const pairs = [];
+  const addPair = (cat, order = null) => { if (cat) pairs.push({ cat: formatCatNum(cat), order: order || null }); };
   quote.forEach(q => {
     if (q.qtype === 'unitary') {
-      if (q.model) catalogNumbers.push(formatCatNum(q.model));
+      if (q.model) addPair(q.model);
     } else if (q.qtype === 'sz') {
-      catalogNumbers.push(formatCatNum(q.ou), formatCatNum(q.iu));
+      addPair(q.ou); addPair(q.iu);
     } else {
-      catalogNumbers.push(formatCatNum(q.ou));
-      q.zones.forEach(z => catalogNumbers.push(formatCatNum(z.model)));
+      addPair(q.ou);
+      q.zones.forEach(z => addPair(z.model));
     }
-    // Include addon catalog numbers so they get priced too
-    (q.addons || []).forEach(a => { if (a.catalogNumber) catalogNumbers.push(formatCatNum(a.catalogNumber)); });
+    (q.addons || []).forEach(a => { if (a.catalogNumber) addPair(a.catalogNumber); });
   });
-  // Include quote-wide items (common addons + line hide) so they get priced
-  // Eclipse keys on manufacturer part numbers (catalogNumber), not Johnstone order #s
-  getQuoteWideLines().forEach(l => { if (l.catalogNumber) catalogNumbers.push(formatCatNum(l.catalogNumber)); });
-  // Also pre-fetch all visible common addons + line hide products so prices show before user checks anything
+  // Quote-wide items already carry both fields — pass the order # too
+  getQuoteWideLines().forEach(l => { if (l.catalogNumber) addPair(l.catalogNumber, l.sku); });
+  // Pre-fetch visible common addons (sku is the Johnstone order #, mfg_num is the Eclipse catalog #)
   if (COMMON_ADDONS) COMMON_ADDONS.forEach(a => {
     const cn = a.mfg_num || a.sku;
-    if (cn) catalogNumbers.push(formatCatNum(cn));
+    if (cn) addPair(cn, a.sku);
   });
   if (LINE_HIDE_PRODUCTS && quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
     LINE_HIDE_PRODUCTS
       .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize)
-      .forEach(p => { if (p.mfg_num) catalogNumbers.push(formatCatNum(p.mfg_num)); });
+      .forEach(p => { if (p.mfg_num) addPair(p.mfg_num, p.order_num); });
   }
-  const unique = [...new Set(catalogNumbers.filter(Boolean))];
+  // Dedupe pairs by cat+order combo, then build a parallel catalogNumbers array for the backend
+  const seen = new Set();
+  const uniquePairs = [];
+  for (const p of pairs) {
+    const key = (p.cat || '') + '|' + (p.order || '');
+    if (!seen.has(key)) { seen.add(key); uniquePairs.push(p); }
+  }
+  const unique = [...new Set(uniquePairs.map(p => p.cat).filter(Boolean))];
 
   const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
 
@@ -2666,7 +2674,8 @@ async function getPricing() {
         customerId: qSelectedCustomer.id,
         userId: eclipseSession.username,
         userBranch,
-        catalogNumbers: unique
+        catalogNumbers: unique,
+        catalogPairs: uniquePairs   // [{cat, order}] — backend uses `order` to disambiguate
       })
     });
     const data = await res.json();
