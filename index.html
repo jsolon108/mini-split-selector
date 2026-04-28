@@ -1136,7 +1136,20 @@ function addonQty(a) {
 // Builds a "noun signature" sort key from a description so similar items cluster
 // (e.g. all "Condensate Pump" items, all "Drain Hose" items).
 // Strategy: strip leading SKU-like tokens & trailing measurement gunk,
-// then take the last 1-2 words as the product noun signature.
+// then prefer a known product noun if present, else fall back to last 2 words.
+const ADDON_PRODUCT_NOUNS = [
+  // Multi-word nouns must come BEFORE their single-word forms so we match the longer one first
+  'condensate pump','drain hose','line set','line hide','wall sleeve',
+  'mounting block','mounting pad','mounting bracket','condenser pad',
+  'pvc pipe','flexible adapter','flexible ell','wall inlet','soffit inlet',
+  'end fitting','fixed offset','vertical ell','flat ell','wired controller',
+  'mini-split wire','mini split wire',
+  // Single-word fallback nouns
+  'pump','hose','adapter','coupler','tee','elbow','ell','sleeve','bracket',
+  'whip','disconnect','thermostat','controller','filter','drier','contactor',
+  'capacitor','motor','fan','blade','wheel','glass','valve','gauge','grille',
+  'register','pad','wire','cable','duct','grille','damper',
+];
 function addonSortKey(desc) {
   if (!desc) return '';
   let s = String(desc);
@@ -1146,7 +1159,7 @@ function addonSortKey(desc) {
     tokens.shift();
   }
   s = tokens.join(' ');
-  // Strip trailing gunk iteratively (voltages, dimensions, parens, w/clauses, qty packs)
+  // Strip trailing gunk iteratively
   let prev;
   do {
     prev = s;
@@ -1155,10 +1168,16 @@ function addonSortKey(desc) {
     s = s.replace(/\s+\(.+?\)\s*$/, '');
     s = s.replace(/\s+\d+\s*-?\s*pk\.?$/i, '');
     s = s.replace(/[\.,;]+\s*$/, '');
-    // Strip any trailing token that contains a digit or quote (covers 1/2"x164ft, 18x38, 50ft, etc.)
     s = s.replace(/\s+\S*[\d"']\S*$/, '');
   } while (s !== prev);
   s = s.trim();
+  // Prefer a known product noun if it appears anywhere in the description
+  // (so "Condensate Pump Under Mount" still clusters with other condensate pumps)
+  const lower = s.toLowerCase();
+  for (const noun of ADDON_PRODUCT_NOUNS) {
+    if (lower.includes(noun)) return noun;
+  }
+  // Fallback: last 2 words
   const words = s.split(/\s+/).filter(Boolean);
   return words.slice(Math.max(0, words.length - 2)).join(' ').toLowerCase();
 }
