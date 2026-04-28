@@ -932,33 +932,16 @@ function formatCatNumLocal(model) {
   return model;
 }
 
-// Tries several key variants to look up pricing/inventory.
-// Exact-match candidates (case/dash-preserving) are tried first and trusted unconditionally.
-// Fuzzy fallbacks (dash-stripped, case-insensitive) are only used when there is exactly ONE match —
-// this prevents wrong matches like WBB-300SS ↔ WBB-300 in catalogs that contain both.
+// Pricing lookup. EXACT KEY MATCH ONLY — no fuzzy fallback.
+// Returning a wrong price (from a key collision) is far worse than showing "—".
+// If items consistently show "—", the pricing-response keys differ from what we send;
+// inspect `quotePricing.pricing` keys in the console and tell the API to normalize.
 function _lookupPricingKey(map, model) {
   if (!map || !model) return null;
   const m = String(model);
-  // Exact-match candidates — try these first, return on first hit
-  const exact = [m, formatCatNumLocal(m)];
-  for (const c of exact) {
-    if (c && map[c] != null) return map[c];
-  }
-  // Fuzzy fallbacks — only return if EXACTLY ONE match exists across the map
-  const targetUpper = m.toUpperCase();
-  const targetLower = m.toLowerCase();
-  const targetNoDash = targetUpper.replace(/-/g, '');
-  const matches = [];
-  for (const k of Object.keys(map)) {
-    const ku = k.toUpperCase();
-    if (ku === targetUpper || ku.replace(/-/g, '') === targetNoDash) {
-      matches.push(map[k]);
-    }
-  }
-  // Dedupe by reference
-  const unique = [...new Set(matches)];
-  if (unique.length === 1) return unique[0];
-  // 0 matches → genuinely missing; >1 matches → ambiguous, refuse to guess
+  if (map[m] != null) return map[m];
+  const fmt = formatCatNumLocal(m);
+  if (fmt && fmt !== m && map[fmt] != null) return map[fmt];
   return null;
 }
 
