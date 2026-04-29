@@ -534,33 +534,79 @@ export default async function handler(req, res) {
   }
 
   // Lightweight product search — for typeahead / picker UIs.
-  // Returns up to 15 matches with just enough info to display & pick (no per-result
-  // inventory or tag-along fetches). Caller can do full lookups on selection.
+  // Returns up to 30 matches with stock info, sorted in-stock first.
+  // We do ONE batch inventory call for all hits (not N individual calls) to keep this fast.
   if (action === 'searchProductsLite') {
     try {
-      const { keyword } = req.body;
+      const { keyword, userBranch } = req.body;
       if (!keyword || keyword.trim().length < 2) return res.status(200).json({ results: [] });
-      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=15`, {
+      const branch = userBranch || 'FARM';
+      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=30`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (searchR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
       if (!searchR.ok) return res.status(searchR.status).json({ error: `Product search failed: ${searchR.status}` });
       const searchData = await searchR.json();
-      const results = (searchData.results || []).map(item => {
+      const raw = (searchData.results || []).map(item => {
         const info = item.basicInfo || [];
         const get = key => info.find(i => i.key === key)?.value || '';
         const description = (get('description') || '').replace(/\n/g, ' ').trim();
-        // Try to extract a Johnstone order # from the description prefix, e.g.
-        // "B14-475 NFP75 WALL SLEEVE..." → orderNum: "B14-475"
         const orderMatch = description.match(/^([A-Z]\d+-\d+)\b/);
         return {
           productId: get('id'),
-          catalogNumber: (get('catalogNumber') || '').trim(), // strip trailing whitespace quirks
+          catalogNumber: (get('catalogNumber') || '').trim(),
           orderNumber: orderMatch ? orderMatch[1] : null,
           description
         };
-      }).filter(r => r.catalogNumber); // drop entries with no catalog number — useless for ordering
-      return res.status(200).json({ results });
+      }).filter(r => r.catalogNumber);
+
+      // Batch inventory lookup so we can sort/filter by stock status.
+      // One call with multiple CatalogNumber params returns all results in a single response.
+      const invByCat = {};
+      if (raw.length) {
+        const params = new URLSearchParams();
+        raw.forEach(r => params.append('CatalogNumber', r.catalogNumber));
+        params.append('ConsiderUserAuthBranch', 'true');
+        try {
+          const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (invR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+          if (invR.ok) {
+            const invData = await invR.json();
+            // Match results back to catalog numbers via productDescription (it embeds the catalog #).
+            // This handles ambiguity the same way pricing does — by matching against what we asked for.
+            for (const r of raw) {
+              const catUpper = (r.catalogNumber || '').toUpperCase();
+              const noDashCat = catUpper.replace(/-/g, '');
+              const item = (invData.results || []).find(it => {
+                const desc = (it.productDescription || '').toUpperCase();
+                return desc.includes(catUpper) || desc.replace(/-/g, '').includes(noDashCat);
+              });
+              if (item) {
+                const branches = item.branchAvailableQuantity || [];
+                invByCat[r.catalogNumber] = {
+                  userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
+                  total: item.totalWarehouseQty ?? 0
+                };
+              }
+            }
+          }
+        } catch(e) { /* fall through with empty inv data */ }
+      }
+
+      // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
+      // Within each tier, preserve Eclipse's original ordering (already roughly relevance-ranked).
+      const annotated = raw.map(r => {
+        const inv = invByCat[r.catalogNumber] || { userQty: 0, total: 0 };
+        let stockTier = 2; // no stock
+        if (inv.userQty > 0) stockTier = 0;        // in stock at user's branch
+        else if (inv.total > 0) stockTier = 1;     // in stock at another branch
+        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier };
+      });
+      annotated.sort((a, b) => a.stockTier - b.stockTier);
+
+      return res.status(200).json({ results: annotated, userBranch: branch });
     } catch (err) {
       return res.status(500).json({ error: err.message });
     }
