@@ -380,7 +380,7 @@ export default async function handler(req, res) {
   // Search recent orders by customer
   if (action === 'searchOrders') {
     try {
-      const { customerId, username, orderStatus } = req.body;
+      const { customerId, username, orderStatus, productCatalog } = req.body;
       const params = new URLSearchParams();
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
@@ -389,6 +389,9 @@ export default async function handler(req, res) {
       } else {
         params.append('OrderStatus', 'Bid');
       }
+      // Try server-side product filter (Eclipse may ignore this param if it doesn't support it;
+      // we also filter client-side below as a safety net).
+      if (productCatalog) params.append('CatalogNumber', String(productCatalog));
       params.append('pageSize', '20');
       params.append('sort', '-OrderDate');
       const start = new Date();
@@ -397,9 +400,10 @@ export default async function handler(req, res) {
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
+      if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
       if (!r.ok) return res.status(r.status).json({ error: `Order search failed: ${r.status}` });
       const data = await r.json();
-      const orders = (data.results || data || []).map(o => {
+      let orders = (data.results || data || []).map(o => {
         const gen = o.generations?.[0] || {};
         return {
           id: (o.id || o.eclipseOid || '').replace(/\.\d+$/, ''),
@@ -420,6 +424,23 @@ export default async function handler(req, res) {
           })).slice(0, 10)
         };
       });
+
+      // Client-side product filter — runs whether or not Eclipse honored the server-side param.
+      // Match against line description (case-insensitive substring) — covers both SKU codes
+      // (which appear as a token in the description like "B88-363 83869 ...") and product
+      // names ("condensate pump"). Also match against productId for direct numeric SKUs.
+      if (productCatalog) {
+        const needle = String(productCatalog).toLowerCase().trim();
+        const needleNoDash = needle.replace(/-/g, '');
+        orders = orders.filter(o => (o.lines || []).some(l => {
+          const desc = (l.description || '').toLowerCase();
+          if (desc.includes(needle)) return true;
+          if (needleNoDash && desc.replace(/-/g, '').includes(needleNoDash)) return true;
+          if (l.id && String(l.id).toLowerCase() === needle) return true;
+          return false;
+        }));
+      }
+
       orders.sort((a, b) => (b.id || '').localeCompare(a.id || '', undefined, {numeric: true}));
       return res.status(200).json({ orders });
     } catch (err) {
@@ -458,18 +479,21 @@ export default async function handler(req, res) {
   // Search open orders by customer
   if (action === 'searchOpenOrders') {
     try {
-      const { customerId, username } = req.body;
+      const { customerId, username, productCatalog } = req.body;
       const params = new URLSearchParams();
       if (customerId) params.append('BillTo', customerId);
       if (username) params.append('Writer', username.toUpperCase());
       ['ShipWhenAvailable','CallWhenAvailable','ShipWhenComplete','CallWhenComplete','ShipItemComplete','PickUpNow','ShipWhenSpecified','CallWhenSpecified'].forEach(s => params.append('OrderStatus', s));
+      // Try server-side product filter (Eclipse may ignore it; we filter client-side too).
+      if (productCatalog) params.append('CatalogNumber', String(productCatalog));
       params.append('pageSize', '50');
       const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
+      if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
       if (!r.ok) return res.status(r.status).json({ error: `Order search failed: ${r.status}` });
       const data = await r.json();
-      const orders = (data.results || data || []).map(o => {
+      let orders = (data.results || data || []).map(o => {
         const gen = o.generations?.[0] || {};
         return {
           id: (o.id || o.eclipseOid || '').replace(/\.\d+$/, ''),
@@ -488,6 +512,20 @@ export default async function handler(req, res) {
           })).slice(0, 15)
         };
       });
+
+      // Client-side product filter as a safety net (matches the searchOrders logic above)
+      if (productCatalog) {
+        const needle = String(productCatalog).toLowerCase().trim();
+        const needleNoDash = needle.replace(/-/g, '');
+        orders = orders.filter(o => (o.lines || []).some(l => {
+          const desc = (l.description || '').toLowerCase();
+          if (desc.includes(needle)) return true;
+          if (needleNoDash && desc.replace(/-/g, '').includes(needleNoDash)) return true;
+          if (l.id && String(l.id).toLowerCase() === needle) return true;
+          return false;
+        }));
+      }
+
       orders.sort((a, b) => parseInt((b.id||'').replace(/\D/g,''),10) - parseInt((a.id||'').replace(/\D/g,''),10));
       return res.status(200).json({ orders });
     } catch (err) {
