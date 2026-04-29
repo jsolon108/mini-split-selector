@@ -205,7 +205,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 .pp-search{width:100%;height:38px;padding:0 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:12px}
 .pp-search:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,.1)}
 .pp-results{flex:1;min-height:200px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:8px}
-.pp-result{display:grid;grid-template-columns:1fr 70px 90px;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f5f5f3;cursor:pointer}
+.pp-result{display:grid;grid-template-columns:1fr 70px auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f5f5f3;cursor:pointer}
 .pp-result:first-child{border-top:none}
 .pp-result:hover{background:#f8f9fb}
 .pp-result-body{min-width:0;overflow:hidden}
@@ -1541,14 +1541,14 @@ async function ppSearch(keyword) {
       const codeLabel = r.orderNumber
         ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
         : escHtml(r.catalogNumber);
-      // Stock indicator: green dot if in stock at user's branch, yellow if elsewhere, red if none
+      // Stock indicator: green if at user's branch, yellow if elsewhere, red if none
       let stockBadge = '';
       if (r.stockTier === 0) {
         stockBadge = `<span style="font-size:10px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${data.userBranch})</span>`;
       } else if (r.stockTier === 1) {
         stockBadge = `<span style="font-size:10px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
       } else {
-        stockBadge = `<span style="font-size:10px;color:#aaa">○ Out of stock</span>`;
+        stockBadge = `<span style="font-size:10px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
       }
       return `<div class="pp-result">
         <div class="pp-result-body">
@@ -1558,7 +1558,10 @@ async function ppSearch(keyword) {
         <div class="pp-result-qty">
           <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()"/>
         </div>
-        <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button onclick="ppShowInventory(${i})" title="View per-branch inventory" style="height:30px;padding:0 10px;border:1px solid #d5d5d5;background:#fff;color:#185FA5;border-radius:6px;font-size:11px;cursor:pointer;font-weight:500">Inventory</button>
+          <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
+        </div>
       </div>`;
     }).join('');
   } catch(err) {
@@ -1588,6 +1591,14 @@ function ppAddItem(i) {
   if (btn) { btn.textContent = '✓ Added'; btn.disabled = true; btn.style.background = '#0f6e56'; }
   renderQuote();
   setTimeout(() => closeProductPicker(), 600);
+}
+
+// Show per-branch inventory for a search result. Reuses the existing inventory modal
+// (showInvModal) which stacks on top of the picker.
+function ppShowInventory(i) {
+  const r = ppLastResults[i];
+  if (!r) return;
+  showInvModal(r.catalogNumber, r.description);
 }
 // Allow Esc to close the modal
 document.addEventListener('keydown', (e) => {
