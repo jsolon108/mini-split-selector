@@ -2587,7 +2587,8 @@ function removeQ(i){quote.splice(i,1);updateCount();renderQuote();renderSingle()
 function updateCount(){document.getElementById('qcount').textContent=quote.length;}
 
 function copyQuote() {
-  if(!quote.length){alert('Add systems first.');return;}
+  const hasItems = quote.length || getQuoteWideLines().length > 0;
+  if(!hasItems){alert('Add a system or product first.');return;}
   const lines=['DUCTLESS QUOTE — Johnstone Supply NY/CT','Date: '+new Date().toLocaleDateString(),''];
   quote.forEach(q=>{
     lines.push('---');
@@ -2632,7 +2633,8 @@ let selectedCustomer = null;
 let customerSearchTimer = null;
 
 function openEclipseModal() {
-  if (!quote.length) { alert('Add systems to the quote first.'); return; }
+  const hasItems = quote.length || getQuoteWideLines().length > 0;
+  if (!hasItems) { alert('Add a system or product to the quote first.'); return; }
   document.getElementById('modal-status').textContent = '';
   document.getElementById('modal-close-btn').style.display = 'none';
   document.getElementById('modal-submit').disabled = false;
@@ -2864,13 +2866,15 @@ function clearQCustomer() {
 }
 
 async function getPricing() {
-  if (!qSelectedCustomer || !quote.length) return;
+  if (!qSelectedCustomer) return;
+  // Make sure quote-wide catalogs are loaded so we know what's selected
+  await Promise.all([loadCommonAddons(), loadLineHideProducts()]);
+  // Allow pricing if there's a system OR any quote-wide item (custom items, common addons, line hide)
+  const hasQuoteWideItems = getQuoteWideLines().length > 0;
+  if (!quote.length && !hasQuoteWideItems) return;
   const btn = document.getElementById('get-pricing-btn');
   btn.textContent = 'Loading...';
   btn.disabled = true;
-
-  // Make sure quote-wide catalogs are loaded so we include them in the pricing request
-  await Promise.all([loadCommonAddons(), loadLineHideProducts()]);
 
   // Collect all catalog numbers PLUS their Johnstone order # so the backend can validate
   // matches when Eclipse returns multiple products for an ambiguous catalog # (e.g. "711").
