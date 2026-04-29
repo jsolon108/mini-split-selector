@@ -1516,13 +1516,15 @@ async function ppSearch(keyword) {
   const resultsEl = document.getElementById('pp-results');
   resultsEl.innerHTML = '<div class="pp-loading">Searching Eclipse...</div>';
   try {
+    const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
     const res = await fetch('/api/eclipse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'searchProductsLite',
         sessionToken: eclipseSession.token,
-        keyword
+        keyword,
+        userBranch
       })
     });
     const data = await res.json();
@@ -1539,9 +1541,18 @@ async function ppSearch(keyword) {
       const codeLabel = r.orderNumber
         ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
         : escHtml(r.catalogNumber);
+      // Stock indicator: green dot if in stock at user's branch, yellow if elsewhere, red if none
+      let stockBadge = '';
+      if (r.stockTier === 0) {
+        stockBadge = `<span style="font-size:10px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${data.userBranch})</span>`;
+      } else if (r.stockTier === 1) {
+        stockBadge = `<span style="font-size:10px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
+      } else {
+        stockBadge = `<span style="font-size:10px;color:#aaa">○ Out of stock</span>`;
+      }
       return `<div class="pp-result">
         <div class="pp-result-body">
-          <div class="pp-result-cat">${codeLabel}</div>
+          <div class="pp-result-cat">${codeLabel} <span style="font-weight:400;margin-left:6px">${stockBadge}</span></div>
           <div class="pp-result-desc">${escHtml(r.description)}</div>
         </div>
         <div class="pp-result-qty">
