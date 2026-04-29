@@ -2724,6 +2724,28 @@ function rqSearchInput() {
   rqSearchTimer = setTimeout(() => rqSearch(q), 350);
 }
 
+// Product filter — re-runs the order search with the typed SKU/name as a filter.
+// Debounced so typing "B17-130" doesn't fire 7 queries.
+let rqProductTimer;
+function rqProductInput() {
+  const val = document.getElementById('rq-product-search')?.value || '';
+  const clearBtn = document.getElementById('rq-product-clear');
+  if (clearBtn) clearBtn.style.display = val.trim() ? '' : 'none';
+  if (!rqSelectedCustomer) return; // need a customer first
+  clearTimeout(rqProductTimer);
+  rqProductTimer = setTimeout(() => rqLoadOrders(rqSelectedCustomer.id), 400);
+}
+
+let ooProductTimer;
+function ooProductInput() {
+  const val = document.getElementById('oo-product-search')?.value || '';
+  const clearBtn = document.getElementById('oo-product-clear');
+  if (clearBtn) clearBtn.style.display = val.trim() ? '' : 'none';
+  if (!ooSelectedCustomer) return;
+  clearTimeout(ooProductTimer);
+  ooProductTimer = setTimeout(() => ooLoadOrders(ooSelectedCustomer.id), 400);
+}
+
 async function rqSearch(keyword) {
   const resultsEl = document.getElementById('rq-customer-results');
   resultsEl.style.display = 'block';
@@ -2758,6 +2780,7 @@ async function rqSelectCustomer(c) {
 async function rqLoadOrders(customerId) {
   const el = document.getElementById('rq-results');
   el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">Loading...</div>';
+  const productCatalog = (document.getElementById('rq-product-search')?.value || '').trim();
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST',
@@ -2766,11 +2789,18 @@ async function rqLoadOrders(customerId) {
         action: 'searchOrders',
         sessionToken: eclipseSession.token,
         customerId: String(customerId),
-        username: document.getElementById('rq-my-only')?.checked ? eclipseSession.username : null
+        username: document.getElementById('rq-my-only')?.checked ? eclipseSession.username : null,
+        productCatalog: productCatalog || null
       })
     });
     const data = await res.json();
-    if (!data.orders?.length) { el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">No recent quotes found.</div>'; return; }
+    if (!data.orders?.length) {
+      const msg = productCatalog
+        ? `No quotes found containing "${productCatalog}".`
+        : 'No recent quotes found.';
+      el.innerHTML = `<div style="padding:12px 0;color:#888;font-size:13px">${msg}</div>`;
+      return;
+    }
     el.innerHTML = data.orders.map(o => {
       const lines = o.lines.map(l => {
         const avail = l.status === 'Stock' ? 'yes' : l.status === 'NonStock' || l.status === 'Nonstock' ? 'no' : l.status ? 'partial' : null;
@@ -3105,6 +3135,7 @@ async function ooLoadOrders(customerId) {
   const el = document.getElementById('oo-results');
   el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">Loading...</div>';
   const myOnly = document.getElementById('oo-my-only')?.checked;
+  const productCatalog = (document.getElementById('oo-product-search')?.value || '').trim();
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST',
@@ -3113,11 +3144,18 @@ async function ooLoadOrders(customerId) {
         action: 'searchOpenOrders',
         sessionToken: eclipseSession.token,
         customerId: String(customerId),
-        username: myOnly ? eclipseSession.username : null
+        username: myOnly ? eclipseSession.username : null,
+        productCatalog: productCatalog || null
       })
     });
     const data = await res.json();
-    if (!data.orders?.length) { el.innerHTML = '<div style="padding:12px 0;color:#888;font-size:13px">No open orders found.</div>'; return; }
+    if (!data.orders?.length) {
+      const msg = productCatalog
+        ? `No open orders found containing "${productCatalog}".`
+        : 'No open orders found.';
+      el.innerHTML = `<div style="padding:12px 0;color:#888;font-size:13px">${msg}</div>`;
+      return;
+    }
     el.innerHTML = data.orders.map(o => {
       const lines = o.lines.map(l => {
         const avail = l.status === 'Stock' ? 'yes' : l.status === 'NonStock' || l.status === 'Nonstock' ? 'no' : 'partial';
@@ -3963,11 +4001,16 @@ function chunkArray(arr, size) {
           style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
         <div id="rq-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
-      <div style="margin:8px 0 12px;font-size:13px;color:#555">
+      <div style="margin:8px 0 12px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
           <input type="checkbox" id="rq-my-only" checked style="cursor:pointer" onchange="rqSelectedCustomer && rqLoadOrders(rqSelectedCustomer.id)"/>
           My quotes only
         </label>
+        <div style="flex:1;min-width:220px;display:flex;align-items:center;gap:6px">
+          <input type="text" id="rq-product-search" placeholder="Filter by SKU or product name..." oninput="rqProductInput()" autocomplete="off"
+            style="flex:1;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          <button onclick="document.getElementById('rq-product-search').value='';rqProductInput()" id="rq-product-clear" style="display:none;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#666">Clear</button>
+        </div>
       </div>
       <div id="rq-results"></div>
     </div>
@@ -3980,11 +4023,16 @@ function chunkArray(arr, size) {
           style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
         <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
-      <div style="margin:8px 0 12px;font-size:13px;color:#555">
+      <div style="margin:8px 0 12px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
           <input type="checkbox" id="oo-my-only" checked style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
           My orders only
         </label>
+        <div style="flex:1;min-width:220px;display:flex;align-items:center;gap:6px">
+          <input type="text" id="oo-product-search" placeholder="Filter by SKU or product name..." oninput="ooProductInput()" autocomplete="off"
+            style="flex:1;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+          <button onclick="document.getElementById('oo-product-search').value='';ooProductInput()" id="oo-product-clear" style="display:none;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#666">Clear</button>
+        </div>
       </div>
       <div id="oo-results"></div>
     </div>
