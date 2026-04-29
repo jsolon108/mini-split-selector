@@ -533,6 +533,39 @@ export default async function handler(req, res) {
     }
   }
 
+  // Lightweight product search — for typeahead / picker UIs.
+  // Returns up to 15 matches with just enough info to display & pick (no per-result
+  // inventory or tag-along fetches). Caller can do full lookups on selection.
+  if (action === 'searchProductsLite') {
+    try {
+      const { keyword } = req.body;
+      if (!keyword || keyword.trim().length < 2) return res.status(200).json({ results: [] });
+      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=15`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (searchR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+      if (!searchR.ok) return res.status(searchR.status).json({ error: `Product search failed: ${searchR.status}` });
+      const searchData = await searchR.json();
+      const results = (searchData.results || []).map(item => {
+        const info = item.basicInfo || [];
+        const get = key => info.find(i => i.key === key)?.value || '';
+        const description = (get('description') || '').replace(/\n/g, ' ').trim();
+        // Try to extract a Johnstone order # from the description prefix, e.g.
+        // "B14-475 NFP75 WALL SLEEVE..." → orderNum: "B14-475"
+        const orderMatch = description.match(/^([A-Z]\d+-\d+)\b/);
+        return {
+          productId: get('id'),
+          catalogNumber: (get('catalogNumber') || '').trim(), // strip trailing whitespace quirks
+          orderNumber: orderMatch ? orderMatch[1] : null,
+          description
+        };
+      }).filter(r => r.catalogNumber); // drop entries with no catalog number — useless for ordering
+      return res.status(200).json({ results });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // Search products by keyword with tag-along accessories and inventory
   if (action === 'searchProducts') {
     try {
