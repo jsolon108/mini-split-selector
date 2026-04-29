@@ -16,6 +16,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .alert-banner + .alert-banner{border-top:1px solid #f5dd87}
 .alert-banner .alert-icon{flex:0 0 auto;font-size:14px}
 .alert-banner .alert-msg{flex:1;min-width:0}
+/* Session-expired banner — stronger color so it stands out from informational alerts */
+.session-banner{background:#fee2e2;border-bottom:1px solid #f5a5a5;color:#7f1d1d;padding:10px 20px;font-size:13px;line-height:1.4;display:none;align-items:center;gap:10px;font-weight:500}
+.session-banner.visible{display:flex}
+.session-banner .session-msg{flex:1;min-width:0}
+.session-banner button{background:#7f1d1d;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
+.session-banner button:hover{background:#991b1b}
 .container{max-width:980px;margin:0 auto;padding:20px}
 .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid #e5e5e5}
 .tab{padding:8px 18px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;color:#666;background:none}
@@ -244,6 +250,12 @@ select:focus,input:focus{outline:none;border-color:#999}
 </head>
 <body>
 <div class="alert-banner-wrap" id="alert-banner-wrap"></div>
+<div class="session-banner" id="session-banner">
+  <span>⚠️</span>
+  <span class="session-msg">Your Eclipse session has expired. Pricing, inventory, and customer info won't load until you sign in again.</span>
+  <button onclick="reauthEclipse()">Sign in again</button>
+  <button onclick="document.getElementById('session-banner').classList.remove('visible')" style="background:transparent;color:#7f1d1d;border:1px solid #7f1d1d" title="Dismiss">✕</button>
+</div>
 <div class="header">
   <div>
     <div class="header-logo">Johnstone Supply NY/CT</div>
@@ -3147,6 +3159,57 @@ function clearQuote() {
 
 
 // ── Central Eclipse API call with auto session refresh ────────────
+
+// Intercept all /api/eclipse responses to detect session expiry globally.
+// When ANY Eclipse call returns 401 / session-expired, show the persistent banner.
+// When ANY call succeeds, hide it. This means callers don't need to handle the
+// banner themselves — they just see whatever response/error they would normally see.
+(function wrapEclipseFetch() {
+  if (window.__eclipseFetchWrapped) return;
+  window.__eclipseFetchWrapped = true;
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function(url, opts) {
+    const res = await origFetch(url, opts);
+    // Only inspect /api/eclipse responses
+    const u = typeof url === 'string' ? url : (url?.url || '');
+    if (u.includes('/api/eclipse')) {
+      try {
+        // Read body without consuming it (clone)
+        const clone = res.clone();
+        const isExpired = res.status === 401
+          || (res.headers.get('content-type')?.includes('json') && await clone.json().then(d =>
+              !!(d?.error && /session|expired|419|401|unauthori[sz]ed|invalid token/i.test(d.error))
+            ).catch(() => false));
+        if (isExpired) showSessionExpiredBanner();
+        else if (res.ok) hideSessionExpiredBanner();
+      } catch(e) { /* don't break the request if introspection fails */ }
+    }
+    return res;
+  };
+})();
+
+function showSessionExpiredBanner() {
+  const el = document.getElementById('session-banner');
+  if (el) el.classList.add('visible');
+}
+function hideSessionExpiredBanner() {
+  const el = document.getElementById('session-banner');
+  if (el) el.classList.remove('visible');
+}
+// Called from the banner's "Sign in again" button.
+// Reuses the existing login overlay — the user enters their creds and hits Sign In.
+function reauthEclipse() {
+  hideSessionExpiredBanner();
+  const overlay = document.getElementById('login-overlay');
+  if (overlay) {
+    overlay.classList.add('visible');
+    // Pre-fill username if we have it cached, focus the password field
+    const userInput = document.getElementById('login-user');
+    const passInput = document.getElementById('login-pass');
+    if (userInput && eclipseSession.username) userInput.value = eclipseSession.username;
+    if (passInput) { passInput.value = ''; passInput.focus(); }
+  }
+}
 
 async function eclipseCall(body) {
   body.sessionToken = eclipseSession.token;
