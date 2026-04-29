@@ -560,39 +560,34 @@ export default async function handler(req, res) {
         };
       }).filter(r => r.catalogNumber);
 
-      // Batch inventory lookup so we can sort/filter by stock status.
-      // One call with multiple CatalogNumber params returns all results in a single response.
+      // Inventory lookups — parallel single-SKU calls.
+      // Tried a single batch call with multiple CatalogNumber params but Eclipse silently
+      // returned empty results, so we fan out instead. Promise.all keeps it fast (~30 calls
+      // in parallel = roughly 1 round-trip latency, not 30x).
       const invByCat = {};
       if (raw.length) {
-        const params = new URLSearchParams();
-        raw.forEach(r => params.append('CatalogNumber', r.catalogNumber));
-        params.append('ConsiderUserAuthBranch', 'true');
-        try {
-          const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
-            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-          });
-          if (invR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
-          if (invR.ok) {
+        await Promise.all(raw.map(async r => {
+          try {
+            const params = new URLSearchParams();
+            params.append('CatalogNumber', r.catalogNumber);
+            params.append('ConsiderUserAuthBranch', 'true');
+            const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+              headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+            });
+            if (!invR.ok) return;
             const invData = await invR.json();
-            // Match results back to catalog numbers via productDescription (it embeds the catalog #).
-            // This handles ambiguity the same way pricing does — by matching against what we asked for.
-            for (const r of raw) {
-              const catUpper = (r.catalogNumber || '').toUpperCase();
-              const noDashCat = catUpper.replace(/-/g, '');
-              const item = (invData.results || []).find(it => {
-                const desc = (it.productDescription || '').toUpperCase();
-                return desc.includes(catUpper) || desc.replace(/-/g, '').includes(noDashCat);
-              });
-              if (item) {
-                const branches = item.branchAvailableQuantity || [];
-                invByCat[r.catalogNumber] = {
-                  userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
-                  total: item.totalWarehouseQty ?? 0
-                };
-              }
-            }
-          }
-        } catch(e) { /* fall through with empty inv data */ }
+            // Disambiguate by productId (the search already gave us each item's productId)
+            // since one CatalogNumber query can return multiple matches (e.g. "711" → multiple SKUs).
+            let item = (invData.results || []).find(it => String(it.productId || '') === String(r.productId));
+            if (!item) item = (invData.results || [])[0];
+            if (!item) return;
+            const branches = item.branchAvailableQuantity || [];
+            invByCat[r.catalogNumber] = {
+              userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
+              total: item.totalWarehouseQty ?? 0
+            };
+          } catch(e) { /* skip on individual failure */ }
+        }));
       }
 
       // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
