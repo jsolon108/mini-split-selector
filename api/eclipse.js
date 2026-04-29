@@ -209,6 +209,11 @@ export default async function handler(req, res) {
         const pricingRes = await fetch(pricingUrl, {
           headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
         });
+        // 401 on any batch means the session is dead — surface to the client so it can
+        // prompt re-login. Without this, expired sessions silently produce empty pricing.
+        if (pricingRes.status === 401) {
+          return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+        }
         if (!pricingRes.ok) continue;
         const pricingText = await pricingRes.text();
         try {
@@ -297,6 +302,9 @@ export default async function handler(req, res) {
           const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(searchKeyword)}&pageSize=5`, {
             headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
           });
+          if (searchR.status === 401) {
+            return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+          }
           if (!searchR.ok) continue;
           const searchData = await searchR.json();
           const items = searchData.results || [];
@@ -323,6 +331,9 @@ export default async function handler(req, res) {
           const pr = await fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pp.toString(), {
             headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
           });
+          if (pr.status === 401) {
+            return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+          }
           if (!pr.ok) continue;
           const pd = await pr.json();
           const item = (pd.results || [])[0];
