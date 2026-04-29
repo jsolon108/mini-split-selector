@@ -197,6 +197,27 @@ select:focus,input:focus{outline:none;border-color:#999}
 .inv-modal{background:#fff;border-radius:14px;padding:24px;width:340px;max-width:90vw;box-shadow:0 8px 40px rgba(0,0,0,.18)}
 .inv-modal-title{font-size:15px;font-weight:600;margin-bottom:4px}
 .inv-modal-model{font-size:11px;color:#888;margin-bottom:16px;font-family:monospace}
+/* Product picker modal — for adding ad-hoc products to a quote */
+.pp-modal{background:#fff;border-radius:14px;padding:20px;width:680px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.18)}
+.pp-header{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.pp-header h2{margin:0;font-size:16px;font-weight:600;flex:1}
+.pp-close{background:none;border:none;cursor:pointer;color:#aaa;font-size:18px;padding:4px 8px;line-height:1}
+.pp-search{width:100%;height:38px;padding:0 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:12px}
+.pp-search:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,.1)}
+.pp-results{flex:1;min-height:200px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:8px}
+.pp-result{display:grid;grid-template-columns:1fr 70px 90px;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f5f5f3;cursor:pointer}
+.pp-result:first-child{border-top:none}
+.pp-result:hover{background:#f8f9fb}
+.pp-result-body{min-width:0;overflow:hidden}
+.pp-result-cat{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5;font-size:12px;font-weight:600}
+.pp-result-desc{font-size:13px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-result-qty{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+.pp-result-qty input{width:50px;height:30px;padding:0 4px;border:1px solid #d0d0d0;border-radius:5px;font-size:12px;text-align:center}
+.pp-result-add{height:30px;padding:0 12px;border:0;border-radius:6px;background:#185FA5;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
+.pp-result-add:hover{background:#13497f}
+.pp-result-add:disabled{background:#bbb;cursor:not-allowed}
+.pp-empty{padding:30px;text-align:center;color:#999;font-size:13px}
+.pp-loading{padding:20px;text-align:center;color:#888;font-size:13px}
 .inv-branch-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px}
 .inv-branch-row:last-child{border-bottom:none}
 .inv-branch-name{color:#555}
@@ -380,6 +401,9 @@ select:focus,input:focus{outline:none;border-color:#999}
       </div>
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
+    <div style="margin-bottom:10px">
+      <button onclick="openProductPicker()" style="width:100%;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
+    </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <div id="quote-wide-sections"></div>
     <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A;margin-bottom:10px">Clear quote</button>
@@ -442,6 +466,20 @@ select:focus,input:focus{outline:none;border-color:#999}
     <input type="password" id="login-pass" placeholder="Eclipse password" autocomplete="current-password" onkeydown="if(event.key==='Enter'){event.preventDefault();doLogin()}"/>
     <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
     <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<!-- Product Picker Modal — for adding ad-hoc Eclipse products to a quote -->
+<div class="inv-modal-overlay" id="pp-overlay" onclick="if(event.target===this)closeProductPicker()">
+  <div class="pp-modal" onclick="event.stopPropagation()">
+    <div class="pp-header">
+      <h2>Add product to quote</h2>
+      <button class="pp-close" onclick="closeProductPicker()">✕</button>
+    </div>
+    <input type="text" id="pp-search" class="pp-search" placeholder="Search by SKU, mfg #, or description..." oninput="ppSearchInput()" autocomplete="off"/>
+    <div id="pp-results" class="pp-results">
+      <div class="pp-empty">Type at least 2 characters to search Eclipse for products.</div>
+    </div>
   </div>
 </div>
 
@@ -992,7 +1030,8 @@ function renderQuote() {
   const el=document.getElementById('quote-box');
   const sdSummary = renderSlimDuctSummary();
   const caSummary = renderCommonAddonsSummary();
-  const summaries = caSummary + sdSummary;
+  const ciSummary = renderCustomItemsSummary();
+  const summaries = ciSummary + caSummary + sdSummary;
   if(!quote.length){
     el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
@@ -1145,7 +1184,7 @@ function renderQuote() {
       </div>
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
-  }).join('') + caSummary + sdSummary;
+  }).join('') + ciSummary + caSummary + sdSummary;
   renderQuoteWideSections();
 }
 
@@ -1225,6 +1264,7 @@ let quoteWideState = {
   lineHideSize: null,   // 77 | 100 | 140
   commonOpen: false,
   lineHideOpen: false,
+  customItems: {},      // {key: {catalogNumber, orderNumber, description, qty}} — ad-hoc products added via picker
 };
 
 async function loadCommonAddons(force=false) {
@@ -1256,7 +1296,9 @@ const LH_SIZES = [77, 100, 140];
 function renderQuoteWideSections() {
   const el = document.getElementById('quote-wide-sections');
   if (!el) return;
-  const hasSelections = Object.keys(quoteWideState.common).length > 0 || Object.keys(quoteWideState.lineHide).length > 0;
+  const hasSelections = Object.keys(quoteWideState.common).length > 0
+    || Object.keys(quoteWideState.lineHide).length > 0
+    || Object.keys(quoteWideState.customItems || {}).length > 0;
   // Hide when there's nothing on the quote at all
   if (!quote.length && !hasSelections) { el.innerHTML = ''; return; }
   el.innerHTML = renderCommonAddonsSection() + renderLineHideSection();
@@ -1383,6 +1425,165 @@ function clearAllLineHide() {
   quoteWideState.lineHide = {};
   renderQuote();
 }
+
+// ─── Custom (ad-hoc) products added via "+ Add product" picker ──────
+function renderCustomItemsSummary() {
+  const items = Object.keys(quoteWideState.customItems || {})
+    .map(k => ({ key: k, ...quoteWideState.customItems[k] }))
+    .filter(it => it.qty > 0);
+  if (!items.length) return '';
+
+  let total = 0;
+  const rows = items.map(it => {
+    const lookupKey = it.orderNumber || it.catalogNumber;
+    const price = getPrice(lookupKey);
+    const lineTotal = price?.price ? price.price * it.qty : null;
+    if (lineTotal != null) total += lineTotal;
+    const codeLabel = it.orderNumber
+      ? `${escHtml(it.orderNumber)} · ${escHtml(it.catalogNumber)}`
+      : escHtml(it.catalogNumber);
+    return `<div class="q-model-row" style="font-size:13px">
+      <span class="q-model-label">+ Item</span>
+      <span>${codeLabel}</span>
+      <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.description || '')}</span>
+      <span style="color:#888;font-size:12px">
+        <input type="number" min="1" value="${it.qty}" onchange="setCustomItemQty('${escAttr(it.key)}', +this.value)" style="width:48px;height:24px;padding:0 4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;text-align:center"/>
+      </span>
+      ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+      <button onclick="setCustomItemQty('${escAttr(it.key)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+    </div>`;
+  }).join('');
+
+  const totalRow = total > 0 ? `<div class="q-total-row">Items total: $${total.toFixed(2)}</div>` : '';
+
+  return `<div class="quote-line">
+    <div style="width:44px;flex-shrink:0"></div>
+    <div class="q-body">
+      <div class="q-name">Items</div>
+      <div class="q-model-list">${rows}</div>
+      ${totalRow}
+    </div>
+    <button class="rm-btn" onclick="clearAllCustomItems()" title="Remove all added items">✕</button>
+  </div>`;
+}
+
+function setCustomItemQty(key, qty) {
+  const it = quoteWideState.customItems[key];
+  if (!it) return;
+  const v = Math.max(0, Math.floor(qty || 0));
+  if (v === 0) delete quoteWideState.customItems[key];
+  else it.qty = v;
+  renderQuote();
+}
+
+function clearAllCustomItems() {
+  if (!Object.keys(quoteWideState.customItems || {}).length) return;
+  if (!confirm('Remove all added items from the quote?')) return;
+  quoteWideState.customItems = {};
+  renderQuote();
+}
+
+// ─── Product picker modal (+ Add product button) ─────────────────────
+let ppSearchTimer = null;
+let ppLastResults = [];
+
+function openProductPicker() {
+  if (!eclipseSession.token) {
+    alert('Please sign in to Eclipse first.');
+    return;
+  }
+  document.getElementById('pp-overlay').classList.add('open');
+  const input = document.getElementById('pp-search');
+  input.value = '';
+  document.getElementById('pp-results').innerHTML =
+    '<div class="pp-empty">Type at least 2 characters to search Eclipse for products.</div>';
+  setTimeout(() => input.focus(), 50);
+}
+function closeProductPicker() {
+  document.getElementById('pp-overlay').classList.remove('open');
+}
+function ppSearchInput() {
+  clearTimeout(ppSearchTimer);
+  const q = document.getElementById('pp-search').value.trim();
+  if (q.length < 2) {
+    document.getElementById('pp-results').innerHTML =
+      '<div class="pp-empty">Type at least 2 characters to search Eclipse for products.</div>';
+    return;
+  }
+  ppSearchTimer = setTimeout(() => ppSearch(q), 350);
+}
+async function ppSearch(keyword) {
+  const resultsEl = document.getElementById('pp-results');
+  resultsEl.innerHTML = '<div class="pp-loading">Searching Eclipse...</div>';
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'searchProductsLite',
+        sessionToken: eclipseSession.token,
+        keyword
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      resultsEl.innerHTML = `<div class="pp-empty" style="color:#E24B4A">${escHtml(data.error || 'Search failed')}</div>`;
+      return;
+    }
+    ppLastResults = data.results || [];
+    if (!ppLastResults.length) {
+      resultsEl.innerHTML = `<div class="pp-empty">No products found for "${escHtml(keyword)}".</div>`;
+      return;
+    }
+    resultsEl.innerHTML = ppLastResults.map((r, i) => {
+      const codeLabel = r.orderNumber
+        ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
+        : escHtml(r.catalogNumber);
+      return `<div class="pp-result">
+        <div class="pp-result-body">
+          <div class="pp-result-cat">${codeLabel}</div>
+          <div class="pp-result-desc">${escHtml(r.description)}</div>
+        </div>
+        <div class="pp-result-qty">
+          <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()"/>
+        </div>
+        <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
+      </div>`;
+    }).join('');
+  } catch(err) {
+    resultsEl.innerHTML = `<div class="pp-empty" style="color:#E24B4A">Error: ${escHtml(err.message)}</div>`;
+  }
+}
+function ppAddItem(i) {
+  const r = ppLastResults[i];
+  if (!r) return;
+  const qtyInput = document.getElementById('pp-qty-' + i);
+  const qty = Math.max(1, parseInt(qtyInput?.value, 10) || 1);
+  // Use orderNumber as the key when available (unique), otherwise catalog #.
+  // If the item is already on the quote, increment.
+  const key = r.orderNumber || r.catalogNumber;
+  if (quoteWideState.customItems[key]) {
+    quoteWideState.customItems[key].qty += qty;
+  } else {
+    quoteWideState.customItems[key] = {
+      catalogNumber: r.catalogNumber,
+      orderNumber: r.orderNumber,
+      description: r.description,
+      qty
+    };
+  }
+  // Brief visual feedback then close
+  const btn = document.querySelectorAll('.pp-result-add')[i];
+  if (btn) { btn.textContent = '✓ Added'; btn.disabled = true; btn.style.background = '#0f6e56'; }
+  renderQuote();
+  setTimeout(() => closeProductPicker(), 600);
+}
+// Allow Esc to close the modal
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('pp-overlay')?.classList.contains('open')) {
+    closeProductPicker();
+  }
+});
 
 function commonTotal() {
   if (!COMMON_ADDONS) return { total: 0, count: 0 };
@@ -1632,6 +1833,18 @@ function getQuoteWideLines() {
         size_code: p.size_code
       });
     }
+  }
+  // Ad-hoc products added via the "+ Add product" picker
+  for (const key of Object.keys(quoteWideState.customItems || {})) {
+    const it = quoteWideState.customItems[key];
+    if (!it || !it.qty) continue;
+    lines.push({
+      sku: it.orderNumber || it.catalogNumber, // prefer order # for unique pricing keys
+      catalogNumber: it.catalogNumber,
+      qty: it.qty,
+      description: it.description,
+      type: 'custom'
+    });
   }
   return lines;
 }
@@ -3009,7 +3222,7 @@ function clearQuote() {
   if (!quote.length) return;
   if (!confirm('Clear all systems from the quote?')) return;
   quote = [];
-  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false };
+  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false, customItems: {} };
   updateCount();
   renderQuote();
   quotePricing = {};
@@ -3199,7 +3412,7 @@ function clearQuote() {
   if (!confirm('Clear all items from the quote?')) return;
   quote = [];
   quotePricing = {};
-  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false };
+  quoteWideState = { common: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, commonOpen: false, lineHideOpen: false, customItems: {} };
   updateCount();
   renderQuote();
 }
