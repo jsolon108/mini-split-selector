@@ -392,7 +392,7 @@ export default async function handler(req, res) {
       // Try server-side product filter (Eclipse may ignore this param if it doesn't support it;
       // we also filter client-side below as a safety net).
       if (productCatalog) params.append('CatalogNumber', String(productCatalog));
-      params.append('pageSize', '20');
+      params.append('pageSize', '200');
       params.append('sort', '-OrderDate');
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
