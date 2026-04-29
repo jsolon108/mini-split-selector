@@ -2774,6 +2774,9 @@ async function rqSelectCustomer(c) {
   rqSelectedCustomer = c;
   document.getElementById('rq-customer-results').style.display = 'none';
   document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
+  // Enable the product filter now that we have a customer
+  const ps = document.getElementById('rq-product-search');
+  if (ps) { ps.disabled = false; ps.placeholder = 'Filter by SKU or product name (optional)'; }
   await rqLoadOrders(c.id);
 }
 
@@ -3053,6 +3056,9 @@ async function ooSelectCustomer(c) {
   ooSelectedCustomer = c;
   document.getElementById('oo-customer-results').style.display = 'none';
   document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+  // Enable the product filter now that we have a customer
+  const ps = document.getElementById('oo-product-search');
+  if (ps) { ps.disabled = false; ps.placeholder = 'Filter by SKU or product name (optional)'; }
   await ooLoadOrders(c.id);
 }
 
@@ -3128,6 +3134,9 @@ async function ooSelectCustomer(c) {
   ooSelectedCustomer = c;
   document.getElementById('oo-customer-results').style.display = 'none';
   document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+  // Enable the product filter now that we have a customer
+  const ps = document.getElementById('oo-product-search');
+  if (ps) { ps.disabled = false; ps.placeholder = 'Filter by SKU or product name (optional)'; }
   await ooLoadOrders(c.id);
 }
 
@@ -3996,45 +4005,49 @@ function chunkArray(arr, size) {
 </div>
   <div class="panel" id="panel-recent">
     <div style="max-width:600px;margin:0 auto">
-      <div style="margin-bottom:12px;position:relative">
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Step 1 — Find a customer</div>
+      <div style="margin-bottom:14px;position:relative">
         <input type="text" id="rq-customer-search" placeholder="Search by customer name or account number..." oninput="rqSearchInput()" autocomplete="off"
           style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
         <div id="rq-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
-      <div style="margin:8px 0 12px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="rq-my-only" checked style="cursor:pointer" onchange="rqSelectedCustomer && rqLoadOrders(rqSelectedCustomer.id)"/>
-          My quotes only
-        </label>
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Step 2 — Optional filters</div>
+      <div style="margin-bottom:14px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px;display:flex;align-items:center;gap:6px">
-          <input type="text" id="rq-product-search" placeholder="Filter by SKU or product name..." oninput="rqProductInput()" autocomplete="off"
+          <input type="text" id="rq-product-search" placeholder="Filter by SKU or product name (optional)" oninput="rqProductInput()" autocomplete="off" disabled
             style="flex:1;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
           <button onclick="document.getElementById('rq-product-search').value='';rqProductInput()" id="rq-product-clear" style="display:none;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#666">Clear</button>
         </div>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <input type="checkbox" id="rq-my-only" style="cursor:pointer" onchange="rqSelectedCustomer && rqLoadOrders(rqSelectedCustomer.id)"/>
+          My quotes only
+        </label>
       </div>
-      <div id="rq-results"></div>
+      <div id="rq-results"><div style="padding:18px 0;color:#aaa;font-size:13px;text-align:center;border:1px dashed #e5e5e5;border-radius:8px">Pick a customer above to see their recent quotes.</div></div>
     </div>
   </div>
 
   <div class="panel" id="panel-open">
     <div style="max-width:700px;margin:0 auto">
-      <div style="margin-bottom:12px;position:relative">
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Step 1 — Find a customer</div>
+      <div style="margin-bottom:14px;position:relative">
         <input type="text" id="oo-customer-search" placeholder="Search by customer name or account number..." oninput="ooSearchInput()" autocomplete="off"
           style="width:100%;height:36px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box"/>
         <div id="oo-customer-results" class="customer-dropdown" style="display:none"></div>
       </div>
-      <div style="margin:8px 0 12px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-        <label style="cursor:pointer;display:flex;align-items:center;gap:6px">
-          <input type="checkbox" id="oo-my-only" checked style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
-          My orders only
-        </label>
+      <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Step 2 — Optional filters</div>
+      <div style="margin-bottom:14px;font-size:13px;color:#555;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px;display:flex;align-items:center;gap:6px">
-          <input type="text" id="oo-product-search" placeholder="Filter by SKU or product name..." oninput="ooProductInput()" autocomplete="off"
+          <input type="text" id="oo-product-search" placeholder="Filter by SKU or product name (optional)" oninput="ooProductInput()" autocomplete="off" disabled
             style="flex:1;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
           <button onclick="document.getElementById('oo-product-search').value='';ooProductInput()" id="oo-product-clear" style="display:none;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;font-size:12px;color:#666">Clear</button>
         </div>
+        <label style="cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap">
+          <input type="checkbox" id="oo-my-only" style="cursor:pointer" onchange="ooSelectedCustomer && ooLoadOrders(ooSelectedCustomer.id)"/>
+          My orders only
+        </label>
       </div>
-      <div id="oo-results"></div>
+      <div id="oo-results"><div style="padding:18px 0;color:#aaa;font-size:13px;text-align:center;border:1px dashed #e5e5e5;border-radius:8px">Pick a customer above to see their open orders.</div></div>
     </div>
   </div>
 
