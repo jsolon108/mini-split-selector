@@ -1526,6 +1526,36 @@ function ppSearchInput() {
 }
 let ppFutureLedger = {}; // productId (string) → ledger data, populated after search for OOS items
 
+// Fetch product images lazily after results are rendered.
+// Injects URLs one-by-one as they arrive so fast ones appear quickly.
+async function ppFetchImages() {
+  if (!ppLastResults.length || !eclipseSession.token) return;
+  const token = eclipseSession.token;
+  await Promise.all(ppLastResults.map(async (r, i) => {
+    if (!r.productId) return;
+    try {
+      const res = await fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'productImageUrl',
+          sessionToken: token,
+          productId: r.productId
+        })
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const url = data.url;
+      if (!url) return;
+      // Inject into DOM — don't re-render the whole list
+      const img = document.getElementById(`pp-img-${i}`);
+      const ph = document.getElementById(`pp-img-ph-${i}`);
+      if (img) { img.src = url; } // onload shows it, onerror hides it
+      if (ph) { ph.style.display = 'none'; }
+    } catch(e) { /* skip — cosmetic */ }
+  }));
+}
+
 function ppRenderResults(userBranch) {
   const resultsEl = document.getElementById('pp-results');
   if (!resultsEl || !ppLastResults.length) return;
@@ -1567,9 +1597,8 @@ function ppRenderResults(userBranch) {
         ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#aaa">Checking incoming POs...</div>`;
       }
     }
-    const thumbnail = r.imageUrl
-      ? `<img src="${escAttr(r.imageUrl)}" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:6px;border:1px solid #f0f0f0;background:#fafafa;flex-shrink:0" onerror="this.style.display='none'"/>`
-      : `<div style="width:52px;height:52px;border-radius:6px;background:#f5f5f3;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px">📦</div>`;
+    const thumbnail = `<img id="pp-img-${i}" src="" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:6px;border:1px solid #f0f0f0;background:#f5f5f3;flex-shrink:0;display:none" onerror="this.style.display='none'" onload="this.style.display='block'"/>
+      <div id="pp-img-ph-${i}" style="width:52px;height:52px;border-radius:6px;background:#f5f5f3;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#ddd;font-size:20px">📦</div>`;
 
     return `<div class="pp-result">
       <div style="display:flex;gap:10px;align-items:flex-start">
@@ -1618,8 +1647,10 @@ async function ppSearch(keyword) {
       resultsEl.innerHTML = `<div class="pp-empty">No products found for "${escHtml(keyword)}".</div>`;
       return;
     }
-    // Render immediately with stock dots (no ledger data yet)
+    // Render immediately with stock dots — no waiting for images
     ppRenderResults(data.userBranch || userBranch);
+    // Fetch thumbnails lazily in the background — appear as they load
+    ppFetchImages();
 
     // For OOS items with productIds, fetch future ledger in background
     const oosIds = ppLastResults
