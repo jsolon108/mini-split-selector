@@ -599,7 +599,10 @@ export default async function handler(req, res) {
         else if (inv.total > 0) stockTier = 1;     // in stock at another branch
         return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier };
       });
-      annotated.sort((a, b) => a.stockTier - b.stockTier);
+      annotated.sort((a, b) => {
+        if (a.stockTier !== b.stockTier) return a.stockTier - b.stockTier;
+        return (a.description || '').localeCompare(b.description || '');
+      });
 
       return res.status(200).json({ results: annotated, userBranch: branch });
     } catch (err) {
