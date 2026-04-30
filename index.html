@@ -210,7 +210,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 .pp-result:hover{background:#f8f9fb}
 .pp-result-body{min-width:0;overflow:hidden}
 .pp-result-cat{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#185FA5;font-size:12px;font-weight:600}
-.pp-result-desc{font-size:13px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pp-result-desc{font-size:13px;color:#333;white-space:normal;line-height:1.4}
 .pp-result-qty{display:flex;align-items:center;gap:4px;justify-content:flex-end}
 .pp-result-qty input{width:50px;height:30px;padding:0 4px;border:1px solid #d0d0d0;border-radius:5px;font-size:12px;text-align:center}
 .pp-result-add{height:30px;padding:0 12px;border:0;border-radius:6px;background:#185FA5;color:#fff;font-size:12px;font-weight:600;cursor:pointer}
@@ -1052,7 +1052,7 @@ function renderQuote() {
       return `<div class="q-model-row addon-line">
         <span class="q-model-label">+ Addon</span>
         <span>${a.catalogNumber}</span>
-        <span style="color:#888;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.description}</span>
+        <span style="color:#888;font-size:13px;flex:1;overflow:hidden;white-space:normal;line-height:1.4">${a.description}</span>
         <span style="color:#888;font-size:13px">×${qty}</span>
         ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
       </div>`;
@@ -1340,7 +1340,7 @@ function renderCommonAddonsSummary() {
         <div class="q-model-row" style="font-size:13px">
           <span class="q-model-label">Add-on</span>
           <span>${escHtml(a.sku)}</span>
-          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.description)}</span>
+          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;white-space:normal;line-height:1.4">${escHtml(a.description)}</span>
           <span style="color:#888;font-size:12px">×${qty}</span>
           ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
           <button onclick="setCommonAddonQty('${escAttr(a.sku)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
@@ -1400,7 +1400,7 @@ function renderSlimDuctSummary() {
         <div class="q-model-row" style="font-size:13px">
           <span class="q-model-label">Slim Duct</span>
           <span>${escHtml(p.mfg_num)}</span>
-          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.description)} · ${escHtml(p.size_str || '')}</span>
+          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;white-space:normal;line-height:1.4">${escHtml(p.description)} · ${escHtml(p.size_str || '')}</span>
           <span style="color:#888;font-size:12px">×${qty}</span>
           ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
           <button onclick="setLineHideQty('${escAttr(p.order_num)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
@@ -1455,7 +1455,7 @@ function renderCustomItemsSummary() {
       <div class="q-model-row" style="font-size:13px">
         <span class="q-model-label">+ Item</span>
         <span>${codeLabel}</span>
-        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.description || '')}</span>
+        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;white-space:normal;line-height:1.4">${escHtml(it.description || '')}</span>
         <span style="color:#888;font-size:12px">
           <input type="number" min="1" value="${it.qty}" onchange="setCustomItemQty('${escAttr(it.key)}', +this.value)" style="width:48px;height:24px;padding:0 4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;text-align:center"/>
         </span>
