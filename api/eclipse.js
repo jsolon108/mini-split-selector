@@ -1,4 +1,21 @@
 const ECLIPSE_BASE = 'https://api.johnstonenyct.com:5000';
+const https = require('https');
+
+// Reuse TCP connections across Eclipse API calls — without this, each parallel fetch
+// opens a new connection, exhausting the pool after a few searches.
+const eclipseAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 20,        // max concurrent connections to Eclipse
+  maxFreeSockets: 5,     // keep up to 5 idle connections warm
+  timeout: 15000         // 15s socket timeout
+});
+
+// Wrapper that always passes the keepAlive agent to Eclipse API calls
+const eclipseFetch = (url, opts = {}) => fetch(url, {
+  ...opts,
+  agent: eclipseAgent,
+  headers: { 'Connection': 'keep-alive', ...(opts.headers || {}) }
+});
 
 function formatCatalogNumber(model) {
   if (model && model.startsWith('BMS500-')) {
@@ -8,7 +25,7 @@ function formatCatalogNumber(model) {
 }
 
 async function createSession(username, password) {
-  const r = await fetch(`${ECLIPSE_BASE}/Sessions`, {
+  const r = await eclipseFetch(`${ECLIPSE_BASE}/Sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
     body: JSON.stringify({ username, password })
@@ -42,7 +59,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
 }
 
 async function postOrder(token, payload) {
-  const r = await fetch(`${ECLIPSE_BASE}/SalesOrders`, {
+  const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -80,7 +97,7 @@ export default async function handler(req, res) {
   // Login
   if (action === 'login') {
     try {
-      const r = await fetch(`${ECLIPSE_BASE}/Sessions`, {
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/Sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -92,7 +109,7 @@ export default async function handler(req, res) {
       const userName = data.sessionUser?.userName;
       let homeBranch = null;
       try {
-        const userR = await fetch(`${ECLIPSE_BASE}/Users/${userName}`, {
+        const userR = await eclipseFetch(`${ECLIPSE_BASE}/Users/${userName}`, {
           headers: { 'Accept': 'application/json', 'sessionToken': token }
         });
         if (userR.ok) {
@@ -299,7 +316,7 @@ export default async function handler(req, res) {
         if (invMap[outKey]?.noOrderMatch) continue;
         try {
           const searchKeyword = order || cat; // order # is the more unique search term when present
-          const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(searchKeyword)}&pageSize=5`, {
+          const searchR = await eclipseFetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(searchKeyword)}&pageSize=5`, {
             headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
           });
           if (searchR.status === 401) {
@@ -328,7 +345,7 @@ export default async function handler(req, res) {
           pp.append('Quantity', '1');
           if (customerId) pp.append('CustomerId', customerId);
           pp.append('CalculateOnlyForBranch', userBranch);
-          const pr = await fetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pp.toString(), {
+          const pr = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pp.toString(), {
             headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
           });
           if (pr.status === 401) {
@@ -397,7 +414,7 @@ export default async function handler(req, res) {
       const start = new Date();
       start.setFullYear(start.getFullYear() - 1);
       params.append('OrderDateStart', start.toISOString());
-      const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
@@ -457,7 +474,7 @@ export default async function handler(req, res) {
       params.append('CatalogNumber', cleanCatalog);
       params.append('ConsiderUserAuthBranch', 'true');
       if (username) params.append('UserId', username.toUpperCase());
-      const r = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!r.ok) return res.status(r.status).json({ error: `Inventory lookup failed: ${r.status}` });
@@ -487,7 +504,7 @@ export default async function handler(req, res) {
       // Try server-side product filter (Eclipse may ignore it; we filter client-side too).
       if (productCatalog) params.append('CatalogNumber', String(productCatalog));
       params.append('pageSize', '50');
-      const r = await fetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders?` + params.toString(), {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
@@ -542,7 +559,7 @@ export default async function handler(req, res) {
       if (!keyword || keyword.trim().length < 2) return res.status(200).json({ results: [] });
       const branch = userBranch || 'FARM';
       const userIdUpper = (userId || '').toUpperCase();
-      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=10`, {
+      const searchR = await eclipseFetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=10`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (searchR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
@@ -572,7 +589,7 @@ export default async function handler(req, res) {
             params.append('CatalogNumber', r.catalogNumber);
             params.append('ConsiderUserAuthBranch', 'true');
             if (userIdUpper) params.append('UserId', userIdUpper);
-            const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+            const invR = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
               headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
             });
             if (!invR.ok) return;
@@ -725,7 +742,7 @@ export default async function handler(req, res) {
     try {
       const { productId } = req.body;
       if (!productId) return res.status(200).json({ url: null });
-      const r = await fetch(`${ECLIPSE_BASE}/Products/${encodeURIComponent(productId)}/ImageUrl?thumbnail=true`, {
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/Products/${encodeURIComponent(productId)}/ImageUrl?thumbnail=true`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
@@ -743,7 +760,7 @@ export default async function handler(req, res) {
       const { keyword } = req.body;
 
       // Step 1: Search by keyword
-      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword)}&pageSize=5`, {
+      const searchR = await eclipseFetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword)}&pageSize=5`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!searchR.ok) return res.status(searchR.status).json({ error: `Product search failed: ${searchR.status}` });
@@ -761,7 +778,7 @@ export default async function handler(req, res) {
         let tagAlongs = [], substitutes = [];
         if (productId) {
           try {
-            const detailR = await fetch(`${ECLIPSE_BASE}/Products/${productId}`, {
+            const detailR = await eclipseFetch(`${ECLIPSE_BASE}/Products/${productId}`, {
               headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
             });
             if (detailR.ok) {
@@ -776,7 +793,7 @@ export default async function handler(req, res) {
         let qty = null;
         if (catalogNumber) {
           try {
-            const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(catalogNumber)}&ConsiderUserAuthBranch=true`, {
+            const invR = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(catalogNumber)}&ConsiderUserAuthBranch=true`, {
               headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
             });
             if (invR.ok) {
@@ -800,7 +817,7 @@ export default async function handler(req, res) {
   if (action === 'getProduct') {
     try {
       const { productId } = req.body;
-      const detailR = await fetch(`${ECLIPSE_BASE}/Products/${productId}`, {
+      const detailR = await eclipseFetch(`${ECLIPSE_BASE}/Products/${productId}`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (!detailR.ok) return res.status(detailR.status).json({ error: 'Product not found' });
@@ -810,7 +827,7 @@ export default async function handler(req, res) {
       let qty = null;
       if (detail.catalogNumber) {
         try {
-          const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(detail.catalogNumber)}&ConsiderUserAuthBranch=true`, {
+          const invR = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?CatalogNumber=${encodeURIComponent(detail.catalogNumber)}&ConsiderUserAuthBranch=true`, {
             headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
           });
           if (invR.ok) {
