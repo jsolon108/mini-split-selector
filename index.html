@@ -1335,13 +1335,17 @@ function renderCommonAddonsSummary() {
       const price = getPrice(a.sku);
       const lineTotal = price?.price ? price.price * qty : null;
       if (lineTotal != null) total += lineTotal;
-      return `<div class="q-model-row" style="font-size:13px">
-        <span class="q-model-label">Add-on</span>
-        <span>${escHtml(a.sku)}</span>
-        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.description)}</span>
-        <span style="color:#888;font-size:12px">×${qty}</span>
-        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
-        <button onclick="setCommonAddonQty('${escAttr(a.sku)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+      const ledgerNote = renderLedgerNote(a.sku);
+      return `<div>
+        <div class="q-model-row" style="font-size:13px">
+          <span class="q-model-label">Add-on</span>
+          <span>${escHtml(a.sku)}</span>
+          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(a.description)}</span>
+          <span style="color:#888;font-size:12px">×${qty}</span>
+          ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+          <button onclick="setCommonAddonQty('${escAttr(a.sku)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+        </div>
+        ${ledgerNote}
       </div>`;
     }).join('');
     return `<div style="margin-top:6px">
@@ -1391,13 +1395,17 @@ function renderSlimDuctSummary() {
       const price = getPrice(p.order_num);
       const lineTotal = price?.price ? price.price * qty : null;
       if (lineTotal != null) total += lineTotal;
-      return `<div class="q-model-row" style="font-size:13px">
-        <span class="q-model-label">Slim Duct</span>
-        <span>${escHtml(p.mfg_num)}</span>
-        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.description)} · ${escHtml(p.size_str || '')}</span>
-        <span style="color:#888;font-size:12px">×${qty}</span>
-        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
-        <button onclick="setLineHideQty('${escAttr(p.order_num)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+      const ledgerNote = renderLedgerNote(p.order_num);
+      return `<div>
+        <div class="q-model-row" style="font-size:13px">
+          <span class="q-model-label">Slim Duct</span>
+          <span>${escHtml(p.mfg_num)}</span>
+          <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.description)} · ${escHtml(p.size_str || '')}</span>
+          <span style="color:#888;font-size:12px">×${qty}</span>
+          ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+          <button onclick="setLineHideQty('${escAttr(p.order_num)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+        </div>
+        ${ledgerNote}
       </div>`;
     }).join('');
     return `<div style="margin-top:6px">
@@ -1442,15 +1450,19 @@ function renderCustomItemsSummary() {
     const codeLabel = it.orderNumber
       ? `${escHtml(it.orderNumber)} · ${escHtml(it.catalogNumber)}`
       : escHtml(it.catalogNumber);
-    return `<div class="q-model-row" style="font-size:13px">
-      <span class="q-model-label">+ Item</span>
-      <span>${codeLabel}</span>
-      <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.description || '')}</span>
-      <span style="color:#888;font-size:12px">
-        <input type="number" min="1" value="${it.qty}" onchange="setCustomItemQty('${escAttr(it.key)}', +this.value)" style="width:48px;height:24px;padding:0 4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;text-align:center"/>
-      </span>
-      ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
-      <button onclick="setCustomItemQty('${escAttr(it.key)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+    const ledgerNote = renderLedgerNote(lookupKey);
+    return `<div>
+      <div class="q-model-row" style="font-size:13px">
+        <span class="q-model-label">+ Item</span>
+        <span>${codeLabel}</span>
+        <span style="color:#888;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(it.description || '')}</span>
+        <span style="color:#888;font-size:12px">
+          <input type="number" min="1" value="${it.qty}" onchange="setCustomItemQty('${escAttr(it.key)}', +this.value)" style="width:48px;height:24px;padding:0 4px;border:1px solid #d0d0d0;border-radius:4px;font-size:12px;text-align:center"/>
+        </span>
+        ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
+        <button onclick="setCustomItemQty('${escAttr(it.key)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+      </div>
+      ${ledgerNote}
     </div>`;
   }).join('');
 
@@ -2801,6 +2813,92 @@ let qSelectedCustomer = null;
 let qCustomerSearchTimer = null;
 let quotePricing = {}; // catalog# -> {price, list, farmPrice}
 
+// Future ledger results: { [productId]: { totalIncoming, byBranch: [{branch, qty, etas}] } }
+// Populated by fetchFutureLedgerForOOS() after Get Pricing returns.
+let quoteFutureLedger = {};
+const ALL_BRANCHES = ['BALD','BKLN','BOH','FARM','NHP','MANH','STAM','MILF','HART','CPCT','CPNY','REDH','WHNY'];
+
+async function fetchFutureLedgerForOOS() {
+  // Find every inventory entry where total === 0 AND we have a productId.
+  // Map them outKey → productId (we'll need both: productId for the API, outKey to attach the result).
+  const inv = quotePricing.inventory || {};
+  const targets = []; // [{outKey, productId}]
+  for (const outKey of Object.keys(inv)) {
+    const v = inv[outKey];
+    if (!v) continue;
+    if ((v.total || 0) === 0 && v.productId) {
+      targets.push({ outKey, productId: +v.productId });
+    }
+  }
+  if (!targets.length) { quoteFutureLedger = {}; return; }
+
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'futureLedger',
+        sessionToken: eclipseSession.token,
+        productIds: [...new Set(targets.map(t => t.productId))],
+        branches: ALL_BRANCHES,
+        homeBranch: quotePricing.userBranch || 'FARM'
+      })
+    });
+    const data = await res.json();
+    console.log('Future ledger response:', data);
+    if (data.debug) console.log('Future ledger debug:', data.debug);
+    if (data.debug?.sampleResponse) console.log('Sample raw ledger row:', data.debug.sampleResponse);
+
+    // Map productId → outKey so we can attach ledger info to inventory entries by their key
+    const ledgerByOutKey = {};
+    for (const t of targets) {
+      const led = data.ledgers?.[t.productId];
+      if (led) ledgerByOutKey[t.outKey] = led;
+    }
+    quoteFutureLedger = ledgerByOutKey;
+    renderQuote(); // re-render so the inline notes appear
+  } catch(err) {
+    console.error('Future ledger error:', err);
+  }
+}
+
+// Helper: format a ledger entry into a short inline note string (HTML).
+// Returns '' if no incoming POs found.
+function renderLedgerNote(outKey) {
+  const led = quoteFutureLedger[outKey];
+  if (!led || !led.totalIncoming) return '';
+  const userBranch = quotePricing.userBranch || 'FARM';
+
+  const parts = led.byBranch.map(b => {
+    const isHome = b.branch === userBranch;
+    // Show soonest ETA if available
+    const soonest = b.etas.find(e => e.date);
+    const etaStr = soonest ? ` ${formatLedgerDate(soonest.date)}` : '';
+    const transferIcon = !isHome ? ' ⇄' : '';
+    const branchStyle = isHome ? 'font-weight:600' : '';
+    return `<span style="${branchStyle}">${b.qty}@${b.branch}${etaStr}${transferIcon}</span>`;
+  });
+
+  const homeBranchHasStock = led.byBranch.some(b => b.branch === userBranch);
+  const otherBranchOnly = !homeBranchHasStock && led.byBranch.length > 0;
+  const transferNote = otherBranchOnly
+    ? ` <span style="color:var(--yellow,#a86b00);font-size:10px">(transfer available)</span>`
+    : '';
+
+  return `<div style="margin-top:3px;padding:3px 0 3px 44px;font-size:11px;color:#555;line-height:1.5">
+    📦 ${led.totalIncoming} on order: ${parts.join(', ')}${transferNote}
+  </div>`;
+}
+
+function formatLedgerDate(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return String(d);
+    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch { return String(d); }
+}
+
 function qCustomerSearchInput() {
   clearTimeout(qCustomerSearchTimer);
   const q = document.getElementById('q-customer-search').value.trim();
@@ -2935,6 +3033,9 @@ async function getPricing() {
     console.log('Debug:', data.debug);
     console.log('Pricing raw:', data.rawPricing, 'Inv raw:', data.rawInv);
     renderQuote();
+    // Kick off future ledger lookup for any out-of-stock items (don't await — let it
+    // fill in inline notes when the data comes back).
+    fetchFutureLedgerForOOS();
   } catch(err) {
     console.error('Pricing error:', err);
   }
