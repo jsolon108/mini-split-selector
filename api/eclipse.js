@@ -538,10 +538,11 @@ export default async function handler(req, res) {
   // We do ONE batch inventory call for all hits (not N individual calls) to keep this fast.
   if (action === 'searchProductsLite') {
     try {
-      const { keyword, userBranch } = req.body;
+      const { keyword, userBranch, userId } = req.body;
       if (!keyword || keyword.trim().length < 2) return res.status(200).json({ results: [] });
       const branch = userBranch || 'FARM';
-      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=30`, {
+      const userIdUpper = (userId || '').toUpperCase();
+      const searchR = await fetch(`${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(keyword.trim())}&pageSize=10`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
       if (searchR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
@@ -560,35 +561,32 @@ export default async function handler(req, res) {
         };
       }).filter(r => r.catalogNumber);
 
-      // Single batch inventory call using ProductId array — much faster than 30 individual calls.
-      // ProductInventoryMassInquiry accepts multiple ProductId params in one request.
+      // Inventory lookups — parallel single-SKU calls keyed by productId.
+      // The batch ProductId array approach returned empty results in testing,
+      // so we fan out instead. Capped at 15 results to limit concurrent calls.
       const invByCat = {};
       if (raw.length) {
-        try {
-          const params = new URLSearchParams();
-          raw.forEach(r => { if (r.productId) params.append('ProductId', r.productId); });
-          params.append('ConsiderUserAuthBranch', 'true');
-          if (userIdUpper) params.append('UserId', userIdUpper);
-          const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
-            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-          });
-          if (invR.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
-          if (invR.ok) {
+        await Promise.all(raw.map(async r => {
+          try {
+            const params = new URLSearchParams();
+            params.append('CatalogNumber', r.catalogNumber);
+            params.append('ConsiderUserAuthBranch', 'true');
+            if (userIdUpper) params.append('UserId', userIdUpper);
+            const invR = await fetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+              headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+            });
+            if (!invR.ok) return;
             const invData = await invR.json();
-            // Match results back to catalog numbers by productId
-            const pidToCat = {};
-            raw.forEach(r => { if (r.productId) pidToCat[String(r.productId)] = r.catalogNumber; });
-            for (const item of (invData.results || [])) {
-              const cat = pidToCat[String(item.productId)];
-              if (!cat) continue;
-              const branches = item.branchAvailableQuantity || [];
-              invByCat[cat] = {
-                userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
-                total: item.totalWarehouseQty ?? 0
-              };
-            }
-          }
-        } catch(e) { /* fall through with empty inv */ }
+            let item = (invData.results || []).find(it => String(it.productId || '') === String(r.productId));
+            if (!item) item = (invData.results || [])[0];
+            if (!item) return;
+            const branches = item.branchAvailableQuantity || [];
+            invByCat[r.catalogNumber] = {
+              userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
+              total: item.totalWarehouseQty ?? 0
+            };
+          } catch(e) { /* skip */ }
+        }));
       }
 
       // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
