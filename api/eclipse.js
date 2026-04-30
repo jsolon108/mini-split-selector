@@ -590,32 +590,14 @@ export default async function handler(req, res) {
         }));
       }
 
-      // Fetch thumbnail URLs in parallel with inventory — same Promise.all pattern.
-      // Returns a URL string directly (or empty on 404/error). We use thumbnail=true
-      // which returns the full image if no thumbnail exists.
-      const imageByProductId = {};
-      await Promise.all(raw.map(async r => {
-        if (!r.productId) return;
-        try {
-          const imgR = await fetch(`${ECLIPSE_BASE}/Products/${encodeURIComponent(r.productId)}/ImageUrl?thumbnail=true`, {
-            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-          });
-          if (imgR.status === 401) return; // don't bubble — image is optional
-          if (!imgR.ok) return;
-          const url = await imgR.json(); // response is a plain URL string
-          if (url && typeof url === 'string' && url.startsWith('http')) {
-            imageByProductId[r.productId] = url;
-          }
-        } catch(e) { /* skip — thumbnail is cosmetic */ }
-      }));
-
-      // Annotate results with image URL
+      // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
+      // Within each tier, preserve Eclipse's original ordering (already roughly relevance-ranked).
       const annotated = raw.map(r => {
         const inv = invByCat[r.catalogNumber] || { userQty: 0, total: 0 };
         let stockTier = 2; // no stock
         if (inv.userQty > 0) stockTier = 0;        // in stock at user's branch
         else if (inv.total > 0) stockTier = 1;     // in stock at another branch
-        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier, imageUrl: imageByProductId[r.productId] || null };
+        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier };
       });
       annotated.sort((a, b) => a.stockTier - b.stockTier);
 
@@ -733,6 +715,23 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Single product image URL lookup — called lazily per-result after search renders.
+  if (action === 'productImageUrl') {
+    try {
+      const { productId } = req.body;
+      if (!productId) return res.status(200).json({ url: null });
+      const r = await fetch(`${ECLIPSE_BASE}/Products/${encodeURIComponent(productId)}/ImageUrl?thumbnail=true`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+      if (!r.ok) return res.status(200).json({ url: null }); // 404 = no image, not an error
+      const url = await r.json();
+      return res.status(200).json({ url: (url && typeof url === 'string' && url.startsWith('http')) ? url : null });
+    } catch(err) {
+      return res.status(200).json({ url: null }); // never error on a cosmetic feature
     }
   }
 
