@@ -1567,19 +1567,25 @@ function ppRenderResults(userBranch) {
         ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#aaa">Checking incoming POs...</div>`;
       }
     }
-    return `<div class="pp-result" style="flex-direction:column;align-items:stretch;display:block">
-      <div style="display:grid;grid-template-columns:1fr 70px auto;gap:10px;align-items:start">
-        <div class="pp-result-body">
-          <div class="pp-result-cat" style="font-size:13px">${codeLabel} <span style="font-weight:400;margin-left:6px">${stockBadge}</span></div>
-          <div class="pp-result-desc" style="font-size:13px;white-space:normal;overflow:visible;text-overflow:unset;line-height:1.4;margin-top:2px">${escHtml(r.description)}</div>
+    const thumbnail = r.imageUrl
+      ? `<img src="${escAttr(r.imageUrl)}" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:6px;border:1px solid #f0f0f0;background:#fafafa;flex-shrink:0" onerror="this.style.display='none'"/>`
+      : `<div style="width:52px;height:52px;border-radius:6px;background:#f5f5f3;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:20px">📦</div>`;
+
+    return `<div class="pp-result">
+      <div style="display:flex;gap:10px;align-items:flex-start">
+        ${thumbnail}
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+            <span class="pp-result-cat" style="font-size:13px">${codeLabel}</span>
+            ${stockBadge}
+          </div>
+          <div class="pp-result-desc" style="font-size:13px;white-space:normal;line-height:1.4;color:#444;margin-bottom:4px">${escHtml(r.description)}</div>
           ${ledgerNote}
         </div>
-        <div class="pp-result-qty">
-          <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()"/>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          <button onclick="ppShowInventory(${i})" title="View per-branch inventory" style="height:30px;padding:0 10px;border:1px solid #d5d5d5;background:#fff;color:#185FA5;border-radius:6px;font-size:11px;cursor:pointer;font-weight:500">Inventory</button>
-          <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0">
+          <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()" style="width:52px;height:28px;padding:0 4px;border:1px solid #d0d0d0;border-radius:5px;font-size:12px;text-align:center"/>
+          <button onclick="ppShowInventory(${i})" style="height:26px;padding:0 8px;border:1px solid #d5d5d5;background:#fff;color:#185FA5;border-radius:5px;font-size:11px;cursor:pointer;font-weight:500;white-space:nowrap">Inventory</button>
+          <button class="pp-result-add" onclick="ppAddItem(${i})" style="height:26px;padding:0 10px;white-space:nowrap">Add</button>
         </div>
       </div>
     </div>`;
