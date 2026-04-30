@@ -1499,6 +1499,7 @@ function clearAllCustomItems() {
 let ppSearchTimer = null;
 let ppLastResults = [];
 let ppImageCache = {}; // productId → image URL, persists across re-renders
+let ppSearchGen = 0;   // incremented on each new search; stale async callbacks check this
 
 function openProductPicker() {
   if (!eclipseSession.token) {
@@ -1532,10 +1533,11 @@ let ppFutureLedger = {}; // productId (string) → ledger data, populated after 
 async function ppFetchImages() {
   if (!ppLastResults.length || !eclipseSession.token) return;
   const token = eclipseSession.token;
+  const gen = ppSearchGen; // capture — if a new search starts, gen won't match ppSearchGen
   await Promise.all(ppLastResults.map(async (r, i) => {
     if (!r.productId) return;
-    // Skip if already cached from a previous search or earlier call
     if (ppImageCache[r.productId] !== undefined) {
+      if (gen !== ppSearchGen) return; // stale — new search started
       ppInjectImage(i, ppImageCache[r.productId]);
       return;
     }
@@ -1549,10 +1551,11 @@ async function ppFetchImages() {
           productId: r.productId
         })
       });
+      if (gen !== ppSearchGen) return; // new search started while we were waiting — discard
       if (!res.ok) { ppImageCache[r.productId] = null; return; }
       const data = await res.json();
       const url = data.url || null;
-      ppImageCache[r.productId] = url; // cache regardless (even null = no image)
+      ppImageCache[r.productId] = url;
       ppInjectImage(i, url);
     } catch(e) { ppImageCache[r.productId] = null; }
   }));
@@ -1655,6 +1658,7 @@ async function ppSearch(keyword) {
   resultsEl.innerHTML = '<div class="pp-loading">Searching Eclipse...</div>';
   ppFutureLedger = {}; // reset from previous search
   ppImageCache = {};   // reset image cache for new search
+  ppSearchGen++;       // invalidate any in-flight image fetches from previous search
   try {
     const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
     const res = await fetch('/api/eclipse', {
@@ -1689,7 +1693,9 @@ async function ppSearch(keyword) {
       .map(r => +r.productId);
     if (needsLedger.length && eclipseSession.token) {
       const _userBranch = data.userBranch || userBranch;
+      const _gen = ppSearchGen;
       const clearPlaceholders = () => {
+        if (_gen !== ppSearchGen) return; // stale
         needsLedger.forEach(pid => {
           if (ppFutureLedger[String(pid)] === undefined) ppFutureLedger[String(pid)] = null;
         });
@@ -1697,7 +1703,7 @@ async function ppSearch(keyword) {
         ppFetchImages();
       };
       const ledgerTimeout = new Promise(resolve => setTimeout(resolve, 8000));
-      const ledgerFetch = fetch('/api/eclipse', {
+      fetch('/api/eclipse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1708,12 +1714,13 @@ async function ppSearch(keyword) {
           homeBranch: _userBranch
         })
       }).then(r => r.json()).then(led => {
+        if (_gen !== ppSearchGen) return; // stale — new search started, discard
         ppFutureLedger = { ...ppFutureLedger, ...(led.ledgers || {}) };
         ppRenderResults(_userBranch);
         ppFetchImages();
       }).catch(clearPlaceholders);
-      // If ledger takes more than 8s, clear "Checking..." placeholders gracefully
       ledgerTimeout.then(() => {
+        if (_gen !== ppSearchGen) return; // stale
         if (needsLedger.some(pid => ppFutureLedger[String(pid)] === undefined)) {
           clearPlaceholders();
         }
