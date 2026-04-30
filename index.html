@@ -480,6 +480,9 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div id="pp-results" class="pp-results">
       <div class="pp-empty">Type at least 2 characters to search Eclipse for products.</div>
     </div>
+    <div style="padding-top:12px;border-top:1px solid #f0f0f0;margin-top:8px;text-align:right">
+      <button onclick="closeProductPicker()" style="height:38px;padding:0 24px;border:1px solid #ddd;border-radius:8px;background:#fff;font-size:14px;font-weight:500;color:#444;cursor:pointer;font-family:inherit">Close</button>
+    </div>
   </div>
 </div>
 
@@ -1749,11 +1752,13 @@ function ppAddItem(i) {
       qty
     };
   }
-  // Brief visual feedback then close
+  // Brief visual feedback — don't close the modal so user can keep adding
   const btn = document.querySelectorAll('.pp-result-add')[i];
-  if (btn) { btn.textContent = '✓ Added'; btn.disabled = true; btn.style.background = '#0f6e56'; }
+  if (btn) { btn.textContent = '✓ Added'; btn.style.background = '#0f6e56'; }
+  setTimeout(() => {
+    if (btn) { btn.textContent = 'Add'; btn.style.background = ''; }
+  }, 1500);
   renderQuote();
-  setTimeout(() => closeProductPicker(), 600);
 }
 
 // Show per-branch inventory for a search result. Reuses the existing inventory modal
