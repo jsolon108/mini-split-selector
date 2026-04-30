@@ -590,14 +590,32 @@ export default async function handler(req, res) {
         }));
       }
 
-      // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
-      // Within each tier, preserve Eclipse's original ordering (already roughly relevance-ranked).
+      // Fetch thumbnail URLs in parallel with inventory — same Promise.all pattern.
+      // Returns a URL string directly (or empty on 404/error). We use thumbnail=true
+      // which returns the full image if no thumbnail exists.
+      const imageByProductId = {};
+      await Promise.all(raw.map(async r => {
+        if (!r.productId) return;
+        try {
+          const imgR = await fetch(`${ECLIPSE_BASE}/Products/${encodeURIComponent(r.productId)}/ImageUrl?thumbnail=true`, {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (imgR.status === 401) return; // don't bubble — image is optional
+          if (!imgR.ok) return;
+          const url = await imgR.json(); // response is a plain URL string
+          if (url && typeof url === 'string' && url.startsWith('http')) {
+            imageByProductId[r.productId] = url;
+          }
+        } catch(e) { /* skip — thumbnail is cosmetic */ }
+      }));
+
+      // Annotate results with image URL
       const annotated = raw.map(r => {
         const inv = invByCat[r.catalogNumber] || { userQty: 0, total: 0 };
         let stockTier = 2; // no stock
         if (inv.userQty > 0) stockTier = 0;        // in stock at user's branch
         else if (inv.total > 0) stockTier = 1;     // in stock at another branch
-        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier };
+        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier, imageUrl: imageByProductId[r.productId] || null };
       });
       annotated.sort((a, b) => a.stockTier - b.stockTier);
 
