@@ -1563,18 +1563,30 @@ function ppRenderResults(userBranch) {
     const codeLabel = r.orderNumber
       ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
       : escHtml(r.catalogNumber);
-    // Stock indicator
+    // Stock indicator — starts from current inventory, but if ledger data is available
+    // and shows incoming POs at the home branch, we update the badge to reflect that.
+    const led = r.productId ? ppFutureLedger[String(r.productId)] : null;
+    const homeIncoming = led?.byBranch.find(b => b.branch === userBranch);
+
     let stockBadge = '';
     if (r.stockTier === 0) {
       stockBadge = `<span style="font-size:11px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${userBranch})</span>`;
+    } else if (r.stockTier === 1 && homeIncoming) {
+      // In stock elsewhere AND on order at home branch — show both
+      stockBadge = `<span style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>
+        <span style="font-size:11px;color:#185FA5;font-weight:600;margin-left:6px">· ${homeIncoming.qty} on order @ ${userBranch}</span>`;
     } else if (r.stockTier === 1) {
       stockBadge = `<span style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
+    } else if (r.stockTier === 2 && homeIncoming) {
+      // Out of stock everywhere but on order at home branch — lead with that
+      stockBadge = `<span style="font-size:11px;color:#185FA5;font-weight:600">● ${homeIncoming.qty} on order @ ${userBranch}</span>`;
     } else {
       stockBadge = `<span style="font-size:11px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
     }
-    // Future ledger note for OOS items
+
+    // Future ledger note — show all branches' incoming POs with ETAs
     let ledgerNote = '';
-    if (r.stockTier === 2 && r.productId) {
+    if (r.stockTier >= 1 && r.productId) {
       const led = ppFutureLedger[String(r.productId)];
       if (led && led.totalIncoming > 0) {
         const parts = led.byBranch.map(b => {
@@ -1652,18 +1664,19 @@ async function ppSearch(keyword) {
     // Fetch thumbnails lazily in the background — appear as they load
     ppFetchImages();
 
-    // For OOS items with productIds, fetch future ledger in background
-    const oosIds = ppLastResults
-      .filter(r => r.stockTier === 2 && r.productId)
+    // For non-home-stock items (OOS or only at other branches), fetch future ledger
+    // so we can show incoming PO info and update the stock badge accordingly.
+    const needsLedger = ppLastResults
+      .filter(r => r.stockTier >= 1 && r.productId)
       .map(r => +r.productId);
-    if (oosIds.length && eclipseSession.token) {
+    if (needsLedger.length && eclipseSession.token) {
       fetch('/api/eclipse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'futureLedger',
           sessionToken: eclipseSession.token,
-          productIds: oosIds,
+          productIds: needsLedger,
           branches: ALL_BRANCHES,
           homeBranch: data.userBranch || userBranch
         })
