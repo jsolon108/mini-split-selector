@@ -205,7 +205,7 @@ select:focus,input:focus{outline:none;border-color:#999}
 .pp-search{width:100%;height:38px;padding:0 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:12px}
 .pp-search:focus{outline:none;border-color:#185FA5;box-shadow:0 0 0 2px rgba(24,95,165,.1)}
 .pp-results{flex:1;min-height:200px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:8px}
-.pp-result{display:grid;grid-template-columns:1fr 70px auto;gap:10px;align-items:center;padding:10px 12px;border-top:1px solid #f5f5f3;cursor:pointer}
+.pp-result{display:grid;grid-template-columns:1fr 70px auto;gap:10px;align-items:start;padding:10px 12px;border-top:1px solid #f5f5f3;cursor:pointer}
 .pp-result:first-child{border-top:none}
 .pp-result:hover{background:#f8f9fb}
 .pp-result-body{min-width:0;overflow:hidden}
@@ -1524,9 +1524,72 @@ function ppSearchInput() {
   }
   ppSearchTimer = setTimeout(() => ppSearch(q), 350);
 }
+let ppFutureLedger = {}; // productId (string) → ledger data, populated after search for OOS items
+
+function ppRenderResults(userBranch) {
+  const resultsEl = document.getElementById('pp-results');
+  if (!resultsEl || !ppLastResults.length) return;
+  resultsEl.innerHTML = ppLastResults.map((r, i) => {
+    const codeLabel = r.orderNumber
+      ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
+      : escHtml(r.catalogNumber);
+    // Stock indicator
+    let stockBadge = '';
+    if (r.stockTier === 0) {
+      stockBadge = `<span style="font-size:11px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${userBranch})</span>`;
+    } else if (r.stockTier === 1) {
+      stockBadge = `<span style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
+    } else {
+      stockBadge = `<span style="font-size:11px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
+    }
+    // Future ledger note for OOS items
+    let ledgerNote = '';
+    if (r.stockTier === 2 && r.productId) {
+      const led = ppFutureLedger[String(r.productId)];
+      if (led && led.totalIncoming > 0) {
+        const parts = led.byBranch.map(b => {
+          const isHome = b.branch === userBranch;
+          const soonest = b.etas.find(e => e.date);
+          const overdue = soonest && isLedgerDateOverdue(soonest.date);
+          const etaStr = soonest
+            ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
+            : '';
+          return `<span style="${isHome ? 'font-weight:600' : ''}">${b.qty}@${b.branch}${etaStr}${isHome ? '' : ' ⇄'}</span>`;
+        });
+        const otherOnly = !led.byBranch.some(b => b.branch === userBranch);
+        const transferNote = otherOnly ? ` <span style="color:#a86b00">(transfer available)</span>` : '';
+        ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#555">📦 ${led.totalIncoming} on order: ${parts.join(', ')}${transferNote}</div>`;
+      } else if (led) {
+        // We fetched but nothing on order
+        ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#aaa">No incoming POs found</div>`;
+      } else if (Object.keys(ppFutureLedger).length === 0) {
+        // Still loading — show placeholder
+        ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#aaa">Checking incoming POs...</div>`;
+      }
+    }
+    return `<div class="pp-result" style="flex-direction:column;align-items:stretch;display:block">
+      <div style="display:grid;grid-template-columns:1fr 70px auto;gap:10px;align-items:start">
+        <div class="pp-result-body">
+          <div class="pp-result-cat" style="font-size:13px">${codeLabel} <span style="font-weight:400;margin-left:6px">${stockBadge}</span></div>
+          <div class="pp-result-desc" style="font-size:13px;white-space:normal;overflow:visible;text-overflow:unset;line-height:1.4;margin-top:2px">${escHtml(r.description)}</div>
+          ${ledgerNote}
+        </div>
+        <div class="pp-result-qty">
+          <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()"/>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <button onclick="ppShowInventory(${i})" title="View per-branch inventory" style="height:30px;padding:0 10px;border:1px solid #d5d5d5;background:#fff;color:#185FA5;border-radius:6px;font-size:11px;cursor:pointer;font-weight:500">Inventory</button>
+          <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function ppSearch(keyword) {
   const resultsEl = document.getElementById('pp-results');
   resultsEl.innerHTML = '<div class="pp-loading">Searching Eclipse...</div>';
+  ppFutureLedger = {}; // reset from previous search
   try {
     const userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
     const res = await fetch('/api/eclipse', {
@@ -1549,33 +1612,29 @@ async function ppSearch(keyword) {
       resultsEl.innerHTML = `<div class="pp-empty">No products found for "${escHtml(keyword)}".</div>`;
       return;
     }
-    resultsEl.innerHTML = ppLastResults.map((r, i) => {
-      const codeLabel = r.orderNumber
-        ? `${escHtml(r.orderNumber)} · ${escHtml(r.catalogNumber)}`
-        : escHtml(r.catalogNumber);
-      // Stock indicator: green if at user's branch, yellow if elsewhere, red if none
-      let stockBadge = '';
-      if (r.stockTier === 0) {
-        stockBadge = `<span style="font-size:10px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${data.userBranch})</span>`;
-      } else if (r.stockTier === 1) {
-        stockBadge = `<span style="font-size:10px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
-      } else {
-        stockBadge = `<span style="font-size:10px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
-      }
-      return `<div class="pp-result">
-        <div class="pp-result-body">
-          <div class="pp-result-cat">${codeLabel} <span style="font-weight:400;margin-left:6px">${stockBadge}</span></div>
-          <div class="pp-result-desc">${escHtml(r.description)}</div>
-        </div>
-        <div class="pp-result-qty">
-          <input type="number" min="1" value="1" id="pp-qty-${i}" onclick="event.stopPropagation()"/>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <button onclick="ppShowInventory(${i})" title="View per-branch inventory" style="height:30px;padding:0 10px;border:1px solid #d5d5d5;background:#fff;color:#185FA5;border-radius:6px;font-size:11px;cursor:pointer;font-weight:500">Inventory</button>
-          <button class="pp-result-add" onclick="ppAddItem(${i})">Add</button>
-        </div>
-      </div>`;
-    }).join('');
+    // Render immediately with stock dots (no ledger data yet)
+    ppRenderResults(data.userBranch || userBranch);
+
+    // For OOS items with productIds, fetch future ledger in background
+    const oosIds = ppLastResults
+      .filter(r => r.stockTier === 2 && r.productId)
+      .map(r => +r.productId);
+    if (oosIds.length && eclipseSession.token) {
+      fetch('/api/eclipse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'futureLedger',
+          sessionToken: eclipseSession.token,
+          productIds: oosIds,
+          branches: ALL_BRANCHES,
+          homeBranch: data.userBranch || userBranch
+        })
+      }).then(r => r.json()).then(led => {
+        ppFutureLedger = led.ledgers || {};
+        ppRenderResults(data.userBranch || userBranch);
+      }).catch(() => {});
+    }
   } catch(err) {
     resultsEl.innerHTML = `<div class="pp-empty" style="color:#E24B4A">Error: ${escHtml(err.message)}</div>`;
   }
@@ -2871,9 +2930,11 @@ function renderLedgerNote(outKey) {
 
   const parts = led.byBranch.map(b => {
     const isHome = b.branch === userBranch;
-    // Show soonest ETA if available
     const soonest = b.etas.find(e => e.date);
-    const etaStr = soonest ? ` ${formatLedgerDate(soonest.date)}` : '';
+    const overdue = soonest && isLedgerDateOverdue(soonest.date);
+    const etaStr = soonest
+      ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
+      : '';
     const transferIcon = !isHome ? ' ⇄' : '';
     const branchStyle = isHome ? 'font-weight:600' : '';
     return `<span style="${branchStyle}">${b.qty}@${b.branch}${etaStr}${transferIcon}</span>`;
@@ -2897,6 +2958,19 @@ function formatLedgerDate(d) {
     if (isNaN(dt.getTime())) return String(d);
     return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   } catch { return String(d); }
+}
+
+function isLedgerDateOverdue(d) {
+  if (!d) return false;
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt.getTime())) return false;
+    // Compare date only (strip time) so "today" isn't flagged
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    dt.setHours(0, 0, 0, 0);
+    return dt < today;
+  } catch { return false; }
 }
 
 function qCustomerSearchInput() {
