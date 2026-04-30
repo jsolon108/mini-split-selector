@@ -607,6 +607,117 @@ export default async function handler(req, res) {
     }
   }
 
+  // Future ledger lookup — aggregates incoming POs across all specified branches.
+  // Body: { productIds: [number], branches: [string] }
+  // Returns: { ledgers: { [productId]: { totalIncoming, byBranch: [{branch, qty, etas: [{date, qty, poNumber}]}] } } }
+  if (action === 'futureLedger') {
+    try {
+      const { productIds, branches } = req.body;
+      if (!Array.isArray(productIds) || !productIds.length) return res.status(200).json({ ledgers: {} });
+      const branchList = (Array.isArray(branches) && branches.length) ? branches : ['FARM'];
+
+      // Build all (productId, branch) pairs and fan them out in parallel.
+      // ~13 branches × ~5 products = ~65 calls — Promise.all keeps this under one round-trip
+      // for most cases (Eclipse can handle the concurrency).
+      const calls = [];
+      for (const pid of productIds) {
+        for (const br of branchList) {
+          calls.push((async () => {
+            try {
+              const url = `${ECLIPSE_BASE}/ProductInquiry/FutureLedger/${encodeURIComponent(pid)}/${encodeURIComponent(br)}`;
+              const r = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+              });
+              if (r.status === 401) return { error: 401 };
+              if (!r.ok) return null;
+              const data = await r.json();
+              return { productId: pid, branch: br, data };
+            } catch(e) { return null; }
+          })());
+        }
+      }
+      const results = await Promise.all(calls);
+
+      // If any call returned a 401, surface that to trigger the session-expired banner
+      if (results.some(r => r?.error === 401)) {
+        return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+      }
+
+      // Aggregate into the response shape using the documented FutureLedger schema.
+      // Key fields:
+      //   data[]        → FutureLedgerLines rows
+      //   data[].in     → qty incoming (PO receipts have in > 0)
+      //   data[].out    → qty outgoing
+      //   data[].date   → ETA date string
+      //   data[].orderNumber → PO number
+      //   data[].type   → transaction type ('P' = PO receipt, 'T' = transfer, etc.)
+      //   data[].customerVendor → vendor name
+      //   stock.onPO    → total qty on PO (quick summary without parsing rows)
+      //   stock.onTransfer → total qty on inbound transfer
+      const ledgers = {};
+      for (const r of results) {
+        if (!r || !r.data) continue;
+        const pid = String(r.productId);
+        const br = r.branch;
+        if (!ledgers[pid]) ledgers[pid] = { totalIncoming: 0, byBranch: [] };
+
+        const d = r.data;
+        // Quick summary totals from the stock object
+        const onPO = parseFloat(d.stock?.onPO || 0);
+        const onTransfer = parseFloat(d.stock?.onTransfer || 0);
+        const branchTotal = onPO + onTransfer;
+        if (branchTotal <= 0) continue;
+
+        // Parse individual rows for ETAs
+        const rows = d.data || [];
+        const etas = rows
+          .filter(row => (row.in || 0) > 0) // only incoming rows
+          .map(row => ({
+            date: row.date || null,
+            qty: row.in,
+            poNumber: row.orderNumber || '',
+            type: row.type || '',
+            vendor: row.customerVendor || ''
+          }))
+          .sort((a, b) => {
+            // Sort by date ascending so soonest ETA comes first
+            if (!a.date) return 1;
+            if (!b.date) return -1;
+            return new Date(a.date) - new Date(b.date);
+          });
+
+        ledgers[pid].totalIncoming += branchTotal;
+        ledgers[pid].byBranch.push({ branch: br, qty: branchTotal, onPO, onTransfer, etas });
+      }
+
+      // Sort each product's branches: home branch first, then by qty desc
+      const homeBranch = req.body.homeBranch || 'FARM';
+      for (const pid of Object.keys(ledgers)) {
+        ledgers[pid].byBranch.sort((a, b) => {
+          if (a.branch === homeBranch && b.branch !== homeBranch) return -1;
+          if (b.branch === homeBranch && a.branch !== homeBranch) return 1;
+          return b.qty - a.qty;
+        });
+      }
+
+      // Include one raw sample for debugging the response shape on first deploy
+      const sampleRaw = results.find(r => r?.data && (r.data.results?.length || r.data.receipts?.length));
+
+      return res.status(200).json({
+        ledgers,
+        debug: {
+          callCount: calls.length,
+          productCount: productIds.length,
+          branchCount: branchList.length,
+          successCount: results.filter(r => r && r.data).length,
+          sampleResponse: sampleRaw ? sampleRaw.data : null
+        }
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // Search products by keyword with tag-along accessories and inventory
   if (action === 'searchProducts') {
     try {
