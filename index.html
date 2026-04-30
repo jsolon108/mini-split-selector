@@ -1668,7 +1668,8 @@ async function ppSearch(keyword) {
         action: 'searchProductsLite',
         sessionToken: eclipseSession.token,
         keyword,
-        userBranch
+        userBranch,
+        userId: eclipseSession.username
       })
     });
     const data = await res.json();
