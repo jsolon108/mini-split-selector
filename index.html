@@ -1688,7 +1688,16 @@ async function ppSearch(keyword) {
       .filter(r => r.stockTier >= 1 && r.productId)
       .map(r => +r.productId);
     if (needsLedger.length && eclipseSession.token) {
-      fetch('/api/eclipse', {
+      const _userBranch = data.userBranch || userBranch;
+      const clearPlaceholders = () => {
+        needsLedger.forEach(pid => {
+          if (ppFutureLedger[String(pid)] === undefined) ppFutureLedger[String(pid)] = null;
+        });
+        ppRenderResults(_userBranch);
+        ppFetchImages();
+      };
+      const ledgerTimeout = new Promise(resolve => setTimeout(resolve, 8000));
+      const ledgerFetch = fetch('/api/eclipse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1696,13 +1705,19 @@ async function ppSearch(keyword) {
           sessionToken: eclipseSession.token,
           productIds: needsLedger,
           branches: ALL_BRANCHES,
-          homeBranch: data.userBranch || userBranch
+          homeBranch: _userBranch
         })
       }).then(r => r.json()).then(led => {
-        ppFutureLedger = led.ledgers || {};
-        ppRenderResults(data.userBranch || userBranch);
-        ppFetchImages(); // re-inject any images not yet in cache
-      }).catch(() => {});
+        ppFutureLedger = { ...ppFutureLedger, ...(led.ledgers || {}) };
+        ppRenderResults(_userBranch);
+        ppFetchImages();
+      }).catch(clearPlaceholders);
+      // If ledger takes more than 8s, clear "Checking..." placeholders gracefully
+      ledgerTimeout.then(() => {
+        if (needsLedger.some(pid => ppFutureLedger[String(pid)] === undefined)) {
+          clearPlaceholders();
+        }
+      });
     }
   } catch(err) {
     resultsEl.innerHTML = `<div class="pp-empty" style="color:#E24B4A">Error: ${escHtml(err.message)}</div>`;
