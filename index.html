@@ -1773,6 +1773,95 @@ let ppFutureLedger = {}; // productId (string) → ledger data, populated after 
 
 // Fetch product images lazily after results are rendered.
 // Injects URLs one-by-one as they arrive so fast ones appear quickly.
+async function ppFetchInventory(userBranch) {
+  if (!ppLastResults.length || !eclipseSession.token) return;
+  const gen = ppSearchGen;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'inventoryForProducts',
+        sessionToken: eclipseSession.token,
+        userBranch,
+        userId: eclipseSession.username,
+        products: ppLastResults
+          .filter(r => r.catalogNumber)
+          .map(r => ({ productId: r.productId, catalogNumber: r.catalogNumber }))
+      })
+    });
+    if (gen !== ppSearchGen) return; // stale
+    const data = await res.json();
+    const inv = data.inventory || {};
+    // Update ppLastResults in place with real stock data
+    ppLastResults = ppLastResults.map(r => {
+      const s = inv[r.catalogNumber];
+      if (!s) return r;
+      return { ...r, userQty: s.userQty, totalQty: s.total, stockTier: s.stockTier };
+    });
+    // Inject stock badges directly into DOM — no full re-render needed
+    ppLastResults.forEach((r, i) => {
+      const el = document.getElementById(`pp-stock-${i}`);
+      if (!el) return;
+      const led = r.productId ? ppFutureLedger[String(r.productId)] : null;
+      const homeIncoming = led?.byBranch.find(b => b.branch === userBranch);
+      if (r.stockTier === 0) {
+        el.style.color = '#0f6e56'; el.style.fontWeight = '600';
+        el.textContent = `● ${r.userQty} in stock (${userBranch})`;
+      } else if (r.stockTier === 1) {
+        el.style.color = '#a86b00'; el.style.fontWeight = '500';
+        el.textContent = `● ${r.totalQty} at other branch`;
+      } else if (r.stockTier === 2 && homeIncoming) {
+        el.style.color = '#185FA5'; el.style.fontWeight = '600';
+        el.textContent = `● ${homeIncoming.qty} on order @ ${userBranch}`;
+      } else {
+        el.style.color = '#E24B4A'; el.style.fontWeight = '500';
+        el.textContent = '● Out of stock';
+      }
+    });
+    // Re-sort results by stock tier now that we have real data, then trigger ledger for OOS/other
+    ppLastResults.sort((a, b) => {
+      if (a.stockTier !== b.stockTier) return a.stockTier - b.stockTier;
+      return (a.description || '').localeCompare(b.description || '');
+    });
+    // Trigger ledger for non-home-stock items
+    const needsLedger = ppLastResults.filter(r => r.stockTier >= 1 && r.productId).map(r => +r.productId);
+    if (needsLedger.length) ppFetchLedger(needsLedger, userBranch, gen);
+  } catch(e) { /* silent */ }
+}
+
+async function ppFetchLedger(productIds, userBranch, gen) {
+  if (gen !== ppSearchGen) return;
+  const _gen = gen;
+  const clearPlaceholders = () => {
+    if (_gen !== ppSearchGen) return;
+    productIds.forEach(pid => {
+      if (ppFutureLedger[String(pid)] === undefined) ppFutureLedger[String(pid)] = null;
+    });
+    ppRenderResults(userBranch);
+  };
+  const ledgerTimeout = new Promise(resolve => setTimeout(resolve, 8000));
+  fetch('/api/eclipse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'futureLedger',
+      sessionToken: eclipseSession.token,
+      productIds,
+      branches: ALL_BRANCHES,
+      homeBranch: userBranch
+    })
+  }).then(r => r.json()).then(led => {
+    if (_gen !== ppSearchGen) return;
+    ppFutureLedger = { ...ppFutureLedger, ...(led.ledgers || {}) };
+    ppRenderResults(userBranch);
+  }).catch(clearPlaceholders);
+  ledgerTimeout.then(() => {
+    if (_gen !== ppSearchGen) return;
+    if (productIds.some(pid => ppFutureLedger[String(pid)] === undefined)) clearPlaceholders();
+  });
+}
+
 async function ppFetchImages() {
   if (!ppLastResults.length || !eclipseSession.token) return;
   const token = eclipseSession.token;
@@ -1825,23 +1914,20 @@ function ppRenderResults(userBranch) {
       : escHtml(r.catalogNumber);
     // Stock indicator — starts from current inventory, but if ledger data is available
     // and shows incoming POs at the home branch, we update the badge to reflect that.
-    const led = r.productId ? ppFutureLedger[String(r.productId)] : null;
-    const homeIncoming = led?.byBranch.find(b => b.branch === userBranch);
-
     let stockBadge = '';
-    if (r.stockTier === 0) {
-      stockBadge = `<span style="font-size:11px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${userBranch})</span>`;
+    if (r.stockTier === -1) {
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#bbb">● Checking stock...</span>`;
+    } else if (r.stockTier === 0) {
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#0f6e56;font-weight:600">● ${r.userQty} in stock (${userBranch})</span>`;
     } else if (r.stockTier === 1 && homeIncoming) {
-      // In stock elsewhere AND on order at home branch — show both
-      stockBadge = `<span style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>
         <span style="font-size:11px;color:#185FA5;font-weight:600;margin-left:6px">· ${homeIncoming.qty} on order @ ${userBranch}</span>`;
     } else if (r.stockTier === 1) {
-      stockBadge = `<span style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#a86b00;font-weight:500">● ${r.totalQty} at other branch</span>`;
     } else if (r.stockTier === 2 && homeIncoming) {
-      // Out of stock everywhere but on order at home branch — lead with that
-      stockBadge = `<span style="font-size:11px;color:#185FA5;font-weight:600">● ${homeIncoming.qty} on order @ ${userBranch}</span>`;
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#185FA5;font-weight:600">● ${homeIncoming.qty} on order @ ${userBranch}</span>`;
     } else {
-      stockBadge = `<span style="font-size:11px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
+      stockBadge = `<span id="pp-stock-${i}" style="font-size:11px;color:#E24B4A;font-weight:500">● Out of stock</span>`;
     }
 
     // Future ledger note — show all branches' incoming POs with ETAs
@@ -1921,48 +2007,11 @@ async function ppSearch(keyword) {
       resultsEl.innerHTML = `<div class="pp-empty">No products found for "${escHtml(keyword)}".</div>`;
       return;
     }
-    // Render immediately with stock dots — no waiting for images
+    // Render immediately — all results show "Checking stock..." dots
     ppRenderResults(data.userBranch || userBranch);
-    // Fetch thumbnails lazily in the background — appear as they load
+    // Fetch inventory lazily — dots update as results come in
+    ppFetchInventory(data.userBranch || userBranch);
 
-    // For non-home-stock items (OOS or only at other branches), fetch future ledger
-    // so we can show incoming PO info and update the stock badge accordingly.
-    const needsLedger = ppLastResults
-      .filter(r => r.stockTier >= 1 && r.productId)
-      .map(r => +r.productId);
-    if (needsLedger.length && eclipseSession.token) {
-      const _userBranch = data.userBranch || userBranch;
-      const _gen = ppSearchGen;
-      const clearPlaceholders = () => {
-        if (_gen !== ppSearchGen) return; // stale
-        needsLedger.forEach(pid => {
-          if (ppFutureLedger[String(pid)] === undefined) ppFutureLedger[String(pid)] = null;
-        });
-        ppRenderResults(_userBranch);
-          };
-      const ledgerTimeout = new Promise(resolve => setTimeout(resolve, 8000));
-      fetch('/api/eclipse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'futureLedger',
-          sessionToken: eclipseSession.token,
-          productIds: needsLedger,
-          branches: ALL_BRANCHES,
-          homeBranch: _userBranch
-        })
-      }).then(r => r.json()).then(led => {
-        if (_gen !== ppSearchGen) return; // stale — new search started, discard
-        ppFutureLedger = { ...ppFutureLedger, ...(led.ledgers || {}) };
-        ppRenderResults(_userBranch);
-          }).catch(clearPlaceholders);
-      ledgerTimeout.then(() => {
-        if (_gen !== ppSearchGen) return; // stale
-        if (needsLedger.some(pid => ppFutureLedger[String(pid)] === undefined)) {
-          clearPlaceholders();
-        }
-      });
-    }
   } catch(err) {
     resultsEl.innerHTML = `<div class="pp-empty" style="color:#E24B4A">Error: ${escHtml(err.message)}</div>`;
   }
