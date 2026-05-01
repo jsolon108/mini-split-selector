@@ -1064,31 +1064,66 @@ function szToggle(i) {
 // ══════════════════════════════════════════════
 // MULTI-ZONE TAB — zones-first approach (matches desktop)
 // ══════════════════════════════════════════════
+// ─── MZ viable cap check (port of desktop isCapViable) ────────────
+function mzIsCapViable(zoneIdx, candidateCap) {
+  const testState = mzZoneState.map((z, i) => i === zoneIdx ? {cap: candidateCap, type:'', model:'', liq_pipe:'', gas_pipe:''} : z);
+  const testFilled = testState.filter(z => z.cap > 0 || z.cap === -1);
+  if (testFilled.length < 2) return true;
+  const nZones = testState.length;
+  const candCaps = candidateCap === -1 ? [6,7] : [candidateCap];
+  return MZ.some(o => {
+    if (o.zones_max < nZones) return false;
+    if (mzBrandFilter && o.brand !== mzBrandFilter) return false;
+    if (!iduRows(o.id).some(r => candCaps.includes(r.cap))) return false;
+    for (const z of testState) {
+      if ((!z.cap && z.cap !== -1) || !z.type) continue;
+      const caps = z.cap === -1 ? [6,7] : [z.cap];
+      if (!iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type)) return false;
+    }
+    const allFilledCaps = testFilled.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
+    const comboKey = [...allFilledCaps].sort((a,b)=>a-b).join(',');
+    const combos = MZ_COMBOS[o.id];
+    if (combos) {
+      const has67 = testFilled.some(z => z.cap === -1);
+      if (has67) {
+        let keys = [allFilledCaps.map(x=>x)];
+        testFilled.forEach((z,i) => {
+          if (z.cap === -1) {
+            const next = [];
+            keys.forEach(k => { const k6=[...k]; k6[i]=6000; next.push(k6); const k7=[...k]; k7[i]=7000; next.push(k7); });
+            keys = next;
+          }
+        });
+        if (!keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')))) return false;
+      } else {
+        if (!combos.has(comboKey)) return false;
+      }
+    } else {
+      const total = allFilledCaps.reduce((a,b)=>a+b,0);
+      if (total > o.max_btu) return false;
+    }
+    return true;
+  });
+}
+
 function renderMZTab() {
   const brands = [...new Set(MZ.map(r => r.brand))].sort();
   const nZones = mzZoneState.length;
-
-  // Brand chips
   document.getElementById('mz-brand-chips').innerHTML =
     [['', 'All Brands'], ...brands.map(b => [b, b])].map(([v, l]) =>
       `<div class="chip ${v===mzBrandFilter?'active':''}" onclick="mzBrand('${v}')">${esc(l)}</div>`
     ).join('');
-
-  // Zone count chips
   document.getElementById('mz-zone-chips').innerHTML =
     [2,3,4,5].map(n =>
       `<div class="chip ${n===nZones?'active':''}" onclick="mzSetZones(${n})">${n} Zones</div>`
     ).join('');
-
   const zonesEl = document.getElementById('mz-zones-wrap');
   const resultsEl = document.getElementById('mz-results');
-
   if (!nZones) {
     zonesEl.style.display = 'none';
     resultsEl.innerHTML = '<div class="empty-state"><div class="icon">⬆️</div><div class="title">Select zone count</div><div class="sub">Pick how many indoor units you need above.</div></div>';
     return;
   }
-
   zonesEl.style.display = '';
   renderMZZoneInputs();
   renderMZMatchingOUs();
@@ -1102,39 +1137,52 @@ function mzSetZones(n) {
 }
 
 function renderMZZoneInputs() {
-  // Get all IDU rows relevant to current brand filter
   const relevantIDUs = Object.entries(MZ_IDU).flatMap(([ouId, rows]) => {
     if (!mzBrandFilter) return rows;
     const o = MZ.find(m => m.id === ouId);
     return o?.brand === mzBrandFilter ? rows : [];
   });
-  const allCaps = [...new Set(relevantIDUs.map(r => r.cap))].sort((a,b)=>a-b);
+  // Merge 6+7 into 6_7, exclude 48+60 — matches desktop exactly
+  const allCaps = [...new Set(relevantIDUs.map(r => r.cap))].filter(c => c !== 48 && c !== 60).sort((a,b)=>a-b);
+  const has6 = allCaps.includes(6), has7 = allCaps.includes(7);
+  const capGroups = [];
+  if (has6 || has7) capGroups.push({ label: '6/7K', value: '6_7' });
+  allCaps.filter(c => c !== 6 && c !== 7).forEach(c => capGroups.push({ label: c+'K', value: String(c) }));
 
   document.getElementById('mz-zones-inputs').innerHTML = mzZoneState.map((z, zi) => {
+    const selectedVal = z.cap === -1 ? '6_7' : z.cap > 0 ? String(z.cap) : '0';
+    // Only show caps that are viable given other zones
+    const viableCapGroups = capGroups.filter(g => {
+      if (g.value === selectedVal) return true;
+      const testCap = g.value === '6_7' ? -1 : +g.value;
+      return mzIsCapViable(zi, testCap);
+    });
     const capOpts = ['<option value="0">— capacity —</option>',
-      ...allCaps.map(c => `<option value="${c}" ${z.cap===c?'selected':''}>${c}K</option>`)
+      ...viableCapGroups.map(g => `<option value="${g.value}" ${selectedVal===g.value?'selected':''}>${g.label}</option>`)
     ].join('');
-
-    const capFilter = z.cap > 0 ? [z.cap] : [];
-    const typeRows = z.cap > 0 ? [...new Map(relevantIDUs.filter(r=>r.cap===z.cap).map(r=>[r.type,r])).values()] : [];
-    const typeOpts = z.cap > 0 ? ['<option value="">— type —</option>',
+    const hasCapSelected = z.cap !== 0;
+    const capFilter = z.cap === -1 ? [6,7] : [z.cap];
+    // Only show types actually available for this cap on relevant ODUs
+    const typeRows = hasCapSelected
+      ? [...new Map(relevantIDUs.filter(r => capFilter.includes(r.cap)).map(r => [r.type, r])).values()]
+      : [];
+    const typeOpts = hasCapSelected ? ['<option value="">— type —</option>',
       ...typeRows.map(t => `<option value="${esc(t.type)}" ${z.type===t.type?'selected':''}>${esc(t.type)}</option>`)
     ].join('') : '';
-
     return `<div style="background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:8px">
       <div style="display:flex;align-items:center;gap:10px">
         <div class="zone-num">${zi+1}</div>
         <div style="flex:1;display:flex;gap:8px">
-          <select onchange="mzSetCap(${zi},+this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff">${capOpts}</select>
-          ${z.cap > 0 ? `<select onchange="mzSetType(${zi},this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff">${typeOpts}</select>` : ''}
+          <select onchange="mzSetCap(${zi},this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff;color:var(--gray-900)">${capOpts}</select>
+          ${hasCapSelected?`<select onchange="mzSetType(${zi},this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff;color:var(--gray-900)">${typeOpts}</select>`:''}
         </div>
       </div>
-      ${z.model ? `<div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--blue)">${esc(z.model)}</div>` : ''}
     </div>`;
   }).join('');
 }
 
-function mzSetCap(idx, cap) {
+function mzSetCap(idx, val) {
+  const cap = val === '6_7' ? -1 : +val;
   mzZoneState[idx] = { cap, type: '', model: '', liq_pipe: '', gas_pipe: '' };
   renderMZZoneInputs();
   renderMZMatchingOUs();
@@ -1149,37 +1197,49 @@ function mzSetType(idx, type) {
 
 function renderMZMatchingOUs() {
   const el = document.getElementById('mz-results');
-  const filledZones = mzZoneState.filter(z => z.cap > 0 && z.type);
+  const filledZones = mzZoneState.filter(z => z.cap > 0 || z.cap === -1);
   const nZones = mzZoneState.length;
-
   if (filledZones.length < 2) {
-    el.innerHTML = `<div class="empty-state" style="padding:24px 16px"><div class="icon">👆</div><div class="title" style="font-size:14px">Fill at least 2 zones</div><div class="sub">Set capacity and type for each zone.</div></div>`;
+    el.innerHTML = '<div class="empty-state" style="padding:24px 16px"><div class="icon">👆</div><div class="title" style="font-size:14px">Fill at least 2 zones</div><div class="sub">Set capacity and type for each zone.</div></div>';
     return;
   }
-
-  const allFilled = mzZoneState.every(z => z.cap > 0 && z.type);
-  const filledCaps = filledZones.map(z => z.cap * 1000);
+  const allFilled = mzZoneState.every(z => (z.cap > 0 || z.cap === -1) && z.type);
+  const filledCaps = filledZones.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
   const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
   const totalBtu = filledCaps.reduce((a,b)=>a+b,0);
 
   const valid = MZ.filter(o => {
     if (o.zones_max < nZones) return false;
     if (mzBrandFilter && o.brand !== mzBrandFilter) return false;
-    // Check all filled zones have matching IDU
     for (const z of mzZoneState) {
-      if (!z.cap || !z.type) continue;
-      if (!iduRows(o.id).some(r => r.cap === z.cap && r.type === z.type)) return false;
+      if ((!z.cap && z.cap !== -1) || !z.type) continue;
+      const caps = z.cap === -1 ? [6,7] : [z.cap];
+      if (!iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type)) return false;
     }
-    // Combo validation
     const combos = MZ_COMBOS[o.id];
-    if (combos && filledZones.length >= 2) {
-      if (!combos.has(comboKey)) return false;
+    if (combos) {
+      const has67 = filledZones.some(z => z.cap === -1);
+      if (has67) {
+        let keys = [filledCaps.map(x=>x)];
+        filledZones.forEach((z,i) => {
+          if (z.cap === -1) {
+            const next = [];
+            keys.forEach(k => { const k6=[...k]; k6[i]=6000; next.push(k6); const k7=[...k]; k7[i]=7000; next.push(k7); });
+            keys = next;
+          }
+        });
+        if (!keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')))) return false;
+      } else {
+        if (!combos.has(comboKey)) return false;
+      }
+    } else {
+      if (totalBtu > o.max_btu) return false;
     }
     return true;
   });
 
   if (!valid.length) {
-    el.innerHTML = '<div class="empty-state" style="padding:24px 16px"><div class="icon">❌</div><div class="title" style="font-size:14px">No matching systems</div><div class="sub">No outdoor unit supports this zone combination.</div></div>';
+    el.innerHTML = '<div class="empty-state" style="padding:24px 16px"><div class="icon">❌</div><div class="title" style="font-size:14px">No matching systems</div><div class="sub">No outdoor unit supports this combination.</div></div>';
     return;
   }
 
@@ -1188,35 +1248,46 @@ function renderMZMatchingOUs() {
     valid.map((o, oi) => {
       const pOu = getPrice(o.ou);
       const dot = stockDot(o.ou);
-      const [ac, al] = dot==='g' ? ['g','In Stock'] : dot==='y' ? ['y','Other Branch'] : dot==='r' ? ['r','Out of Stock'] : ['u','—'];
+      const [ac, al] = dot==='g'?['g','In Stock']:dot==='y'?['y','Other Branch']:dot==='r'?['r','Out of Stock']:['u','—'];
       const inQ = quote.filter(q => q.qtype==='mz' && q.ou===o.ou).length;
-      // Calculate total price (OU + all zone IDUs)
       let totalPrice = pOu?.price || 0;
       mzZoneState.forEach(z => {
-        if (z.cap && z.type) {
-          const row = iduRow(o.id, z.cap, z.type);
+        if ((z.cap > 0 || z.cap === -1) && z.type) {
+          const caps = z.cap === -1 ? [6,7] : [z.cap];
+          const row = iduRows(o.id).find(r => caps.includes(r.cap) && r.type === z.type);
           if (row) totalPrice += getPrice(row.model)?.price || 0;
         }
       });
+      const pct = o.ou_cap > 0 ? Math.round(totalBtu / (o.ou_cap * 1000) * 100) : 0;
+      const barPct = Math.min(totalBtu / o.max_btu * 100, 100);
+      const barColor = pct > 115 ? 'var(--red)' : pct > 100 ? 'var(--yellow)' : 'var(--green)';
       return `<div class="product-card">
         <div class="product-inner">
           <div class="brand-badge">${esc((o.brand||'').substring(0,6))}</div>
           <div class="product-info">
             <div class="product-name">${esc(o.brand)} ${esc(o.series)} — ${o.ou_cap}K</div>
             <div class="product-model">${esc(o.ou)}</div>
-            <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')} ${o.seer2?'· SEER2: '+o.seer2:''}</div>
-            ${o.note ? `<div class="product-specs" style="color:var(--yellow)">${esc(o.note)}</div>` : ''}
-            <div class="product-specs" style="color:var(--gray-600)">${totalBtu/1000}K total${inQ>0?` · <span style="color:var(--green)">✓ ${inQ} in quote</span>`:''}</div>
+            <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')}${o.seer2?' · SEER2: '+o.seer2:''}</div>
+            ${o.note?`<div class="product-specs" style="color:var(--yellow);font-size:10px">${esc(o.note)}</div>`:''}
           </div>
           <div class="product-stock">
-            <div class="product-price-val">${totalPrice ? fmt(totalPrice) : '—'}</div>
+            <div class="product-price-val">${totalPrice?fmt(totalPrice):'—'}</div>
             <div class="product-avail ${ac}">● ${al}</div>
+          </div>
+        </div>
+        <div style="padding:0 14px 8px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-600);margin-bottom:4px">
+            <span>${totalBtu/1000}K total · ${pct}% of ${o.ou_cap}K capacity</span>
+            ${inQ>0?`<span style="color:var(--green)">✓ ${inQ} in quote</span>`:''}
+          </div>
+          <div style="height:5px;background:var(--gray-100);border-radius:3px;overflow:hidden">
+            <div style="height:100%;width:${barPct}%;background:${barColor};border-radius:3px"></div>
           </div>
         </div>
         <div class="add-bar">
           <button class="pp-inv-btn" onclick="showInvSheet('${esc(o.ou)}','${esc(o.series)}')">Inv</button>
           <button class="add-to-quote-btn" ${allFilled?'':'disabled style="opacity:.5"'} onclick="mzAdd(${oi})">
-            ${allFilled ? '+ Add to Quote' : 'Fill all zones first'}
+            ${allFilled?'+ Add to Quote':'Fill all zones first'}
           </button>
         </div>
       </div>`;
@@ -1226,14 +1297,17 @@ function renderMZMatchingOUs() {
 function mzAdd(oi) {
   const o = (window._mzValid || [])[oi];
   if (!o) return;
+  const filledCaps = mzZoneState.filter(z => z.cap > 0 || z.cap === -1).map(z => z.cap === -1 ? 7000 : z.cap * 1000);
+  const totalBtu = filledCaps.reduce((a,b)=>a+b,0);
   const zones = mzZoneState.map((z, i) => {
-    if (!z.cap || !z.type) return null;
-    const row = iduRow(o.id, z.cap, z.type);
-    return { z: i+1, cap: z.cap, type: z.type, model: row?.model || '', liq_pipe: row?.liq_pipe || '', gas_pipe: row?.gas_pipe || '' };
+    if ((!z.cap && z.cap !== -1) || !z.type) return null;
+    const caps = z.cap === -1 ? [6,7] : [z.cap];
+    const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(o.id).some(r=>r.cap===c&&r.type===z.type)) || 7) : z.cap;
+    const row = iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
+    return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'' };
   }).filter(Boolean);
-  const totalBtu = zones.reduce((a,z)=>a+z.cap*1000,0);
   quote.push({
-    id: o.id + '-' + Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
+    id: o.id+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
     ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
     zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: []
   });
@@ -1242,6 +1316,8 @@ function mzAdd(oi) {
   updateGetPricingBtn();
   switchTab('quote');
 }
+
+
 
 // ══════════════════════════════════════════════
 // QUOTE TAB
