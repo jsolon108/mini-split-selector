@@ -550,6 +550,44 @@ export default async function handler(req, res) {
     }
   }
 
+  // Lazy inventory lookup for product picker — called after results render.
+  // Takes an array of {productId, catalogNumber} pairs, returns stock tiers.
+  if (action === 'inventoryForProducts') {
+    try {
+      const { products, userBranch, userId } = req.body;
+      if (!Array.isArray(products) || !products.length) return res.status(200).json({ inventory: {} });
+      const branch = userBranch || 'FARM';
+      const userIdUpper = (userId || '').toUpperCase();
+      const inventory = {};
+      await Promise.all(products.map(async ({ productId, catalogNumber }) => {
+        try {
+          const params = new URLSearchParams();
+          params.append('CatalogNumber', catalogNumber);
+          params.append('ConsiderUserAuthBranch', 'true');
+          if (userIdUpper) params.append('UserId', userIdUpper);
+          const r = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (!r.ok) return;
+          const d = await r.json();
+          let item = (d.results || []).find(it => String(it.productId) === String(productId));
+          if (!item) item = (d.results || [])[0];
+          if (!item) return;
+          const branches = item.branchAvailableQuantity || [];
+          const userQty = branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0;
+          const total = item.totalWarehouseQty ?? 0;
+          inventory[catalogNumber] = {
+            userQty, total,
+            stockTier: userQty > 0 ? 0 : total > 0 ? 1 : 2
+          };
+        } catch(e) { /* skip */ }
+      }));
+      return res.status(200).json({ inventory });
+    } catch(err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // Lightweight product search — for typeahead / picker UIs.
   // Returns up to 30 matches with stock info, sorted in-stock first.
   // We do ONE batch inventory call for all hits (not N individual calls) to keep this fast.
@@ -578,47 +616,11 @@ export default async function handler(req, res) {
         };
       }).filter(r => r.catalogNumber);
 
-      // Inventory lookups — parallel single-SKU calls keyed by productId.
-      // The batch ProductId array approach returned empty results in testing,
-      // so we fan out instead. Capped at 15 results to limit concurrent calls.
-      const invByCat = {};
-      if (raw.length) {
-        await Promise.all(raw.map(async r => {
-          try {
-            const params = new URLSearchParams();
-            params.append('CatalogNumber', r.catalogNumber);
-            params.append('ConsiderUserAuthBranch', 'true');
-            if (userIdUpper) params.append('UserId', userIdUpper);
-            const invR = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + params.toString(), {
-              headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-            });
-            if (!invR.ok) return;
-            const invData = await invR.json();
-            let item = (invData.results || []).find(it => String(it.productId || '') === String(r.productId));
-            if (!item) item = (invData.results || [])[0];
-            if (!item) return;
-            const branches = item.branchAvailableQuantity || [];
-            invByCat[r.catalogNumber] = {
-              userQty: branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0,
-              total: item.totalWarehouseQty ?? 0
-            };
-          } catch(e) { /* skip */ }
-        }));
-      }
-
-      // Annotate + sort: in-stock at user's branch first, then in-stock anywhere, then no-stock.
-      // Within each tier, preserve Eclipse's original ordering (already roughly relevance-ranked).
-      const annotated = raw.map(r => {
-        const inv = invByCat[r.catalogNumber] || { userQty: 0, total: 0 };
-        let stockTier = 2; // no stock
-        if (inv.userQty > 0) stockTier = 0;        // in stock at user's branch
-        else if (inv.total > 0) stockTier = 1;     // in stock at another branch
-        return { ...r, userQty: inv.userQty, totalQty: inv.total, stockTier };
-      });
-      annotated.sort((a, b) => {
-        if (a.stockTier !== b.stockTier) return a.stockTier - b.stockTier;
-        return (a.description || '').localeCompare(b.description || '');
-      });
+      // Return results immediately — no inventory calls here.
+      // Stock status is fetched lazily by the frontend after results render (see ppFetchInventory).
+      // stockTier -1 = unknown/pending; frontend updates each row as inventory comes in.
+      const annotated = raw.map(r => ({ ...r, userQty: 0, totalQty: 0, stockTier: -1 }));
+      annotated.sort((a, b) => (a.description || '').localeCompare(b.description || ''));
 
       return res.status(200).json({ results: annotated, userBranch: branch });
     } catch (err) {
