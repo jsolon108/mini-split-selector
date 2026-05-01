@@ -230,7 +230,7 @@ body {
 .sys-row:last-child { border-bottom: none; }
 .row-label { font-size: 10px; font-weight: 600; color: var(--gray-400); width: 32px; flex-shrink: 0; }
 .row-model { font-family: var(--mono); font-size: 11px; color: var(--blue); flex-shrink: 0; }
-.row-desc { font-size: 11px; color: var(--gray-600); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-desc { font-size: 11px; color: var(--gray-600); flex: 1; min-width: 0; white-space: normal; }
 .avail-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .avail-dot.g { background: var(--green); }
 .avail-dot.y { background: #f59e0b; }
@@ -264,7 +264,7 @@ body {
 .wide-row:last-child { border-bottom: none; }
 .wide-label { font-size: 10px; color: var(--gray-400); width: 32px; flex-shrink: 0; }
 .wide-model { font-family: var(--mono); font-size: 11px; color: var(--gray-600); flex-shrink: 0; }
-.wide-desc { color: var(--gray-600); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.wide-desc { color: var(--gray-600); flex: 1; min-width: 0; white-space: normal; font-size: 11px; line-height: 1.4; }
 .wide-price { font-size: 11px; font-weight: 500; color: var(--gray-600); white-space: nowrap; flex-shrink: 0; }
 .ledger-note { font-size: 11px; color: #555; padding: 2px 0 2px 42px; line-height: 1.4; }
 
@@ -327,7 +327,7 @@ body {
   box-shadow: var(--shadow); margin-bottom: 8px; overflow: hidden;
 }
 .product-inner {
-  padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; display: flex; align-items: flex-start; gap: 12px;
 }
 .brand-badge {
   width: 40px; height: 40px; border-radius: 10px;
@@ -338,9 +338,9 @@ body {
   flex-shrink: 0;
 }
 .product-info { flex: 1; min-width: 0; }
-.product-name { font-size: 14px; font-weight: 600; }
-.product-model { font-family: var(--mono); font-size: 11px; color: var(--blue); margin-top: 2px; }
-.product-specs { font-size: 11px; color: var(--gray-400); margin-top: 3px; }
+.product-name { font-size: 14px; font-weight: 600; white-space: normal; }
+.product-model { font-family: var(--mono); font-size: 11px; color: var(--blue); margin-top: 2px; white-space: normal; word-break: break-word; }
+.product-specs { font-size: 11px; color: var(--gray-400); margin-top: 3px; white-space: normal; word-break: break-word; }
 .product-stock { text-align: right; flex-shrink: 0; }
 .product-price-val { font-size: 16px; font-weight: 700; }
 .product-avail { font-size: 10px; font-weight: 600; margin-top: 2px; }
@@ -1030,7 +1030,8 @@ function renderSZTab() {
         <div class="product-info">
           <div class="product-name">${esc(s.brand)} ${esc(s.series)} — ${s.cap}K</div>
           <div class="product-model">${esc(s.indoor)} · ${esc(s.ref||'')}</div>
-          <div class="product-specs">ODU: ${esc(s.ou)} · IDU: ${esc(s.iu)}</div>
+          <div class="product-specs">ODU: ${esc(s.ou)}</div>
+          <div class="product-specs">IDU: ${esc(s.iu)}</div>
           ${s.seer2 ? `<div class="product-specs">SEER2: ${s.seer2}${s.hspf2?' · HSPF2: '+s.hspf2:''}</div>` : ''}
           ${s.liq_pipe ? `<div class="product-specs">Liq ${esc(s.liq_pipe)} · Gas ${esc(s.gas_pipe)}</div>` : ''}
         </div>
@@ -1040,7 +1041,7 @@ function renderSZTab() {
         </div>
       </div>
       <div class="add-bar">
-        <button class="pp-inv-btn" onclick="showInvSheet('${s.ou}','${esc(s.series)}')">ODU Inv</button>
+        <button class="pp-inv-btn" onclick="showSZInvSheet('${s.ou}','${s.iu}','${esc(s.brand+' '+s.series)}')">Inventory</button>
         <button class="add-to-quote-btn ${inQ?'':''}\" style="${inQ?'background:var(--green)':''}" onclick="szToggle(${i})">
           ${inQ ? '✓ In Quote' : '+ Add to Quote'}
         </button>
@@ -1850,6 +1851,35 @@ function ppAdd(i) {
 // ══════════════════════════════════════════════
 // INVENTORY SHEET
 // ══════════════════════════════════════════════
+// Show combined ODU + IDU inventory for a single zone system
+async function showSZInvSheet(ouModel, iuModel, name) {
+  document.getElementById('inv-title').textContent = name || 'Inventory';
+  document.getElementById('inv-model').textContent = '';
+  document.getElementById('inv-body').innerHTML = '<div class="loading-state">Loading…</div>';
+  openOverlay('inv-overlay');
+  try {
+    const [ouRes, iuRes] = await Promise.all([
+      fetch('/api/eclipse', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'branchInventory', sessionToken:eclipseSession.token, catalogNumber:ouModel, userId:eclipseSession.username }) }),
+      fetch('/api/eclipse', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'branchInventory', sessionToken:eclipseSession.token, catalogNumber:iuModel, userId:eclipseSession.username }) })
+    ]);
+    const [ouData, iuData] = await Promise.all([ouRes.json(), iuRes.json()]);
+    const renderBranches = (branches) => branches.length
+      ? branches.map(b => `<div class="inv-branch-row">
+          <span class="inv-branch">${esc(BRANCH_LABELS[b.code]||b.code)} <span style="font-size:11px;color:var(--gray-400)">(${esc(b.code)})</span></span>
+          <span class="inv-qty ${b.qty>0?'has':'none'}">${b.qty}</span>
+        </div>`).join('')
+      : '<div class="loading-state" style="padding:8px 0">No data</div>';
+    document.getElementById('inv-body').innerHTML = `
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Outdoor Unit — ${esc(ouModel)}</div>
+      ${renderBranches(ouData.branches||[])}
+      <div style="height:1px;background:var(--gray-200);margin:14px 0"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Indoor Unit — ${esc(iuModel)}</div>
+      ${renderBranches(iuData.branches||[])}`;
+  } catch(e) { document.getElementById('inv-body').innerHTML = `<div class="loading-state" style="color:var(--red)">Error</div>`; }
+}
+
 async function showInvSheet(model, desc) {
   document.getElementById('inv-title').textContent = desc ? desc.substring(0,40) : 'Inventory';
   document.getElementById('inv-model').textContent = model;
