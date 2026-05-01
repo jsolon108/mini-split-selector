@@ -775,6 +775,12 @@ input[type=number] { -moz-appearance: textfield; }
       <option value="REDH">REDH — Red Hook</option>
       <option value="WHNY">WHNY — White Plains</option>
     </select>
+    <div id="eclipse-ordered-by-row" style="display:none">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Ordered By <span style="color:var(--red)">*</span></label>
+      <select class="branch-select" id="eclipse-ordered-by" style="margin-bottom:12px">
+        <option value="">— select contact —</option>
+      </select>
+    </div>
     <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">PO Number (optional)</label>
     <input class="sheet-input" id="eclipse-po" type="text" placeholder="Customer PO"/>
     <div id="eclipse-status" style="font-size:13px;color:var(--gray-600);margin-bottom:10px;min-height:20px"></div>
@@ -1876,26 +1882,55 @@ function openEclipseSheet() {
   document.getElementById('eclipse-status').textContent = '';
   document.getElementById('eclipse-submit-btn').disabled = false;
   document.getElementById('eclipse-submit-btn').textContent = 'Create Quote';
+  // Populate Ordered By contacts if available
+  const obRow = document.getElementById('eclipse-ordered-by-row');
+  const obSelect = document.getElementById('eclipse-ordered-by');
+  const contacts = qSelectedCustomer.contacts || [];
+  if (contacts.length > 0) {
+    obSelect.innerHTML = '<option value="">— select contact —</option>' +
+      contacts.map(ct => `<option value="${esc(ct.id)}">${esc(ct.name)}</option>`).join('');
+    obRow.style.display = 'block';
+  } else {
+    obRow.style.display = 'none';
+    obSelect.innerHTML = '<option value="">— select contact —</option>';
+  }
   openOverlay('eclipse-overlay');
 }
 
 async function doPushToEclipse() {
   const btn = document.getElementById('eclipse-submit-btn');
   const status = document.getElementById('eclipse-status');
+  const obRow = document.getElementById('eclipse-ordered-by-row');
+  const orderBy = document.getElementById('eclipse-ordered-by').value;
+  // Validate ordered by if the field is shown
+  if (obRow.style.display !== 'none' && !orderBy) {
+    status.textContent = 'Please select an Ordered By contact.';
+    status.style.color = 'var(--red)';
+    return;
+  }
   btn.disabled = true; btn.textContent = 'Creating…'; status.textContent = '';
   try {
     const lines = [];
     quote.forEach(q => {
-      if (q.qtype==='sz') { lines.push({cat:fmtCat(q.ou),qty:q.qty}); lines.push({cat:fmtCat(q.iu),qty:q.qty}); }
-      else { lines.push({cat:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({cat:fmtCat(z.model),qty:1});}); }
-      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({cat:fmtCat(a.catalogNumber),qty:1}));
+      if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
+      else { lines.push({model:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({model:fmtCat(z.model),qty:1});}); }
+      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({model:fmtCat(a.catalogNumber),qty:1}));
     });
-    (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({cat:fmtCat(a.mfg_num||a.sku),qty});});
-    Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({cat:fmtCat(it.catalogNumber),qty:it.qty});});
+    (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
+    Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
     const res = await fetch('/api/eclipse', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ action:'order', sessionToken:eclipseSession.token, customerId:qSelectedCustomer.id,
-        branch: document.getElementById('eclipse-branch').value, poNumber: document.getElementById('eclipse-po').value.trim(), lines })
+      body: JSON.stringify({
+        action:'order',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        customerAccount: qSelectedCustomer.id,
+        branch: document.getElementById('eclipse-branch').value,
+        customerPO: document.getElementById('eclipse-po').value.trim(),
+        orderBy: orderBy || '',
+        lines
+      })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Push failed');
