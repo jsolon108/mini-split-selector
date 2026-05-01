@@ -267,6 +267,244 @@ select:focus,input:focus{outline:none;border-color:#999}
 .user-badge span{font-weight:500;color:#185FA5}
 .user-badge button{font-size:11px;color:#aaa;background:none;border:none;cursor:pointer;margin-left:6px}
 
+
+/* ═══════════════════════════════════════════════════
+   MOBILE RESPONSIVE — ≤768px
+   Converts desktop layout to mobile-first card UI
+   ═══════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+
+  /* ── Base ── */
+  body { font-size: 14px; background: #f5f5f3; }
+
+  /* ── Header → compact top bar ── */
+  .header {
+    padding: 10px 14px;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    min-height: 52px;
+  }
+  .header-logo { font-size: 15px; }
+  .header-sub { display: none; }
+  .user-badge { font-size: 11px; margin-left: auto; }
+  .user-badge button { font-size: 10px; }
+
+  /* ── Container ── */
+  .container { padding: 0; max-width: 100%; }
+
+  /* ── Tabs → horizontal scroll strip ── */
+  .tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0;
+    background: #fff;
+    border-bottom: 2px solid #e8e8e8;
+    padding: 0 4px;
+    position: sticky;
+    top: 52px;
+    z-index: 40;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 13px;
+    border-radius: 0;
+    border: none;
+    border-bottom: 2.5px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+  }
+  .tab.active { border-bottom-color: #185FA5; color: #185FA5; background: none; }
+
+  /* ── Panels ── */
+  .panel { padding: 10px 10px 120px; }
+
+  /* ── Filters → stack vertically ── */
+  .filters {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0;
+    margin-bottom: 8px;
+  }
+  .filters select, .filters input {
+    width: 100%;
+    height: 42px;
+    font-size: 14px;
+  }
+  .filters button {
+    width: 100%;
+    height: 42px;
+    font-size: 14px;
+  }
+
+  /* ── Single zone result cards ── */
+  .result-card {
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+  .result-card .rc-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .result-card .rc-models {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .result-card .rc-model-row {
+    flex-wrap: wrap;
+  }
+  .add-btn {
+    width: 100%;
+    height: 40px;
+    margin-top: 8px;
+    font-size: 14px;
+    border-radius: 8px;
+  }
+
+  /* ── Quote box → stacked cards ── */
+  .quote-box { padding: 0; background: transparent; border: none; box-shadow: none; }
+  .quote-line {
+    background: #fff;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.07);
+    flex-direction: column;
+  }
+  .q-body { padding: 0; }
+  .q-name { font-size: 15px; margin-bottom: 8px; }
+  .q-model-row {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 0;
+    font-size: 13px;
+  }
+  .q-model-label { min-width: 36px; }
+  .q-price { margin-left: auto; }
+  .rm-btn { align-self: flex-end; margin-top: 4px; }
+
+  /* ── Quote customer bar ── */
+  .quote-customer-bar { flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .quote-customer-bar input { width: 100%; }
+
+  /* ── Get Pricing → fixed bottom action bar ── */
+  .get-pricing-btn {
+    position: fixed;
+    bottom: 60px;
+    left: 0;
+    right: 0;
+    margin: 0 10px;
+    width: calc(100% - 20px);
+    height: 48px;
+    font-size: 15px;
+    border-radius: 12px;
+    z-index: 30;
+    box-shadow: 0 4px 16px rgba(15,110,86,.35);
+  }
+
+  /* ── Copy / Push buttons → fixed bottom bar ── */
+  .quote-action-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    z-index: 31;
+    background: #fff;
+    border-top: 1px solid #e8e8e8;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+  }
+  .copy-btn, .push-btn {
+    height: 52px;
+    border-radius: 0;
+    font-size: 14px;
+    margin: 0;
+    flex: 1;
+    border: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .copy-btn { border-right: 1px solid #e8e8e8; }
+  #clear-quote-btn {
+    position: static;
+    width: 100%;
+    margin-bottom: 8px;
+    height: 40px;
+    font-size: 13px;
+    border-radius: 8px;
+  }
+
+  /* ── Multi-zone panel ── */
+  .mz-container { flex-direction: column; gap: 10px; }
+  .mz-ou-list, .mz-results { width: 100%; }
+  .mz-zone-row { flex-wrap: wrap; gap: 6px; }
+
+  /* ── Modals → full-screen bottom sheet ── */
+  .modal-overlay, .inv-modal-overlay {
+    align-items: flex-end;
+  }
+  .modal, .inv-modal, .pp-modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .pp-modal { padding: 16px 12px 24px; }
+
+  /* ── Product picker results ── */
+  .pp-result { padding: 10px; }
+
+  /* ── Open orders / recent quotes ── */
+  .oo-card, .rq-card {
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .oo-line { font-size: 12px; }
+
+  /* ── Common add-ons section ── */
+  .common-addons-section, .line-hide-section {
+    border-radius: 12px;
+    margin-bottom: 10px;
+  }
+
+  /* ── + Add product button ── */
+  #panel-quote > div > button[onclick="openProductPicker()"] {
+    height: 44px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+
+  /* ── Inventory modal ── */
+  .inv-modal { padding: 20px 16px 32px; }
+  .inv-modal-title { font-size: 16px; }
+
+  /* ── Login box ── */
+  .login-box {
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 24px 20px 32px;
+  }
+  .login-overlay { align-items: flex-end; }
+
+  /* ── Alert banners ── */
+  .alert-banner { font-size: 12px; padding: 8px 12px; }
+  .session-banner { font-size: 12px; padding: 8px 12px; }
+  .session-banner button { font-size: 11px; padding: 4px 10px; }
+}
 </style>
 </head>
 <body>
@@ -406,9 +644,11 @@ select:focus,input:focus{outline:none;border-color:#999}
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <div id="quote-wide-sections"></div>
-    <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A;margin-bottom:10px">Clear quote</button>
-    <button class="copy-btn" onclick="copyQuote()">Copy to clipboard</button>
-    <button class="push-btn" onclick="openEclipseModal()">Create Quote in Eclipse</button>
+    <button class="copy-btn" onclick="clearQuote()" style="color:#E24B4A;border-color:#E24B4A;margin-bottom:10px" id="clear-quote-btn">Clear quote</button>
+    <div class="quote-action-bar">
+      <button class="copy-btn" onclick="copyQuote()" id="copy-quote-btn">Copy to clipboard</button>
+      <button class="push-btn" onclick="openEclipseModal()" id="push-eclipse-btn">Create Quote in Eclipse</button>
+    </div>
   </div>
 </div>
 
