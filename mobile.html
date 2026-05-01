@@ -628,28 +628,25 @@ input[type=number] { -moz-appearance: textfield; }
     <div class="panel" id="panel-sz">
       <div class="search-wrap">
         <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input type="text" id="sz-search" placeholder="Search model or brand..." oninput="szFilter()"/>
+        <input type="text" id="sz-search" placeholder="Search model or brand..." oninput="renderSZTab()"/>
       </div>
       <div class="chip-row" id="sz-brand-chips"></div>
-      <div class="chip-row" id="sz-size-chips"></div>
+      <div class="chip-row" id="sz-cap-chips"></div>
+      <div class="chip-row" id="sz-type-chips"></div>
       <div id="sz-results"></div>
     </div>
 
     <!-- ══ MULTI-ZONE TAB ══ -->
     <div class="panel" id="panel-mz">
-      <div class="section-label">Step 1 — Outdoor Unit</div>
-      <div class="ou-scroll" id="mz-ou-list"></div>
+      <div class="chip-row" id="mz-brand-chips"></div>
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Number of Zones</div>
+      <div class="chip-row" id="mz-zone-chips"></div>
       <div id="mz-zones-wrap" style="display:none">
-        <div class="section-label" id="mz-zones-label">Step 2 — Indoor Units</div>
-        <div id="mz-zones"></div>
-        <button style="width:100%;height:40px;border:1.5px dashed var(--gray-200);border-radius:var(--radius);background:none;color:var(--blue);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);margin-bottom:10px" onclick="mzAddZone()">+ Add Zone</button>
-        <div class="card" style="padding:14px;margin-bottom:10px">
-          <div class="total-row" style="margin-bottom:10px">
-            <span class="label">System total</span>
-            <span class="value" id="mz-total" style="font-size:15px;font-weight:700;color:var(--blue)">—</span>
-          </div>
-          <button class="sheet-btn primary" onclick="mzAddToQuote()">+ Add to Quote</button>
-        </div>
+        <div class="section-label">Zone Configuration</div>
+        <div id="mz-zones-inputs"></div>
+      </div>
+      <div id="mz-results">
+        <div class="empty-state"><div class="icon">⬆️</div><div class="title">Select zone count</div><div class="sub">Pick how many indoor units you need above.</div></div>
       </div>
     </div>
 
@@ -664,13 +661,13 @@ input[type=number] { -moz-appearance: textfield; }
       <div class="search-wrap" style="margin-bottom:12px">
         <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="oo-customer-search" placeholder="Search customer..." oninput="ooCustomerInput()"/>
-        <div id="oo-customer-results" style="position:absolute;top:100%;left:0;right:0;display:none;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);z-index:50"></div>
       </div>
       <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 2 — Filter (optional)</div>
       <div class="search-wrap" style="margin-bottom:12px">
         <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="oo-product-filter" placeholder="SKU or product name (optional)" disabled oninput="ooProductInput()"/>
       </div>
+      <div id="oo-customer-inline" style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:10px"></div>
       <div id="oo-results"><div class="empty-state"><div class="icon">🔍</div><div class="title">Find a customer</div><div class="sub">Search for a customer above to see their open orders.</div></div></div>
     </div>
 
@@ -686,6 +683,7 @@ input[type=number] { -moz-appearance: textfield; }
         <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input type="text" id="rq-product-filter" placeholder="SKU or product name (optional)" disabled oninput="rqProductInput()"/>
       </div>
+      <div id="rq-customer-inline" style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:10px"></div>
       <div id="rq-results"><div class="empty-state"><div class="icon">🔍</div><div class="title">Find a customer</div><div class="sub">Search for a customer above to see their recent quotes.</div></div></div>
     </div>
 
@@ -809,26 +807,34 @@ const BRANCH_LABELS = {'BALD':'Baldwin','BKLN':'Brooklyn','BOH':'Bohemia','FARM'
 // ══════════════════════════════════════════════
 let eclipseSession = { token: null, username: null, password: null };
 let qSelectedCustomer = null;
-let quote = []; // system entries
+let quote = [];
 let quoteWideState = { common: {}, customItems: {} };
 let quotePricing = { pricing: {}, inventory: {} };
 let COMMON_ADDONS = null;
+// Catalog data — matches desktop schema exactly
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {};
-let mzState = { ou: null, zones: [] };
-let ppSearchTimer = null, ppSearchGen = 0, ppLastResults = [], ppFutureLedger = {};
+// SZ filter state
+let szBrandFilter = '', szCapFilter = '', szTypeFilter = '';
+// MZ zone state — zones-first approach matching desktop
+let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}]
+let mzBrandFilter = '';
+// Product picker state
+let ppSearchTimer = null, ppSearchGen = 0, ppLastResults = [];
+let _custResults = [], _ooResults = [], _rqResults = [];
 let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
+let ooCustomer = null, rqCustomer = null;
+let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
+let qCustTimer = null;
 
-// Intercept /api/eclipse calls for session expiry
+// ══════════════════════════════════════════════
+// SESSION INTERCEPTOR
+// ══════════════════════════════════════════════
 const _origFetch = window.fetch.bind(window);
 window.fetch = async (url, opts) => {
   const res = await _origFetch(url, opts);
-  const u = typeof url === 'string' ? url : '';
-  if (u.includes('/api/eclipse')) {
-    try {
-      const clone = res.clone();
-      if (res.status === 401) showSessionBanner();
-      else if (res.ok) hideSessionBanner();
-    } catch(e) {}
+  if (typeof url === 'string' && url.includes('/api/eclipse')) {
+    if (res.status === 401) showSessionBanner();
+    else if (res.ok) hideSessionBanner();
   }
   return res;
 };
@@ -838,29 +844,51 @@ function hideSessionBanner() { document.getElementById('session-banner').classLi
 // ══════════════════════════════════════════════
 // UTILITIES
 // ══════════════════════════════════════════════
-const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const ea = s => String(s || '').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function fmt(v) { return v != null ? '$' + Number(v).toFixed(2) : '—'; }
+
+function fmtCat(model) {
+  if (!model) return null;
+  if (model.startsWith('BMS500-')) return model.replace('BMS500-', '');
+  return model;
+}
+
 function getPrice(key) {
   if (!key || !quotePricing.pricing) return null;
-  return quotePricing.pricing[key] || null;
+  const k = fmtCat(key);
+  return quotePricing.pricing[key] || quotePricing.pricing[k] || null;
 }
+
 function getInv(key) {
   if (!key || !quotePricing.inventory) return null;
-  return quotePricing.inventory[key] || null;
+  return quotePricing.inventory[key] || quotePricing.inventory[fmtCat(key)] || null;
 }
-function invDot(key) {
+
+function stockDot(key) {
   const inv = getInv(key);
   if (!inv) return 'u';
   if (inv.userQty > 0) return 'g';
   if (inv.total > 0) return 'y';
   return 'r';
 }
+
+function iduRows(ouId) { return MZ_IDU[ouId] || []; }
+function iduRow(ouId, cap, type) { return iduRows(ouId).find(r => r.cap === cap && r.type === type) || null; }
+
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
   if (name === 'addons') renderAddonsTab();
+  if (name === 'sz') renderSZTab();
+  if (name === 'mz') renderMZTab();
+  if (name === 'quote') renderQuoteTab();
 }
+
+function openOverlay(id) { document.getElementById(id).classList.add('open'); }
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(el => el.classList.remove('open'));
+});
 
 // ══════════════════════════════════════════════
 // LOGIN
@@ -872,15 +900,17 @@ function openLoginSheet() {
   if (eclipseSession.username) u.value = eclipseSession.username;
   p.value = '';
   document.getElementById('login-cancel').style.display = eclipseSession.token ? '' : 'none';
-  setTimeout(() => (eclipseSession.username ? p : u).focus(), 100);
+  setTimeout(() => (eclipseSession.username ? p : u).focus(), 150);
 }
+
 async function doLogin() {
   const username = document.getElementById('login-user').value.trim();
   const password = document.getElementById('login-pass').value;
-  const err = document.getElementById('login-error');
+  const errEl = document.getElementById('login-error');
   const btn = document.getElementById('login-btn');
-  if (!username || !password) { err.textContent = 'Username and password required.'; err.style.display = ''; return; }
-  btn.textContent = 'Signing in…'; btn.disabled = true; err.style.display = 'none';
+  errEl.style.display = 'none';
+  if (!username || !password) { errEl.textContent = 'Username and password required.'; errEl.style.display = ''; return; }
+  btn.textContent = 'Signing in…'; btn.disabled = true;
   try {
     const res = await _origFetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -891,205 +921,323 @@ async function doLogin() {
     eclipseSession = { token: data.sessionToken, username: data.username || username, password };
     userBranch = data.homeBranch || 'FARM';
     localStorage.setItem('eclipseHomeBranch', userBranch);
-    const br = document.getElementById('eclipse-branch');
-    if (br) br.value = userBranch;
+    const brEl = document.getElementById('eclipse-branch');
+    if (brEl) brEl.value = userBranch;
     document.getElementById('session-dot').className = 'dot';
-    document.getElementById('session-name').textContent = username.toUpperCase();
+    document.getElementById('session-name').textContent = (data.username || username).toUpperCase();
     hideSessionBanner();
-    updateGetPricingBtn();
     closeOverlay('login-overlay');
-    // Auto-load catalog data
+    updateGetPricingBtn();
     loadCatalogs();
   } catch(e) {
-    err.textContent = e.message; err.style.display = '';
+    errEl.textContent = e.message; errEl.style.display = '';
   } finally {
     btn.textContent = 'Sign In'; btn.disabled = false;
   }
 }
 
 // ══════════════════════════════════════════════
-// CATALOG DATA
+// CATALOG LOADING
 // ══════════════════════════════════════════════
 async function loadCatalogs() {
-  const [szRes, mzRes, mzIduRes, mzCombosRes] = await Promise.all([
-    fetch(`${SB_URL}/rest/v1/ductless_sz?select=*`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz?select=*`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_idu?select=*`, { headers: H }),
-    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=*`, { headers: H }),
-  ]);
-  SZ = await szRes.json();
-  MZ = await mzRes.json();
-  const mzIduArr = await mzIduRes.json();
-  MZ_IDU = {};
-  mzIduArr.forEach(r => { if (!MZ_IDU[r.ou_model]) MZ_IDU[r.ou_model] = []; MZ_IDU[r.ou_model].push(r); });
-  const mzCombosArr = await mzCombosRes.json();
-  MZ_COMBOS = {};
-  mzCombosArr.forEach(r => { MZ_COMBOS[r.combo_key || (r.ou_model + '|' + r.idu_models)] = r; });
-  renderSZTab();
-  renderMZTab();
-  const caRes = await fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H });
-  COMMON_ADDONS = await caRes.json();
-  renderAddonsTab();
+  try {
+    const [szR, mzR, iduR, comboR, caR] = await Promise.all([
+      fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=2000`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H }),
+    ]);
+    SZ = await szR.json();
+    MZ = await mzR.json();
+    const iduRows2 = await iduR.json();
+    MZ_IDU = {};
+    iduRows2.forEach(r => { if (!MZ_IDU[r.ou_id]) MZ_IDU[r.ou_id] = []; MZ_IDU[r.ou_id].push(r); });
+    const comboRows = await comboR.json();
+    MZ_COMBOS = {};
+    comboRows.forEach(r => {
+      if (!MZ_COMBOS[r.ou_id]) MZ_COMBOS[r.ou_id] = new Set();
+      MZ_COMBOS[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
+    });
+    COMMON_ADDONS = await caR.json();
+    renderSZTab();
+    renderMZTab();
+    renderAddonsTab();
+    renderQuoteTab();
+  } catch(e) { console.error('Catalog load error:', e); }
 }
 
 // ══════════════════════════════════════════════
 // SINGLE ZONE TAB
 // ══════════════════════════════════════════════
-let szBrandFilter = 'All', szSizeFilter = 'All', szSearchTerm = '';
-
 function renderSZTab() {
-  const brands = ['All', ...new Set(SZ.map(r => r.brand).filter(Boolean))].sort((a,b) => a==='All'?-1:b==='All'?1:a.localeCompare(b));
-  const sizes = ['All', '9K', '12K', '18K', '24K', '36K', '42K', '48K'];
-  document.getElementById('sz-brand-chips').innerHTML = brands.map(b =>
-    `<div class="chip ${b===szBrandFilter?'active':''}" onclick="szSetBrand('${ea(b)}')">${esc(b)}</div>`
-  ).join('');
-  document.getElementById('sz-size-chips').innerHTML = sizes.map(s =>
-    `<div class="chip ${s===szSizeFilter?'active':''}" onclick="szSetSize('${ea(s)}')">${esc(s)}</div>`
-  ).join('');
-  let results = SZ;
-  if (szBrandFilter !== 'All') results = results.filter(r => r.brand === szBrandFilter);
-  if (szSizeFilter !== 'All') results = results.filter(r => String(r.capacity_btu || '').includes(szSizeFilter.replace('K','')));
-  if (szSearchTerm) {
-    const t = szSearchTerm.toLowerCase();
-    results = results.filter(r => (r.ou_model||'').toLowerCase().includes(t) || (r.iu_model||'').toLowerCase().includes(t) || (r.brand||'').toLowerCase().includes(t) || (r.name||'').toLowerCase().includes(t) || (r.category||'').toLowerCase().includes(t));
-  }
+  const brands = [...new Set(SZ.map(r => r.brand))].sort();
+  const caps = [...new Set(SZ.map(r => r.cap))].sort((a,b)=>a-b);
+  const types = [...new Set(SZ.map(r => r.indoor))].sort();
+
+  // Brand chips
+  document.getElementById('sz-brand-chips').innerHTML =
+    [['', 'All Brands'], ...brands.map(b => [b, b])].map(([v, l]) =>
+      `<div class="chip ${v===szBrandFilter?'active':''}" onclick="szBrand('${v}')">${esc(l)}</div>`
+    ).join('');
+
+  // Cap chips (e.g. 9K, 12K)
+  document.getElementById('sz-cap-chips').innerHTML =
+    [['', 'All Sizes'], ...caps.map(c => [String(c), c+'K'])].map(([v, l]) =>
+      `<div class="chip ${v===szCapFilter?'active':''}" onclick="szCap('${v}')">${esc(l)}</div>`
+    ).join('');
+
+  // Type chips (Wall Mount, Cassette, etc.)
+  document.getElementById('sz-type-chips').innerHTML =
+    [['', 'All Types'], ...types.map(t => [t, t])].map(([v, l]) =>
+      `<div class="chip ${v===szTypeFilter?'active':''}" onclick="szType('${v}')">${esc(l)}</div>`
+    ).join('');
+
+  // Filter results
+  const term = (document.getElementById('sz-search')?.value || '').toLowerCase();
+  let results = SZ.filter(s =>
+    (!szBrandFilter || s.brand === szBrandFilter) &&
+    (!szCapFilter || s.cap === +szCapFilter) &&
+    (!szTypeFilter || s.indoor === szTypeFilter) &&
+    (!term || `${s.brand} ${s.series} ${s.ou} ${s.iu} ${s.indoor}`.toLowerCase().includes(term))
+  );
+
   const el = document.getElementById('sz-results');
-  if (!results.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="title">No results</div><div class="sub">Try a different brand or size.</div></div>'; return; }
-  el.innerHTML = results.slice(0, 50).map((r, i) => {
-    const priceOu = getPrice(r.ou_model);
-    const priceIu = getPrice(r.iu_model);
-    const total = priceOu && priceIu ? priceOu.price + priceIu.price : null;
-    const dot = invDot(r.ou_model);
-    const avail = dot === 'g' ? ['g','In Stock'] : dot === 'y' ? ['y','Other Branch'] : dot === 'r' ? ['r','Out of Stock'] : ['u','—'];
+  if (!results.length) {
+    el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="title">No results</div><div class="sub">Try different filters.</div></div>';
+    return;
+  }
+
+  window._szResults = results;
+  el.innerHTML = results.map((s, i) => {
+    const pOu = getPrice(s.ou);
+    const pIu = getPrice(s.iu);
+    const total = pOu && pIu ? pOu.price + pIu.price : null;
+    const dot = stockDot(s.ou);
+    const [ac, al] = dot==='g' ? ['g','In Stock'] : dot==='y' ? ['y','Other Branch'] : dot==='r' ? ['r','Out of Stock'] : ['u','—'];
+    const inQ = quote.some(q => q.id === s.id);
     return `<div class="product-card">
       <div class="product-inner">
-        <div class="brand-badge">${esc(r.brand||'').substring(0,6)}</div>
+        <div class="brand-badge">${esc((s.brand||'').substring(0,6))}</div>
         <div class="product-info">
-          <div class="product-name">${esc(r.name || r.ou_model)}</div>
-          <div class="product-model">${esc(r.ou_model)} + ${esc(r.iu_model||'')}</div>
-          <div class="product-specs">${r.seer2 ? 'SEER2: '+r.seer2+' · ' : ''}${esc(r.refrigerant||'')} · ${esc(r.voltage||'')}</div>
+          <div class="product-name">${esc(s.brand)} ${esc(s.series)} — ${s.cap}K</div>
+          <div class="product-model">${esc(s.indoor)} · ${esc(s.ref||'')}</div>
+          <div class="product-specs">ODU: ${esc(s.ou)} · IDU: ${esc(s.iu)}</div>
+          ${s.seer2 ? `<div class="product-specs">SEER2: ${s.seer2}${s.hspf2?' · HSPF2: '+s.hspf2:''}</div>` : ''}
+          ${s.liq_pipe ? `<div class="product-specs">Liq ${esc(s.liq_pipe)} · Gas ${esc(s.gas_pipe)}</div>` : ''}
         </div>
         <div class="product-stock">
           <div class="product-price-val">${total ? fmt(total) : '—'}</div>
-          <div class="product-avail ${avail[0]}">● ${avail[1]}</div>
+          <div class="product-avail ${ac}">● ${al}</div>
         </div>
       </div>
       <div class="add-bar">
-        <div class="qty-ctrl">
-          <button class="qty-btn" onclick="szQty(${i},-1)">−</button>
-          <span class="qty-val" id="sz-qty-${i}">1</span>
-          <button class="qty-btn" onclick="szQty(${i},1)">+</button>
-        </div>
-        <button class="add-to-quote-btn" onclick="szAdd(${i})">+ Add to Quote</button>
+        <button class="pp-inv-btn" onclick="showInvSheet('${s.ou}','${esc(s.series)}')">ODU Inv</button>
+        <button class="add-to-quote-btn ${inQ?'':''}\" style="${inQ?'background:var(--green)':''}" onclick="szToggle(${i})">
+          ${inQ ? '✓ In Quote' : '+ Add to Quote'}
+        </button>
       </div>
     </div>`;
   }).join('');
-  window._szResults = results;
 }
-function szFilter() { szSearchTerm = document.getElementById('sz-search').value; renderSZTab(); }
-function szSetBrand(b) { szBrandFilter = b; renderSZTab(); }
-function szSetSize(s) { szSizeFilter = s; renderSZTab(); }
-function szQty(i, d) {
-  const el = document.getElementById(`sz-qty-${i}`);
-  if (!el) return;
-  el.textContent = Math.max(1, (parseInt(el.textContent)||1) + d);
-}
-function szAdd(i) {
-  const r = (window._szResults || [])[i];
-  if (!r) return;
-  const qty = parseInt(document.getElementById(`sz-qty-${i}`)?.textContent) || 1;
-  quote.push({ qtype: 'sz', ou: r.ou_model, iu: r.iu_model, brand: r.brand, name: r.name, qty, addons: [], seer2: r.seer2, ahri: r.ahri_ref, refrigerant: r.refrigerant, voltage: r.voltage, liq: r.liquid_line, gas: r.suction_line });
+
+function szBrand(v) { szBrandFilter = v; renderSZTab(); }
+function szCap(v) { szCapFilter = v; renderSZTab(); }
+function szType(v) { szTypeFilter = v; renderSZTab(); }
+
+function szToggle(i) {
+  const s = (window._szResults || [])[i];
+  if (!s) return;
+  const idx = quote.findIndex(q => q.id === s.id);
+  if (idx >= 0) {
+    quote.splice(idx, 1);
+  } else {
+    quote.push({ ...s, qty: 1, qtype: 'sz', addons: [] });
+    switchTab('quote');
+  }
+  renderSZTab();
   renderQuoteTab();
   updateGetPricingBtn();
-  switchTab('quote');
 }
 
 // ══════════════════════════════════════════════
-// MULTI-ZONE TAB
+// MULTI-ZONE TAB — zones-first approach (matches desktop)
 // ══════════════════════════════════════════════
 function renderMZTab() {
-  document.getElementById('mz-ou-list').innerHTML = MZ.map((ou, i) => {
-    const p = getPrice(ou.model);
-    const dot = invDot(ou.model);
-    const sc = dot === 'g' ? 'var(--green)' : dot === 'y' ? 'var(--yellow)' : dot === 'r' ? 'var(--red)' : 'var(--gray-400)';
-    const sl = dot === 'g' ? 'In Stock' : dot === 'y' ? 'Other Branch' : dot === 'r' ? 'Out of Stock' : '—';
-    const selected = mzState.ou && mzState.ou.model === ou.model;
-    return `<div class="ou-card ${selected?'selected':''}" onclick="mzSelectOU(${i})">
-      <div class="ou-brand">${esc(ou.brand||'BOSCH')}</div>
-      <div class="ou-model">${esc(ou.model)}</div>
-      <div class="ou-spec">${ou.capacity_btu ? Math.round(ou.capacity_btu/1000)+'K · ' : ''}${ou.zones_min||2}–${ou.zones_max||5} zones</div>
-      <div class="ou-price">${p ? fmt(p.price) : '—'}</div>
-      <div class="ou-stock" style="color:${sc}">● ${sl}</div>
-    </div>`;
-  }).join('');
+  const brands = [...new Set(MZ.map(r => r.brand))].sort();
+  const nZones = mzZoneState.length;
+
+  // Brand chips
+  document.getElementById('mz-brand-chips').innerHTML =
+    [['', 'All Brands'], ...brands.map(b => [b, b])].map(([v, l]) =>
+      `<div class="chip ${v===mzBrandFilter?'active':''}" onclick="mzBrand('${v}')">${esc(l)}</div>`
+    ).join('');
+
+  // Zone count chips
+  document.getElementById('mz-zone-chips').innerHTML =
+    [2,3,4,5].map(n =>
+      `<div class="chip ${n===nZones?'active':''}" onclick="mzSetZones(${n})">${n} Zones</div>`
+    ).join('');
+
+  const zonesEl = document.getElementById('mz-zones-wrap');
+  const resultsEl = document.getElementById('mz-results');
+
+  if (!nZones) {
+    zonesEl.style.display = 'none';
+    resultsEl.innerHTML = '<div class="empty-state"><div class="icon">⬆️</div><div class="title">Select zone count</div><div class="sub">Pick how many indoor units you need above.</div></div>';
+    return;
+  }
+
+  zonesEl.style.display = '';
+  renderMZZoneInputs();
+  renderMZMatchingOUs();
 }
-function mzSelectOU(i) {
-  mzState.ou = MZ[i];
-  if (!mzState.zones.length) mzState.zones = [{ idu: null, type: null }];
+
+function mzBrand(v) { mzBrandFilter = v; renderMZTab(); }
+
+function mzSetZones(n) {
+  mzZoneState = Array.from({ length: n }, () => ({ cap: 0, type: '', model: '', liq_pipe: '', gas_pipe: '' }));
   renderMZTab();
-  renderMZZones();
-  document.getElementById('mz-zones-wrap').style.display = '';
 }
-function renderMZZones() {
-  const ou = mzState.ou;
-  if (!ou) return;
-  const idus = MZ_IDU[ou.model] || [];
-  const types = [...new Set(idus.map(r => r.category))];
-  document.getElementById('mz-zones-label').textContent = `Step 2 — Indoor Units (${mzState.zones.length} zone${mzState.zones.length>1?'s':''})`;
-  document.getElementById('mz-zones').innerHTML = mzState.zones.map((z, zi) => {
-    const matching = idus.filter(r => !z.type || r.category === z.type);
-    const idu = z.idu || matching[0];
-    const p = idu ? getPrice(idu.model) : null;
-    const dot = idu ? invDot(idu.model) : 'u';
-    const sc = dot === 'g' ? 'var(--green)' : dot === 'y' ? 'var(--yellow)' : dot === 'r' ? 'var(--red)' : 'var(--gray-400)';
-    return `<div class="zone-card">
-      <div class="zone-header">
-        <div class="zone-num">${zi+1}</div>
-        <div class="zone-title">Zone ${zi+1}</div>
-        <div class="zone-price" style="color:${sc}">● ${p ? fmt(p.price) : '—'}</div>
-        ${mzState.zones.length > 1 ? `<button onclick="mzRemoveZone(${zi})" style="background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:18px;line-height:1">×</button>` : ''}
-      </div>
-      <div class="zone-body">
-        <div class="zone-sublabel">IDU Type</div>
-        <div class="idu-chips">${types.map(t => `<div class="idu-chip ${t===z.type?'active':''}" onclick="mzSetType(${zi},'${ea(t)}')">${esc(t)}</div>`).join('')}</div>
-        ${idu ? `<div class="zone-model">${esc(idu.model)}</div><div class="zone-spec">${idu.capacity_btu ? Math.round(idu.capacity_btu/1000)+'K BTU · ' : ''}${esc(idu.category||'')}</div>` : '<div class="zone-spec" style="margin-top:8px">Select a type above</div>'}
-      </div>
-    </div>`;
-  }).join('');
-  // Update total
-  let total = getPrice(ou.model)?.price || 0;
-  mzState.zones.forEach(z => { const idus2 = MZ_IDU[ou.model]||[]; const idu = z.idu || idus2[0]; if (idu) total += getPrice(idu.model)?.price || 0; });
-  document.getElementById('mz-total').textContent = total > 0 ? fmt(total) : '—';
-}
-function mzSetType(zi, type) {
-  const ou = mzState.ou;
-  if (!ou) return;
-  const idus = (MZ_IDU[ou.model]||[]).filter(r => r.category === type);
-  mzState.zones[zi] = { type, idu: idus[0] || null };
-  renderMZZones();
-}
-function mzAddZone() {
-  const ou = mzState.ou;
-  if (!ou || mzState.zones.length >= (ou.zones_max || 5)) return;
-  mzState.zones.push({ idu: null, type: null });
-  renderMZZones();
-}
-function mzRemoveZone(zi) {
-  mzState.zones.splice(zi, 1);
-  renderMZZones();
-}
-function mzAddToQuote() {
-  const ou = mzState.ou;
-  if (!ou || !mzState.zones.length) return;
-  const zones = mzState.zones.map((z, zi) => {
-    const idus = (MZ_IDU[ou.model]||[]).filter(r => !z.type || r.category === z.type);
-    const idu = z.idu || idus[0];
-    return { model: idu?.model, category: z.type, name: idu?.name };
+
+function renderMZZoneInputs() {
+  // Get all IDU rows relevant to current brand filter
+  const relevantIDUs = Object.entries(MZ_IDU).flatMap(([ouId, rows]) => {
+    if (!mzBrandFilter) return rows;
+    const o = MZ.find(m => m.id === ouId);
+    return o?.brand === mzBrandFilter ? rows : [];
   });
-  quote.push({ qtype: 'mz', ou: ou.model, brand: ou.brand, name: ou.name, qty: 1, addons: [], zones });
-  mzState = { ou: null, zones: [] };
-  document.getElementById('mz-zones-wrap').style.display = 'none';
-  renderMZTab();
+  const allCaps = [...new Set(relevantIDUs.map(r => r.cap))].sort((a,b)=>a-b);
+
+  document.getElementById('mz-zones-inputs').innerHTML = mzZoneState.map((z, zi) => {
+    const capOpts = ['<option value="0">— capacity —</option>',
+      ...allCaps.map(c => `<option value="${c}" ${z.cap===c?'selected':''}>${c}K</option>`)
+    ].join('');
+
+    const capFilter = z.cap > 0 ? [z.cap] : [];
+    const typeRows = z.cap > 0 ? [...new Map(relevantIDUs.filter(r=>r.cap===z.cap).map(r=>[r.type,r])).values()] : [];
+    const typeOpts = z.cap > 0 ? ['<option value="">— type —</option>',
+      ...typeRows.map(t => `<option value="${esc(t.type)}" ${z.type===t.type?'selected':''}>${esc(t.type)}</option>`)
+    ].join('') : '';
+
+    return `<div style="background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:10px 14px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="zone-num">${zi+1}</div>
+        <div style="flex:1;display:flex;gap:8px">
+          <select onchange="mzSetCap(${zi},+this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff">${capOpts}</select>
+          ${z.cap > 0 ? `<select onchange="mzSetType(${zi},this.value)" style="flex:1;height:36px;border:1.5px solid var(--gray-200);border-radius:8px;padding:0 8px;font-family:var(--font);font-size:13px;background:#fff">${typeOpts}</select>` : ''}
+        </div>
+      </div>
+      ${z.model ? `<div style="margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--blue)">${esc(z.model)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function mzSetCap(idx, cap) {
+  mzZoneState[idx] = { cap, type: '', model: '', liq_pipe: '', gas_pipe: '' };
+  renderMZZoneInputs();
+  renderMZMatchingOUs();
+}
+
+function mzSetType(idx, type) {
+  mzZoneState[idx].type = type;
+  mzZoneState[idx].model = '';
+  renderMZZoneInputs();
+  renderMZMatchingOUs();
+}
+
+function renderMZMatchingOUs() {
+  const el = document.getElementById('mz-results');
+  const filledZones = mzZoneState.filter(z => z.cap > 0 && z.type);
+  const nZones = mzZoneState.length;
+
+  if (filledZones.length < 2) {
+    el.innerHTML = `<div class="empty-state" style="padding:24px 16px"><div class="icon">👆</div><div class="title" style="font-size:14px">Fill at least 2 zones</div><div class="sub">Set capacity and type for each zone.</div></div>`;
+    return;
+  }
+
+  const allFilled = mzZoneState.every(z => z.cap > 0 && z.type);
+  const filledCaps = filledZones.map(z => z.cap * 1000);
+  const comboKey = [...filledCaps].sort((a,b)=>a-b).join(',');
+  const totalBtu = filledCaps.reduce((a,b)=>a+b,0);
+
+  const valid = MZ.filter(o => {
+    if (o.zones_max < nZones) return false;
+    if (mzBrandFilter && o.brand !== mzBrandFilter) return false;
+    // Check all filled zones have matching IDU
+    for (const z of mzZoneState) {
+      if (!z.cap || !z.type) continue;
+      if (!iduRows(o.id).some(r => r.cap === z.cap && r.type === z.type)) return false;
+    }
+    // Combo validation
+    const combos = MZ_COMBOS[o.id];
+    if (combos && filledZones.length >= 2) {
+      if (!combos.has(comboKey)) return false;
+    }
+    return true;
+  });
+
+  if (!valid.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px 16px"><div class="icon">❌</div><div class="title" style="font-size:14px">No matching systems</div><div class="sub">No outdoor unit supports this zone combination.</div></div>';
+    return;
+  }
+
+  window._mzValid = valid;
+  el.innerHTML = `<div class="section-label">${valid.length} matching system${valid.length>1?'s':''}</div>` +
+    valid.map((o, oi) => {
+      const pOu = getPrice(o.ou);
+      const dot = stockDot(o.ou);
+      const [ac, al] = dot==='g' ? ['g','In Stock'] : dot==='y' ? ['y','Other Branch'] : dot==='r' ? ['r','Out of Stock'] : ['u','—'];
+      const inQ = quote.filter(q => q.qtype==='mz' && q.ou===o.ou).length;
+      // Calculate total price (OU + all zone IDUs)
+      let totalPrice = pOu?.price || 0;
+      mzZoneState.forEach(z => {
+        if (z.cap && z.type) {
+          const row = iduRow(o.id, z.cap, z.type);
+          if (row) totalPrice += getPrice(row.model)?.price || 0;
+        }
+      });
+      return `<div class="product-card">
+        <div class="product-inner">
+          <div class="brand-badge">${esc((o.brand||'').substring(0,6))}</div>
+          <div class="product-info">
+            <div class="product-name">${esc(o.brand)} ${esc(o.series)} — ${o.ou_cap}K</div>
+            <div class="product-model">${esc(o.ou)}</div>
+            <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')} ${o.seer2?'· SEER2: '+o.seer2:''}</div>
+            ${o.note ? `<div class="product-specs" style="color:var(--yellow)">${esc(o.note)}</div>` : ''}
+            <div class="product-specs" style="color:var(--gray-600)">${totalBtu/1000}K total${inQ>0?` · <span style="color:var(--green)">✓ ${inQ} in quote</span>`:''}</div>
+          </div>
+          <div class="product-stock">
+            <div class="product-price-val">${totalPrice ? fmt(totalPrice) : '—'}</div>
+            <div class="product-avail ${ac}">● ${al}</div>
+          </div>
+        </div>
+        <div class="add-bar">
+          <button class="pp-inv-btn" onclick="showInvSheet('${esc(o.ou)}','${esc(o.series)}')">Inv</button>
+          <button class="add-to-quote-btn" ${allFilled?'':'disabled style="opacity:.5"'} onclick="mzAdd(${oi})">
+            ${allFilled ? '+ Add to Quote' : 'Fill all zones first'}
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+}
+
+function mzAdd(oi) {
+  const o = (window._mzValid || [])[oi];
+  if (!o) return;
+  const zones = mzZoneState.map((z, i) => {
+    if (!z.cap || !z.type) return null;
+    const row = iduRow(o.id, z.cap, z.type);
+    return { z: i+1, cap: z.cap, type: z.type, model: row?.model || '', liq_pipe: row?.liq_pipe || '', gas_pipe: row?.gas_pipe || '' };
+  }).filter(Boolean);
+  const totalBtu = zones.reduce((a,z)=>a+z.cap*1000,0);
+  quote.push({
+    id: o.id + '-' + Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
+    ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
+    zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: []
+  });
+  renderMZMatchingOUs();
+  renderQuoteTab();
   updateGetPricingBtn();
   switchTab('quote');
 }
@@ -1100,166 +1248,161 @@ function mzAddToQuote() {
 function renderQuoteTab() {
   // Customer section
   const cWrap = document.getElementById('q-customer-wrap');
-  if (qSelectedCustomer) {
-    cWrap.innerHTML = `<div class="customer-card" onclick="openOverlay('customer-overlay')">
-      <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-      <div class="customer-info">
-        <div class="customer-name">${esc(qSelectedCustomer.name)}</div>
-        <div class="customer-id">Account #${esc(qSelectedCustomer.id)}</div>
-      </div>
-      <div class="customer-change">Change</div>
-    </div>`;
-  } else {
-    cWrap.innerHTML = `<div class="customer-card" onclick="openOverlay('customer-overlay')">
-      <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
-      <div class="customer-info"><div class="customer-name" style="color:var(--gray-400)">Select a customer…</div></div>
-      <div class="customer-change">Find</div>
-    </div>`;
-  }
+  cWrap.innerHTML = qSelectedCustomer
+    ? `<div class="customer-card" onclick="openOverlay('customer-overlay')">
+        <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="customer-info">
+          <div class="customer-name">${esc(qSelectedCustomer.name)}</div>
+          <div class="customer-id">Account #${esc(qSelectedCustomer.id)}</div>
+        </div>
+        <div class="customer-change">Change</div>
+      </div>`
+    : `<div class="customer-card" onclick="openOverlay('customer-overlay')">
+        <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="customer-info"><div class="customer-name" style="color:var(--gray-400)">Select a customer…</div></div>
+        <div class="customer-change">Find</div>
+      </div>`;
 
   const body = document.getElementById('q-body');
-  if (!quote.length && !Object.keys(quoteWideState.customItems).length) {
-    body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="title">Empty quote</div><div class="sub">Add systems from the Single Zone or Multi-Zone tabs, or search for products below.</div></div>
-    <button class="sheet-btn primary" onclick="openOverlay('pp-overlay');document.getElementById('pp-search').focus()" style="border-radius:var(--radius-sm)">+ Add Product</button>`;
+  const customItems = Object.values(quoteWideState.customItems || {}).filter(it => it?.qty > 0);
+  const commonSelected = (COMMON_ADDONS || []).filter(a => (quoteWideState.common[a.sku] || 0) > 0);
+
+  if (!quote.length && !customItems.length && !commonSelected.length) {
+    body.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📋</div>
+        <div class="title">Empty quote</div>
+        <div class="sub">Add systems from Single Zone or Multi-Zone tabs, or search for products.</div>
+      </div>
+      <button onclick="openOverlay('pp-overlay');setTimeout(()=>document.getElementById('pp-search').focus(),100)"
+        style="width:100%;height:44px;background:var(--blue);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:600;cursor:pointer;font-family:var(--font)">+ Add Product</button>`;
     return;
   }
 
   let html = '';
+  let grandEquip = 0, grandAddons = 0;
 
   // Systems
   if (quote.length) {
     html += `<div class="section-label">Systems (${quote.length})</div>`;
     quote.forEach((q, qi) => {
-      const ouPrice = getPrice(q.ou);
-      const iuPrice = q.qtype === 'sz' ? getPrice(q.iu) : null;
-      const addonTotal = (q.addons||[]).filter(a=>a.checked).reduce((s,a) => s + (getPrice(a.catalogNumber)?.price||0), 0);
-      const sysTotal = (ouPrice?.price||0) + (iuPrice?.price||0) + addonTotal;
+      let sysTotal = 0;
+      const ouP = getPrice(q.ou);
+      if (ouP) sysTotal += ouP.price;
+
+      let rowsHtml = '';
+      if (q.qtype === 'sz') {
+        const iuP = getPrice(q.iu);
+        if (iuP) sysTotal += iuP.price;
+        rowsHtml = sysRow('ODU', q.ou, ouP, `SEER2: ${q.seer2||'—'}${q.liq_pipe ? ' · Liq '+q.liq_pipe : ''}`);
+        rowsHtml += sysRow('IDU', q.iu, getPrice(q.iu), `${q.indoor||''} · Gas ${q.gas_pipe||'—'}`);
+      } else {
+        rowsHtml = sysRow('ODU', q.ou, ouP, `${q.zones?.length||0} zones · ${q.note||''}`);
+        (q.zones || []).forEach(z => {
+          const zp = getPrice(z.model);
+          if (zp) sysTotal += zp.price;
+          rowsHtml += sysRow(`Z${z.z}`, z.model, zp, `${z.cap}K ${z.type||''}`);
+        });
+      }
+
+      // Checked addons
+      const checkedAddons = (q.addons || []).filter(a => a.checked);
+      checkedAddons.forEach(a => {
+        const ap = getPrice(a.catalogNumber);
+        if (ap) sysTotal += ap.price;
+        rowsHtml += `<div class="sys-row">
+          <span class="row-label" style="font-size:9px;color:var(--blue)">Add-on</span>
+          <span class="row-model">${esc(a.catalogNumber)}</span>
+          <span class="row-desc">${esc((a.productDescription||'').split('\n')[0])}</span>
+          <div class="avail-dot ${stockDot(a.catalogNumber)}"></div>
+          <span class="row-price">${ap ? fmt(ap.price) : '—'}</span>
+        </div>`;
+        grandAddons += ap?.price || 0;
+      });
+
+      grandEquip += sysTotal;
+
       html += `<div class="system-card">
         <div class="sys-header">
           <div class="sys-qty">${q.qty}</div>
           <div class="sys-info">
-            <div class="sys-name">${esc(q.brand)} ${esc(q.name||q.ou)}</div>
-            <div class="sys-sub">${q.ahri ? 'AHRI '+esc(q.ahri)+' · ' : ''}${esc(q.refrigerant||'')}</div>
-            <div class="sys-badge">${q.qtype === 'mz' ? 'Multi-Zone' : 'Single Zone'}</div>
+            <div class="sys-name">${esc(q.brand)} ${esc(q.series || q.ou)}</div>
+            <div class="sys-sub">${q.qtype==='sz' ? `${q.indoor||''} · ${q.ref||''}` : (q.note||'')}</div>
+            <div class="sys-badge">${q.qtype==='sz'?'Single Zone':'Multi-Zone'} · ${q.cap}K</div>
           </div>
           <div class="sys-total">
             <div class="price">${sysTotal ? fmt(sysTotal) : '—'}</div>
-            <div class="lbl">w/ add-ons</div>
+            <div class="lbl">system</div>
           </div>
           <button class="sys-remove" onclick="removeSystem(${qi})">×</button>
         </div>
-        <div class="sys-rows">`;
-      if (q.qtype === 'sz') {
-        html += sysRow('IDU', q.iu, `${esc(q.liq||'')} · ${esc(q.gas||'')}`, iuPrice);
-        html += sysRow('ODU', q.ou, `SEER2: ${q.seer2||'—'}`, ouPrice);
-      } else {
-        html += sysRow('ODU', q.ou, `${q.zones?.length||0} zones`, ouPrice);
-        (q.zones||[]).forEach((z,zi) => {
-          const zp = getPrice(z.model);
-          html += sysRow(`Z${zi+1}`, z.model, esc(z.category||''), zp);
-        });
-      }
-      const checkedAddons = (q.addons||[]).filter(a=>a.checked);
-      checkedAddons.forEach(a => {
-        const ap = getPrice(a.catalogNumber);
-        html += `<div class="sys-row">
-          <span class="row-label" style="color:var(--blue);font-size:9px">Add-on</span>
-          <span class="row-model">${esc(a.catalogNumber)}</span>
-          <span class="row-desc">${esc(a.productDescription?.split('\n')[0]||'')}</span>
-          <div class="avail-dot ${invDot(a.catalogNumber)}"></div>
-          <span class="row-price">${ap ? fmt(ap.price) : '—'}</span>
-        </div>`;
-      });
-      html += `</div></div>`;
+        <div class="sys-rows">${rowsHtml}</div>
+      </div>`;
     });
   }
 
-  // Custom items
-  const customItems = Object.values(quoteWideState.customItems || {}).filter(it => it && it.qty > 0);
-  if (customItems.length) {
-    html += `<div class="card">
-      <div class="wide-header"><span class="title">+ Items</span><span class="count">${customItems.length}</span></div>
-      <div class="wide-body">`;
-    customItems.forEach(it => {
-      const key = it.orderNumber || it.catalogNumber;
-      const p = getPrice(key);
-      const ledNote = renderLedgerNote(key);
-      html += `<div class="wide-row">
-        <span class="wide-label" style="color:var(--blue);font-size:9px">Item</span>
-        <span class="wide-model">${esc(key)}</span>
-        <span class="wide-desc">${esc(it.description||'')}</span>
-        <div class="avail-dot ${invDot(key)}"></div>
-        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
-      </div>${ledNote ? `<div class="ledger-note">${ledNote}</div>` : ''}`;
+  // Common addons
+  if (commonSelected.length) {
+    html += `<div class="card"><div class="wide-header"><span class="title">Common Add-ons</span><span class="count">${commonSelected.length}</span></div><div class="wide-body">`;
+    const groups = {};
+    commonSelected.forEach(a => { const g = catGroup(a); if (!groups[g]) groups[g]=[]; groups[g].push(a); });
+    Object.entries(groups).forEach(([g, items]) => {
+      html += `<div class="wide-cat">${esc(g)}</div>`;
+      items.forEach(a => {
+        const p = getPrice(a.sku);
+        if (p) grandAddons += p.price * (quoteWideState.common[a.sku]||1);
+        html += `<div class="wide-row">
+          <span class="wide-label">Add-on</span>
+          <span class="wide-model">${esc(a.sku)}</span>
+          <span class="wide-desc">${esc(a.description||'')}</span>
+          <div class="avail-dot ${stockDot(a.sku)}"></div>
+          <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+        </div>`;
+      });
     });
     html += `</div></div>`;
   }
 
-  // Common addons summary
-  if (COMMON_ADDONS) {
-    const selected = COMMON_ADDONS.filter(a => (quoteWideState.common[a.sku]||0) > 0);
-    if (selected.length) {
-      const groups = {};
-      selected.forEach(a => { const cat = categorize(a); if (!groups[cat]) groups[cat] = []; groups[cat].push(a); });
-      html += `<div class="card">
-        <div class="wide-header"><span class="title">Common Add-ons</span><span class="count">${selected.length} selected</span><span class="chevron">›</span></div>
-        <div class="wide-body">`;
-      Object.entries(groups).forEach(([cat, items]) => {
-        html += `<div class="wide-cat">${esc(cat)}</div>`;
-        items.forEach(a => {
-          const p = getPrice(a.sku);
-          const ledNote = renderLedgerNote(a.sku);
-          html += `<div class="wide-row">
-            <span class="wide-label">Add-on</span>
-            <span class="wide-model">${esc(a.sku)}</span>
-            <span class="wide-desc">${esc(a.description||'')}</span>
-            <div class="avail-dot ${invDot(a.sku)}"></div>
-            <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
-          </div>${ledNote ? `<div class="ledger-note">${ledNote}</div>` : ''}`;
-        });
-      });
-      html += `</div></div>`;
-    }
+  // Custom items
+  if (customItems.length) {
+    html += `<div class="card"><div class="wide-header"><span class="title">+ Items</span><span class="count">${customItems.length}</span></div><div class="wide-body">`;
+    customItems.forEach(it => {
+      const key = it.orderNumber || it.catalogNumber;
+      const p = getPrice(key);
+      if (p) grandAddons += p.price * it.qty;
+      html += `<div class="wide-row">
+        <span class="wide-label">Item</span>
+        <span class="wide-model">${esc(key)}</span>
+        <span class="wide-desc">${esc(it.description||'')}</span>
+        <div class="avail-dot ${stockDot(key)}"></div>
+        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
   }
 
   // Grand total
-  let equip = 0, addonsTotal = 0;
-  quote.forEach(q => {
-    const op = getPrice(q.ou);
-    const ip = q.qtype === 'sz' ? getPrice(q.iu) : null;
-    equip += (op?.price||0) + (ip?.price||0);
-    (q.zones||[]).forEach(z => { equip += getPrice(z.model)?.price||0; });
-    (q.addons||[]).filter(a=>a.checked).forEach(a => { addonsTotal += getPrice(a.catalogNumber)?.price||0; });
-  });
-  (COMMON_ADDONS||[]).forEach(a => {
-    const qty = quoteWideState.common[a.sku]||0;
-    if (qty) addonsTotal += (getPrice(a.sku)?.price||0)*qty;
-  });
-  customItems.forEach(it => {
-    const key = it.orderNumber || it.catalogNumber;
-    addonsTotal += (getPrice(key)?.price||0)*it.qty;
-  });
-  const grand = equip + addonsTotal;
+  const grand = grandEquip + grandAddons;
   if (grand > 0) {
     html += `<div class="total-card">
-      <div class="total-row"><span class="label">Equipment</span><span class="value">${fmt(equip)}</span></div>
-      <div class="total-row"><span class="label">Add-ons</span><span class="value">${fmt(addonsTotal)}</span></div>
+      <div class="total-row"><span class="label">Equipment</span><span class="value">${fmt(grandEquip)}</span></div>
+      ${grandAddons > 0 ? `<div class="total-row"><span class="label">Add-ons</span><span class="value">${fmt(grandAddons)}</span></div>` : ''}
       <div class="total-row grand"><span class="label">Total</span><span class="value">${fmt(grand)}</span></div>
     </div>`;
   }
 
-  // Add product button
-  html += `<button onclick="openOverlay('pp-overlay');document.getElementById('pp-search').focus()" style="width:100%;height:42px;background:#fff;border:1.5px dashed var(--gray-200);color:var(--blue);border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);margin-bottom:8px">+ Add Product</button>`;
+  html += `<button onclick="openOverlay('pp-overlay');setTimeout(()=>document.getElementById('pp-search').focus(),100)"
+    style="width:100%;height:42px;background:#fff;border:1.5px dashed var(--gray-200);color:var(--blue);border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);margin-bottom:8px">+ Add Product</button>`;
 
   body.innerHTML = html;
 }
 
-function sysRow(label, model, desc, price) {
+function sysRow(label, model, price, desc) {
   return `<div class="sys-row">
     <span class="row-label">${esc(label)}</span>
     <span class="row-model">${esc(model||'')}</span>
-    <span class="row-desc">${desc}</span>
-    <div class="avail-dot ${invDot(model)}"></div>
+    <span class="row-desc">${esc(desc||'')}</span>
+    <div class="avail-dot ${stockDot(model)}"></div>
     <span class="row-price">${price ? fmt(price.price) : '—'}</span>
   </div>`;
 }
@@ -1267,53 +1410,51 @@ function sysRow(label, model, desc, price) {
 function removeSystem(qi) {
   if (!confirm('Remove this system?')) return;
   quote.splice(qi, 1);
-  renderQuoteTab();
-  updateGetPricingBtn();
+  renderQuoteTab(); updateGetPricingBtn();
 }
 
-function renderLedgerNote(key) { return ''; } // placeholder — hook in later
-
-function categorize(a) {
+function catGroup(a) {
   const d = (a.description||'').toLowerCase();
-  if (/pump|condensate/i.test(d)) return 'Condensate';
-  if (/wire|clad|whip|lineset|line set|coupler/i.test(d)) return 'Linesets & Wiring';
-  if (/bracket|mount|pad|stand/i.test(d)) return 'Mounting';
-  if (/locknut|nipple|fitting|flare|valve/i.test(d)) return 'Fittings';
+  if (/pump|condensate/.test(d)) return 'Condensate';
+  if (/wire|clad|whip|lineset|line set|coupler/.test(d)) return 'Linesets & Wiring';
+  if (/bracket|mount|pad/.test(d)) return 'Mounting';
   return 'Other';
 }
 
 function updateGetPricingBtn() {
-  const has = quote.length > 0 || Object.keys(quoteWideState.customItems||{}).length > 0 || Object.keys(quoteWideState.common||{}).some(k => quoteWideState.common[k] > 0);
-  document.getElementById('get-pricing-btn').disabled = !qSelectedCustomer || !has;
+  const has = quote.length > 0
+    || Object.values(quoteWideState.customItems||{}).some(it=>it?.qty>0)
+    || Object.keys(quoteWideState.common||{}).some(k=>(quoteWideState.common[k]||0)>0);
+  document.getElementById('get-pricing-btn').disabled = !qSelectedCustomer || !has || !eclipseSession.token;
 }
 
 // ══════════════════════════════════════════════
 // ADD-ONS TAB
 // ══════════════════════════════════════════════
 function renderAddonsTab() {
-  if (!COMMON_ADDONS) { document.getElementById('addons-body').innerHTML = '<div class="loading-state">Loading…</div>'; return; }
+  const el = document.getElementById('addons-body');
+  if (!COMMON_ADDONS) { el.innerHTML = '<div class="loading-state">Loading…</div>'; return; }
   const groups = {};
-  COMMON_ADDONS.forEach(a => { const cat = categorize(a); if (!groups[cat]) groups[cat] = []; groups[cat].push(a); });
-  let html = '<div class="section-label">Common Add-ons</div>';
-  Object.entries(groups).forEach(([cat, items]) => {
-    html += `<div class="card" style="margin-bottom:10px"><div class="wide-body">
-      <div class="wide-cat">${esc(cat)}</div>`;
-    items.forEach(a => {
-      const qty = quoteWideState.common[a.sku] || 0;
-      const p = getPrice(a.sku);
-      const checked = qty > 0;
-      html += `<div class="wide-row" style="align-items:center">
-        <input type="checkbox" ${checked?'checked':''} onchange="toggleAddon('${ea(a.sku)}',this.checked)" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)"/>
-        <span class="wide-model" style="min-width:60px">${esc(a.sku)}</span>
-        <span class="wide-desc" style="flex:1">${esc(a.description||'')}</span>
-        <div class="avail-dot ${invDot(a.sku)}"></div>
-        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
-      </div>`;
-    });
-    html += `</div></div>`;
-  });
-  document.getElementById('addons-body').innerHTML = html;
+  COMMON_ADDONS.forEach(a => { const g = catGroup(a); if (!groups[g]) groups[g]=[]; groups[g].push(a); });
+  el.innerHTML = Object.entries(groups).map(([g, items]) =>
+    `<div class="card" style="margin-bottom:10px"><div class="wide-body">
+      <div class="wide-cat">${esc(g)}</div>
+      ${items.map(a => {
+        const qty = quoteWideState.common[a.sku] || 0;
+        const p = getPrice(a.sku);
+        return `<div class="wide-row" style="align-items:center">
+          <input type="checkbox" ${qty>0?'checked':''} onchange="toggleAddon('${a.sku.replace(/'/g,"\\'")}',this.checked)"
+            style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)"/>
+          <span class="wide-model" style="min-width:65px">${esc(a.sku)}</span>
+          <span class="wide-desc">${esc(a.description||'')}</span>
+          <div class="avail-dot ${stockDot(a.sku)}"></div>
+          <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+        </div>`;
+      }).join('')}
+    </div></div>`
+  ).join('');
 }
+
 function toggleAddon(sku, checked) {
   if (checked) {
     const a = (COMMON_ADDONS||[]).find(x => x.sku === sku);
@@ -1326,132 +1467,123 @@ function toggleAddon(sku, checked) {
 }
 
 // ══════════════════════════════════════════════
-// CUSTOMER SEARCH
+// CUSTOMER SEARCH (quote tab)
 // ══════════════════════════════════════════════
-let qCustTimer = null;
 function qCustomerInput() {
   clearTimeout(qCustTimer);
-  const q2 = document.getElementById('q-customer-input').value.trim();
-  if (q2.length < 2) { document.getElementById('q-customer-results').innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Type to search</div>'; return; }
-  qCustTimer = setTimeout(() => doCustomerSearch(q2, 'q-customer-results', selectQCustomer), 300);
+  const q = document.getElementById('q-customer-input').value.trim();
+  const el = document.getElementById('q-customer-results');
+  if (q.length < 2) { el.innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Type to search</div>'; return; }
+  qCustTimer = setTimeout(() => searchCustomers(q, el, selectQCustomer), 300);
 }
-async function doCustomerSearch(keyword, resultsId, onSelect) {
-  const el = document.getElementById(resultsId);
+
+async function searchCustomers(keyword, el, onSelect) {
   el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray-400);font-size:13px">Searching…</div>';
+  if (!eclipseSession.token) { el.innerHTML = '<div style="padding:12px;color:var(--red);font-size:13px">Sign in to Eclipse first</div>'; return; }
   try {
-    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword })
+    });
     const data = await res.json();
     const customers = data.customers || [];
+    _custResults = customers;
+    window._custOnSelect = onSelect;
     if (!customers.length) { el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray-400);font-size:13px">No customers found</div>'; return; }
-    el.innerHTML = customers.slice(0, 10).map(c =>
-      `<div class="customer-result" onclick='(${onSelect.toString()})(${JSON.stringify(c)})'>
+    el.innerHTML = customers.slice(0,10).map((c,i) =>
+      `<div class="customer-result" onclick="window._custOnSelect(_custResults[${i}])">
         <div class="cr-name">${esc(c.name)}</div>
         <div class="cr-id">#${esc(c.id)}</div>
       </div>`
     ).join('');
   } catch(e) { el.innerHTML = `<div style="padding:12px;color:var(--red);font-size:13px">Error: ${esc(e.message)}</div>`; }
 }
+
 function selectQCustomer(c) {
   qSelectedCustomer = c;
   closeOverlay('customer-overlay');
   document.getElementById('eclipse-customer-name').textContent = c.name;
   renderQuoteTab();
   updateGetPricingBtn();
-  // Enable order/quote search filters
-  document.getElementById('oo-product-filter').disabled = false;
-  document.getElementById('rq-product-filter').disabled = false;
 }
 
 // ══════════════════════════════════════════════
-// OPEN ORDERS & QUOTES
+// OPEN ORDERS
 // ══════════════════════════════════════════════
-let ooCustomer = null, rqCustomer = null;
-let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
-
 function ooCustomerInput() {
   clearTimeout(ooTimer);
   const q = document.getElementById('oo-customer-search').value.trim();
   if (q.length < 2) return;
-  ooTimer = setTimeout(() => doOOCustomerSearch(q), 300);
+  ooTimer = setTimeout(() => {
+    searchCustomers(q, { innerHTML: '' }, c => { // temp el
+      ooCustomer = c;
+      document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+      document.getElementById('oo-product-filter').disabled = false;
+      loadOpenOrders();
+    });
+    // Actually show inline results
+    const inline = document.getElementById('oo-customer-inline');
+    if (inline) searchCustomers(q, inline, c => {
+      ooCustomer = c;
+      document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+      inline.innerHTML = '';
+      document.getElementById('oo-product-filter').disabled = false;
+      loadOpenOrders();
+    });
+  }, 300);
 }
-async function doOOCustomerSearch(keyword) {
-  if (!eclipseSession.token) return;
-  const el = document.getElementById('oo-results');
-  el.innerHTML = '<div class="loading-state">Searching customers…</div>';
-  try {
-    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
-    const data = await res.json();
-    const customers = data.customers || [];
-    if (!customers.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="title">No customers found</div></div>'; return; }
-    el.innerHTML = `<div class="card">${customers.slice(0,8).map(c =>
-      `<div class="customer-result" onclick="ooSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})">
-        <div class="cr-name">${esc(c.name)}</div><div class="cr-id">#${esc(c.id)}</div>
-      </div>`
-    ).join('')}</div>`;
-  } catch(e) {}
-}
-function ooSelectCustomer(c) {
-  ooCustomer = c;
-  document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
-  document.getElementById('oo-product-filter').disabled = false;
-  loadOpenOrders();
-}
+
 async function loadOpenOrders() {
   if (!ooCustomer || !eclipseSession.token) return;
   const el = document.getElementById('oo-results');
-  el.innerHTML = '<div class="loading-state">Loading open orders…</div>';
+  el.innerHTML = '<div class="loading-state">Loading…</div>';
   const productCatalog = document.getElementById('oo-product-filter').value.trim() || null;
   try {
-    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchOpenOrders', sessionToken: eclipseSession.token, customerId: ooCustomer.id, productCatalog }) });
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchOpenOrders', sessionToken: eclipseSession.token, customerId: ooCustomer.id, productCatalog })
+    });
     const data = await res.json();
     renderOrderCards(data.orders || [], el);
-  } catch(e) { el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div class="title">Error</div><div class="sub">${esc(e.message)}</div></div>`; }
+  } catch(e) { el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div class="title">Error</div></div>`; }
 }
+
 function ooProductInput() { clearTimeout(ooProductTimer); ooProductTimer = setTimeout(loadOpenOrders, 400); }
 
+// ══════════════════════════════════════════════
+// RECENT QUOTES
+// ══════════════════════════════════════════════
 function rqCustomerInput() {
   clearTimeout(rqTimer);
   const q = document.getElementById('rq-customer-search').value.trim();
   if (q.length < 2) return;
-  rqTimer = setTimeout(() => doRQCustomerSearch(q), 300);
+  rqTimer = setTimeout(() => {
+    const inline = document.getElementById('rq-customer-inline');
+    if (inline) searchCustomers(q, inline, c => {
+      rqCustomer = c;
+      document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
+      inline.innerHTML = '';
+      document.getElementById('rq-product-filter').disabled = false;
+      loadRecentQuotes();
+    });
+  }, 300);
 }
-async function doRQCustomerSearch(keyword) {
-  if (!eclipseSession.token) return;
-  const el = document.getElementById('rq-results');
-  el.innerHTML = '<div class="loading-state">Searching customers…</div>';
-  try {
-    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
-    const data = await res.json();
-    const customers = data.customers || [];
-    el.innerHTML = `<div class="card">${customers.slice(0,8).map(c =>
-      `<div class="customer-result" onclick="rqSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})">
-        <div class="cr-name">${esc(c.name)}</div><div class="cr-id">#${esc(c.id)}</div>
-      </div>`
-    ).join('')}</div>`;
-  } catch(e) {}
-}
-function rqSelectCustomer(c) {
-  rqCustomer = c;
-  document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
-  document.getElementById('rq-product-filter').disabled = false;
-  loadRecentQuotes();
-}
+
 async function loadRecentQuotes() {
   if (!rqCustomer || !eclipseSession.token) return;
   const el = document.getElementById('rq-results');
-  el.innerHTML = '<div class="loading-state">Loading quotes…</div>';
+  el.innerHTML = '<div class="loading-state">Loading…</div>';
   const productCatalog = document.getElementById('rq-product-filter').value.trim() || null;
   try {
-    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'searchOrders', sessionToken: eclipseSession.token, customerId: rqCustomer.id, productCatalog }) });
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchOrders', sessionToken: eclipseSession.token, customerId: rqCustomer.id, productCatalog })
+    });
     const data = await res.json();
     renderOrderCards(data.orders || [], el);
   } catch(e) {}
 }
+
 function rqProductInput() { clearTimeout(rqProductTimer); rqProductTimer = setTimeout(loadRecentQuotes, 400); }
 
 function renderOrderCards(orders, el) {
@@ -1464,10 +1596,10 @@ function renderOrderCards(orders, el) {
     </div>
     <div class="order-lines">${(o.lines||[]).slice(0,3).map(l =>
       `<div class="order-line"><span class="ln-model">${esc(l.id||'')}</span><span class="ln-desc">${esc(l.description||'')}</span></div>`
-    ).join('')}${o.lines?.length > 3 ? `<div class="order-line" style="color:var(--gray-400)">+ ${o.lines.length-3} more</div>` : ''}</div>
+    ).join('')}${(o.lines?.length||0)>3?`<div class="order-line" style="color:var(--gray-400)">+ ${o.lines.length-3} more</div>`:''}</div>
     <div class="order-footer">
-      <span class="order-meta">${o.date ? new Date(o.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : ''} · ${esc(o.branch||'')}</span>
-      <span class="order-total">${o.total ? fmt(o.total) : ''}</span>
+      <span class="order-meta">${o.date?new Date(o.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}):''} · ${esc(o.branch||'')}</span>
+      <span class="order-total">${o.total?fmt(o.total):''}</span>
     </div>
   </div>`).join('');
 }
@@ -1480,36 +1612,24 @@ async function getPricing() {
   const btn = document.getElementById('get-pricing-btn');
   btn.textContent = 'Loading…'; btn.disabled = true;
   try {
-    // Build catalog pairs
     const pairs = [];
-    const addPair = (cat, order=null) => { if (cat) pairs.push({ cat, order: order||null }); };
+    const addPair = (cat, order=null) => { if (cat) pairs.push({ cat: fmtCat(cat), order: order||null }); };
     quote.forEach(q => {
       if (q.qtype === 'sz') { addPair(q.ou); addPair(q.iu); }
       else { addPair(q.ou); (q.zones||[]).forEach(z => addPair(z.model)); }
       (q.addons||[]).forEach(a => { if (a.catalogNumber) addPair(a.catalogNumber); });
     });
-    (COMMON_ADDONS||[]).forEach(a => { const cn = a.mfg_num || a.sku; if (cn) addPair(cn, a.sku); });
+    (COMMON_ADDONS||[]).forEach(a => addPair(a.mfg_num || a.sku, a.sku));
     Object.values(quoteWideState.customItems||{}).forEach(it => { if (it?.catalogNumber) addPair(it.catalogNumber, it.orderNumber||null); });
     const seen = new Set();
-    const uniquePairs = pairs.filter(p => { const k = (p.cat||'')+'|'+(p.order||''); if (seen.has(k)) return false; seen.add(k); return true; });
+    const uniquePairs = pairs.filter(p => { const k=(p.cat||'')+'|'+(p.order||''); if(seen.has(k))return false; seen.add(k); return true; });
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'pricing',
-        sessionToken: eclipseSession.token,
-        customerId: qSelectedCustomer.id,
-        userId: eclipseSession.username,
-        userBranch,
-        catalogNumbers: uniquePairs.map(p => p.cat),
-        catalogPairs: uniquePairs
-      })
+      body: JSON.stringify({ action: 'pricing', sessionToken: eclipseSession.token, customerId: qSelectedCustomer.id, userId: eclipseSession.username, userBranch, catalogNumbers: uniquePairs.map(p=>p.cat), catalogPairs: uniquePairs })
     });
     const data = await res.json();
     quotePricing = { pricing: data.pricing||{}, inventory: data.inventory||{}, userBranch: data.userBranch };
-    renderQuoteTab();
-    renderSZTab();
-    renderMZTab();
-    renderAddonsTab();
+    renderQuoteTab(); renderSZTab(); renderMZMatchingOUs(); renderAddonsTab();
   } catch(e) { alert('Pricing error: ' + e.message); }
   btn.textContent = 'Refresh Pricing'; btn.disabled = false;
 }
@@ -1520,14 +1640,16 @@ async function getPricing() {
 function ppInput() {
   clearTimeout(ppSearchTimer);
   const q = document.getElementById('pp-search').value.trim();
-  if (q.length < 2) { document.getElementById('pp-results').innerHTML = '<div class="loading-state">Type at least 2 characters…</div>'; return; }
-  document.getElementById('pp-results').innerHTML = '<div class="loading-state">Searching Eclipse…</div>';
+  const el = document.getElementById('pp-results');
+  if (q.length < 2) { el.innerHTML = '<div class="loading-state">Type at least 2 characters…</div>'; return; }
+  el.innerHTML = '<div class="loading-state">Searching Eclipse…</div>';
   ppSearchTimer = setTimeout(() => ppSearch(q), 350);
 }
+
 async function ppSearch(keyword) {
   ppSearchGen++;
   const gen = ppSearchGen;
-  ppLastResults = []; ppFutureLedger = {};
+  ppLastResults = [];
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1542,17 +1664,17 @@ async function ppSearch(keyword) {
     document.getElementById('pp-results').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`;
   }
 }
+
 function ppRenderResults(gen) {
   if (gen !== ppSearchGen) return;
   const el = document.getElementById('pp-results');
   if (!ppLastResults.length) { el.innerHTML = '<div class="loading-state">No results found.</div>'; return; }
   el.innerHTML = ppLastResults.map((r, i) => {
     const codeLabel = r.orderNumber ? `${esc(r.orderNumber)} · ${esc(r.catalogNumber)}` : esc(r.catalogNumber);
-    let stockHtml = '';
-    if (r.stockTier === -1) stockHtml = `<span id="pp-stock-${i}" style="color:var(--gray-400)">● Checking…</span>`;
-    else if (r.stockTier === 0) stockHtml = `<span id="pp-stock-${i}" style="color:var(--green);font-weight:600">● ${r.userQty} in stock</span>`;
-    else if (r.stockTier === 1) stockHtml = `<span id="pp-stock-${i}" style="color:var(--yellow);font-weight:500">● ${r.totalQty} at other branch</span>`;
-    else stockHtml = `<span id="pp-stock-${i}" style="color:var(--red);font-weight:500">● Out of stock</span>`;
+    let stockHtml = r.stockTier === 0 ? `<span id="pp-stock-${i}" style="color:var(--green);font-weight:600">● ${r.userQty} in stock</span>`
+      : r.stockTier === 1 ? `<span id="pp-stock-${i}" style="color:var(--yellow)">● ${r.totalQty} at other branch</span>`
+      : r.stockTier === 2 ? `<span id="pp-stock-${i}" style="color:var(--red)">● Out of stock</span>`
+      : `<span id="pp-stock-${i}" style="color:var(--gray-400)">● Checking…</span>`;
     return `<div class="pp-result">
       <div class="pp-inner">
         <div class="pp-body">
@@ -1562,13 +1684,14 @@ function ppRenderResults(gen) {
         </div>
         <div class="pp-controls">
           <input type="number" class="pp-qty" id="pp-qty-${i}" value="1" min="1"/>
-          <button class="pp-add" onclick="ppAdd(${i})" id="pp-add-${i}">Add</button>
-          <button class="pp-inv-btn" onclick="showInvSheet('${ea(r.catalogNumber)}','${ea(r.description||'')}')">Inv</button>
+          <button class="pp-add" id="pp-add-${i}" onclick="ppAdd(${i})">Add</button>
+          <button class="pp-inv-btn" onclick="showInvSheet('${r.catalogNumber.replace(/'/g,"\\'")}','${(r.description||'').replace(/'/g,"\\'").substring(0,40)}')">Inv</button>
         </div>
       </div>
     </div>`;
   }).join('');
 }
+
 async function ppFetchInventory(gen, branch) {
   if (!ppLastResults.length || !eclipseSession.token) return;
   try {
@@ -1581,15 +1704,16 @@ async function ppFetchInventory(gen, branch) {
     const data = await res.json();
     const inv = data.inventory || {};
     ppLastResults = ppLastResults.map(r => { const s = inv[r.catalogNumber]; return s ? {...r, userQty:s.userQty, totalQty:s.total, stockTier:s.stockTier} : r; });
-    ppLastResults.forEach((r, i) => {
+    ppLastResults.forEach((r,i) => {
       const el = document.getElementById(`pp-stock-${i}`);
       if (!el) return;
-      if (r.stockTier === 0) { el.style.color='var(--green)'; el.style.fontWeight='600'; el.textContent=`● ${r.userQty} in stock`; }
-      else if (r.stockTier === 1) { el.style.color='var(--yellow)'; el.style.fontWeight='500'; el.textContent=`● ${r.totalQty} at other branch`; }
-      else if (r.stockTier === 2) { el.style.color='var(--red)'; el.style.fontWeight='500'; el.textContent='● Out of stock'; }
+      if (r.stockTier===0) { el.style.color='var(--green)'; el.style.fontWeight='600'; el.textContent=`● ${r.userQty} in stock`; }
+      else if (r.stockTier===1) { el.style.color='var(--yellow)'; el.style.fontWeight='500'; el.textContent=`● ${r.totalQty} at other branch`; }
+      else if (r.stockTier===2) { el.style.color='var(--red)'; el.style.fontWeight='500'; el.textContent='● Out of stock'; }
     });
   } catch(e) {}
 }
+
 function ppAdd(i) {
   const r = ppLastResults[i];
   if (!r) return;
@@ -1598,7 +1722,7 @@ function ppAdd(i) {
   if (quoteWideState.customItems[key]) quoteWideState.customItems[key].qty += qty;
   else quoteWideState.customItems[key] = { catalogNumber: r.catalogNumber, orderNumber: r.orderNumber, description: r.description, qty };
   const btn = document.getElementById(`pp-add-${i}`);
-  if (btn) { btn.textContent = '✓ Added'; btn.classList.add('added'); setTimeout(() => { btn.textContent = 'Add'; btn.classList.remove('added'); }, 1500); }
+  if (btn) { btn.textContent='✓ Added'; btn.classList.add('added'); setTimeout(()=>{btn.textContent='Add';btn.classList.remove('added');},1500); }
   renderQuoteTab();
   updateGetPricingBtn();
 }
@@ -1607,8 +1731,8 @@ function ppAdd(i) {
 // INVENTORY SHEET
 // ══════════════════════════════════════════════
 async function showInvSheet(model, desc) {
-  document.getElementById('inv-title').textContent = 'Inventory';
-  document.getElementById('inv-model').textContent = model + (desc ? ' — ' + desc.substring(0,40) : '');
+  document.getElementById('inv-title').textContent = desc ? desc.substring(0,40) : 'Inventory';
+  document.getElementById('inv-model').textContent = model;
   document.getElementById('inv-body').innerHTML = '<div class="loading-state">Loading…</div>';
   openOverlay('inv-overlay');
   try {
@@ -1618,101 +1742,93 @@ async function showInvSheet(model, desc) {
     });
     const data = await res.json();
     const branches = data.branches || [];
-    if (!branches.length) { document.getElementById('inv-body').innerHTML = '<div class="loading-state">No inventory data</div>'; return; }
-    document.getElementById('inv-body').innerHTML = branches.map(b => `
-      <div class="inv-branch-row">
-        <span class="inv-branch">${BRANCH_LABELS[b.code]||b.code} <span style="font-size:11px;color:var(--gray-400)">(${b.code})</span></span>
-        <span class="inv-qty ${b.qty>0?'has':'none'}">${b.qty}</span>
-      </div>`).join('');
-  } catch(e) { document.getElementById('inv-body').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`; }
+    document.getElementById('inv-body').innerHTML = branches.length
+      ? branches.map(b => `<div class="inv-branch-row">
+          <span class="inv-branch">${esc(BRANCH_LABELS[b.code]||b.code)} <span style="font-size:11px;color:var(--gray-400)">(${esc(b.code)})</span></span>
+          <span class="inv-qty ${b.qty>0?'has':'none'}">${b.qty}</span>
+        </div>`).join('')
+      : '<div class="loading-state">No inventory data</div>';
+  } catch(e) { document.getElementById('inv-body').innerHTML = `<div class="loading-state" style="color:var(--red)">Error</div>`; }
 }
 
 // ══════════════════════════════════════════════
 // ECLIPSE PUSH
 // ══════════════════════════════════════════════
 function openEclipseSheet() {
-  const hasItems = quote.length || Object.keys(quoteWideState.customItems||{}).length || Object.keys(quoteWideState.common||{}).some(k=>quoteWideState.common[k]>0);
+  const hasItems = quote.length || Object.values(quoteWideState.customItems||{}).some(it=>it?.qty>0) || Object.keys(quoteWideState.common||{}).some(k=>(quoteWideState.common[k]||0)>0);
   if (!hasItems) { alert('Add a system or product first.'); return; }
-  document.getElementById('eclipse-customer-name').textContent = qSelectedCustomer?.name || '—';
+  if (!qSelectedCustomer) { alert('Select a customer first.'); return; }
+  document.getElementById('eclipse-customer-name').textContent = qSelectedCustomer.name;
   document.getElementById('eclipse-status').textContent = '';
   document.getElementById('eclipse-submit-btn').disabled = false;
   document.getElementById('eclipse-submit-btn').textContent = 'Create Quote';
   openOverlay('eclipse-overlay');
 }
+
 async function doPushToEclipse() {
   const btn = document.getElementById('eclipse-submit-btn');
   const status = document.getElementById('eclipse-status');
-  btn.disabled = true; btn.textContent = 'Creating…';
-  status.textContent = ''; status.style.color = '';
+  btn.disabled = true; btn.textContent = 'Creating…'; status.textContent = '';
   try {
-    // Build line items (same as desktop)
     const lines = [];
     quote.forEach(q => {
-      if (q.qtype === 'sz') { lines.push({cat:q.ou,qty:q.qty}); lines.push({cat:q.iu,qty:q.qty}); }
-      else { lines.push({cat:q.ou,qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({cat:z.model,qty:1});}); }
-      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({cat:a.catalogNumber,qty:1}));
+      if (q.qtype==='sz') { lines.push({cat:fmtCat(q.ou),qty:q.qty}); lines.push({cat:fmtCat(q.iu),qty:q.qty}); }
+      else { lines.push({cat:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({cat:fmtCat(z.model),qty:1});}); }
+      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({cat:fmtCat(a.catalogNumber),qty:1}));
     });
-    (COMMON_ADDONS||[]).forEach(a => { const qty=quoteWideState.common[a.sku]||0; if(qty) lines.push({cat:a.mfg_num||a.sku,qty}); });
-    Object.values(quoteWideState.customItems||{}).forEach(it => { if(it?.qty) lines.push({cat:it.catalogNumber,qty:it.qty}); });
+    (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({cat:fmtCat(a.mfg_num||a.sku),qty});});
+    Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({cat:fmtCat(it.catalogNumber),qty:it.qty});});
     const res = await fetch('/api/eclipse', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'order',
-        sessionToken: eclipseSession.token,
-        customerId: qSelectedCustomer.id,
-        branch: document.getElementById('eclipse-branch').value,
-        poNumber: document.getElementById('eclipse-po').value.trim(),
-        lines
-      })
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'order', sessionToken:eclipseSession.token, customerId:qSelectedCustomer.id,
+        branch: document.getElementById('eclipse-branch').value, poNumber: document.getElementById('eclipse-po').value.trim(), lines })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Push failed');
-    status.textContent = `✓ Quote #${data.orderId || data.id || '—'} created`;
+    status.textContent = `✓ Quote #${data.orderId||data.id||'—'} created`;
     status.style.color = 'var(--green)';
     btn.textContent = 'Done';
   } catch(e) {
-    status.textContent = 'Error: ' + e.message;
-    status.style.color = 'var(--red)';
+    status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)';
     btn.textContent = 'Create Quote'; btn.disabled = false;
   }
 }
 
 // ══════════════════════════════════════════════
-// COPY / CLEAR
+// MORE OPTIONS (copy/clear)
 // ══════════════════════════════════════════════
 function showClearSheet() { openOverlay('more-overlay'); }
+
 function doCopyQuote() {
   if (!quote.length) { alert('Add systems first.'); return; }
   const lines = ['DUCTLESS QUOTE — Johnstone Supply NY/CT', `Date: ${new Date().toLocaleDateString()}`, ''];
-  quote.forEach((q, i) => {
+  quote.forEach((q,i) => {
     lines.push(`--- System ${i+1} ---`);
-    if (q.qtype === 'sz') { lines.push(`ODU: ${q.ou}  |  ${fmt(getPrice(q.ou)?.price)}`); lines.push(`IDU: ${q.iu}  |  ${fmt(getPrice(q.iu)?.price)}`); }
-    else { lines.push(`ODU: ${q.ou}  |  ${fmt(getPrice(q.ou)?.price)}`); (q.zones||[]).forEach((z,zi) => lines.push(`Zone ${zi+1}: ${z.model}  |  ${fmt(getPrice(z.model)?.price)}`)); }
+    if (q.qtype==='sz') {
+      lines.push(`ODU: ${q.ou}  ${fmt(getPrice(q.ou)?.price)}`);
+      lines.push(`IDU: ${q.iu}  ${fmt(getPrice(q.iu)?.price)}`);
+    } else {
+      lines.push(`ODU: ${q.ou}  ${fmt(getPrice(q.ou)?.price)}`);
+      (q.zones||[]).forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  ${fmt(getPrice(z.model)?.price)}`));
+    }
   });
-  navigator.clipboard.writeText(lines.join('\n')).then(() => alert('Copied to clipboard!')).catch(() => alert('Copy failed'));
-}
-function doClearQuote() {
-  if (!confirm('Clear the entire quote?')) return;
-  quote = []; quoteWideState = { common: {}, customItems: {} };
-  quotePricing = { pricing: {}, inventory: {} };
-  renderQuoteTab(); updateGetPricingBtn();
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(()=>alert('Copied!'))
+    .catch(()=>alert('Copy failed — try a different browser'));
 }
 
-// ══════════════════════════════════════════════
-// OVERLAY HELPERS
-// ══════════════════════════════════════════════
-function openOverlay(id) { document.getElementById(id).classList.add('open'); }
-function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(el => el.classList.remove('open'));
-});
+function doClearQuote() {
+  if (!confirm('Clear the entire quote?')) return;
+  quote=[]; quoteWideState={common:{},customItems:{}};
+  quotePricing={pricing:{},inventory:{}};
+  renderQuoteTab(); updateGetPricingBtn();
+}
 
 // ══════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════
 renderQuoteTab();
 updateGetPricingBtn();
-// Prompt login on load
 openOverlay('login-overlay');
 </script>
 </body>
