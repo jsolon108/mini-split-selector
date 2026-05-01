@@ -316,6 +316,7 @@ body {
   border-radius: 20px; font-size: 12px; font-weight: 500;
   border: 1.5px solid var(--gray-200); background: #fff; color: var(--gray-600);
   cursor: pointer; white-space: nowrap; font-family: var(--font);
+  display: flex; align-items: center; justify-content: center;
   transition: background .12s, color .12s, border-color .12s;
 }
 .chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
@@ -1486,7 +1487,7 @@ async function searchCustomers(keyword, el, onSelect) {
       body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword })
     });
     const data = await res.json();
-    const customers = data.customers || [];
+    const customers = data.results || data.customers || [];
     _custResults = customers;
     window._custOnSelect = onSelect;
     if (!customers.length) { el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray-400);font-size:13px">No customers found</div>'; return; }
@@ -1513,24 +1514,15 @@ function selectQCustomer(c) {
 function ooCustomerInput() {
   clearTimeout(ooTimer);
   const q = document.getElementById('oo-customer-search').value.trim();
-  if (q.length < 2) return;
-  ooTimer = setTimeout(() => {
-    searchCustomers(q, { innerHTML: '' }, c => { // temp el
-      ooCustomer = c;
-      document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
-      document.getElementById('oo-product-filter').disabled = false;
-      loadOpenOrders();
-    });
-    // Actually show inline results
-    const inline = document.getElementById('oo-customer-inline');
-    if (inline) searchCustomers(q, inline, c => {
-      ooCustomer = c;
-      document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
-      inline.innerHTML = '';
-      document.getElementById('oo-product-filter').disabled = false;
-      loadOpenOrders();
-    });
-  }, 300);
+  const inline = document.getElementById('oo-customer-inline');
+  if (q.length < 2) { if (inline) inline.innerHTML = ''; return; }
+  ooTimer = setTimeout(() => searchCustomers(q, inline, c => {
+    ooCustomer = c;
+    document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+    if (inline) inline.innerHTML = '';
+    document.getElementById('oo-product-filter').disabled = false;
+    loadOpenOrders();
+  }), 300);
 }
 
 async function loadOpenOrders() {
@@ -1556,17 +1548,15 @@ function ooProductInput() { clearTimeout(ooProductTimer); ooProductTimer = setTi
 function rqCustomerInput() {
   clearTimeout(rqTimer);
   const q = document.getElementById('rq-customer-search').value.trim();
-  if (q.length < 2) return;
-  rqTimer = setTimeout(() => {
-    const inline = document.getElementById('rq-customer-inline');
-    if (inline) searchCustomers(q, inline, c => {
-      rqCustomer = c;
-      document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
-      inline.innerHTML = '';
-      document.getElementById('rq-product-filter').disabled = false;
-      loadRecentQuotes();
-    });
-  }, 300);
+  const inline = document.getElementById('rq-customer-inline');
+  if (q.length < 2) { if (inline) inline.innerHTML = ''; return; }
+  rqTimer = setTimeout(() => searchCustomers(q, inline, c => {
+    rqCustomer = c;
+    document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
+    if (inline) inline.innerHTML = '';
+    document.getElementById('rq-product-filter').disabled = false;
+    loadRecentQuotes();
+  }), 300);
 }
 
 async function loadRecentQuotes() {
