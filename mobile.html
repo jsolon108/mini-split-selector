@@ -821,6 +821,7 @@ let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}]
 let mzBrandFilter = '';
 // Product picker state
 let ppSearchTimer = null, ppSearchGen = 0, ppLastResults = [];
+let ppImageCache = {}; // productId → url | null, persists across renders within same session
 let _custResults = [], _ooResults = [], _rqResults = [];
 let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
 let ooCustomer = null, rqCustomer = null;
@@ -1716,6 +1717,7 @@ async function ppSearch(keyword) {
   ppSearchGen++;
   const gen = ppSearchGen;
   ppLastResults = [];
+  ppImageCache = {}; // reset cache for new search
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1726,6 +1728,7 @@ async function ppSearch(keyword) {
     ppLastResults = data.results || [];
     ppRenderResults(gen);
     ppFetchInventory(gen, data.userBranch || userBranch);
+    ppFetchImages(); // start fetching images immediately
   } catch(e) {
     document.getElementById('pp-results').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`;
   }
@@ -1741,8 +1744,17 @@ function ppRenderResults(gen) {
       : r.stockTier === 1 ? `<span id="pp-stock-${i}" style="color:var(--yellow)">● ${r.totalQty} at other branch</span>`
       : r.stockTier === 2 ? `<span id="pp-stock-${i}" style="color:var(--red)">● Out of stock</span>`
       : `<span id="pp-stock-${i}" style="color:var(--gray-400)">● Checking…</span>`;
+    // Thumbnail — use cached URL if available, otherwise show placeholder with ID for injection
+    const cachedUrl = r.productId ? ppImageCache[r.productId] : null;
+    const thumb = cachedUrl
+      ? `<img src="${esc(cachedUrl)}" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid var(--gray-100);background:#fafafa;flex-shrink:0" onerror="this.style.display='none'"/>`
+      : `<div style="position:relative;width:48px;height:48px;flex-shrink:0">
+          <img id="pp-img-${i}" src="" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid var(--gray-100);background:#fafafa;display:none" onerror="this.style.display='none'" onload="this.style.display='block';var ph=document.getElementById('pp-img-ph-${i}');if(ph)ph.style.display='none'"/>
+          <div id="pp-img-ph-${i}" style="position:absolute;inset:0;border-radius:8px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;color:var(--gray-200);font-size:18px">📦</div>
+        </div>`;
     return `<div class="pp-result">
       <div class="pp-inner">
+        ${thumb}
         <div class="pp-body">
           <div class="pp-cat">${codeLabel}</div>
           <div class="pp-desc">${esc(r.description||'')}</div>
@@ -1757,6 +1769,41 @@ function ppRenderResults(gen) {
     </div>`;
   }).join('');
 }
+
+// Lazy image fetch — runs after results render, injects URLs one by one as they arrive
+async function ppFetchImages() {
+  if (!ppLastResults.length || !eclipseSession.token) return;
+  const token = eclipseSession.token;
+  const gen = ppSearchGen;
+  await Promise.all(ppLastResults.map(async (r, i) => {
+    if (!r.productId) return;
+    // Use cache if available
+    if (ppImageCache[r.productId] !== undefined) {
+      if (ppImageCache[r.productId]) ppInjectImage(i, ppImageCache[r.productId]);
+      return;
+    }
+    try {
+      const res = await fetch('/api/eclipse', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'productImageUrl', sessionToken: token, productId: r.productId })
+      });
+      if (gen !== ppSearchGen) return; // stale search
+      if (!res.ok) { ppImageCache[r.productId] = null; return; }
+      const data = await res.json();
+      const url = data.url || null;
+      ppImageCache[r.productId] = url;
+      if (url) ppInjectImage(i, url);
+    } catch(e) { ppImageCache[r.productId] = null; }
+  }));
+}
+
+function ppInjectImage(i, url) {
+  const img = document.getElementById(`pp-img-${i}`);
+  const ph = document.getElementById(`pp-img-ph-${i}`);
+  if (img) img.src = url; // onload/onerror handlers take it from there
+  if (ph && img) img.onload = () => { img.style.display = 'block'; ph.style.display = 'none'; };
+}
+
 
 async function ppFetchInventory(gen, branch) {
   if (!ppLastResults.length || !eclipseSession.token) return;
@@ -1777,6 +1824,7 @@ async function ppFetchInventory(gen, branch) {
       else if (r.stockTier===1) { el.style.color='var(--yellow)'; el.style.fontWeight='500'; el.textContent=`● ${r.totalQty} at other branch`; }
       else if (r.stockTier===2) { el.style.color='var(--red)'; el.style.fontWeight='500'; el.textContent='● Out of stock'; }
     });
+    ppFetchImages(); // lazy image load after stock dots update
   } catch(e) {}
 }
 
