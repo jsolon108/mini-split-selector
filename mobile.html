@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Johnstone Ductless</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --blue: #1B5FA8;
+  --blue-d: #134380;
+  --blue-light: #e8f0fb;
+  --green: #0D7A5F;
+  --green-bg: #e6f5f1;
+  --yellow: #A86B00;
+  --yellow-bg: #fdf3e3;
+  --red: #C0392B;
+  --red-bg: #fdecea;
+  --gray-50: #f8f9fa;
+  --gray-100: #f0f1f3;
+  --gray-200: #e4e6ea;
+  --gray-400: #9ba3ae;
+  --gray-600: #5a6473;
+  --gray-900: #1a1f27;
+  --font: 'DM Sans', -apple-system, sans-serif;
+  --mono: 'DM Mono', 'SF Mono', monospace;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
+  --nav-h: 56px;
+  --tab-h: 44px;
+  --bar-h: 60px;
+}
+
+html, body {
+  height: 100%; height: 100dvh;
+  background: var(--gray-50);
+  font-family: var(--font);
+  color: var(--gray-900);
+  font-size: 15px;
+  overscroll-behavior: none;
+}
+
+/* ── Layout shell ── */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%; height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+  background: var(--gray-50);
+  position: relative;
+}
+
+/* ── Top nav ── */
+.top-nav {
+  background: var(--blue);
+  height: var(--nav-h);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 30;
+}
+.nav-logo { font-size: 17px; font-weight: 700; color: #fff; letter-spacing: -.02em; flex: 1; }
+.nav-logo span { color: rgba(255,255,255,.5); font-weight: 400; }
+.nav-session {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.15);
+  padding: 5px 10px; border-radius: 20px;
+  cursor: pointer;
+}
+.nav-session .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ade80; }
+.nav-session .dot.offline { background: #f87171; }
+.nav-session .name { font-size: 12px; color: #fff; font-weight: 500; }
+
+/* Session expired banner */
+.session-banner {
+  background: #fef2f2;
+  border-bottom: 1px solid #fecaca;
+  padding: 8px 14px;
+  display: none; align-items: center; gap: 10px;
+  font-size: 13px; color: #7f1d1d;
+}
+.session-banner.visible { display: flex; }
+.session-banner button {
+  background: #7f1d1d; color: #fff; border: none;
+  padding: 5px 12px; border-radius: 6px;
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  font-family: var(--font);
+}
+
+/* ── Tab bar ── */
+.tab-bar {
+  display: flex;
+  background: #fff;
+  border-bottom: 1px solid var(--gray-200);
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  height: var(--tab-h);
+  z-index: 20;
+}
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab {
+  flex-shrink: 0;
+  padding: 0 16px;
+  height: var(--tab-h);
+  display: flex; align-items: center;
+  font-size: 13px; font-weight: 500;
+  color: var(--gray-400);
+  border-bottom: 2.5px solid transparent;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: color .12s, border-color .12s;
+}
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* ── Content area ── */
+.content {
+  flex: 1;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* ── Panels ── */
+.panel { display: none; padding: 12px 12px 80px; }
+.panel.active { display: block; }
+
+/* ── Cards ── */
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+/* ── Customer card ── */
+.customer-card {
+  background: #fff;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer;
+}
+.customer-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: var(--blue-light);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.customer-info { flex: 1; min-width: 0; }
+.customer-name { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.customer-id { font-size: 11px; color: var(--gray-400); margin-top: 1px; }
+.customer-change { font-size: 12px; color: var(--blue); font-weight: 500; }
+
+/* ── Section label ── */
+.section-label {
+  font-size: 11px; font-weight: 600; color: var(--gray-400);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin: 16px 2px 8px;
+}
+.section-label:first-child { margin-top: 4px; }
+
+/* ── System card ── */
+.system-card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.sys-header {
+  padding: 12px 14px;
+  display: flex; align-items: flex-start; gap: 10px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.sys-qty {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--blue); color: #fff;
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.sys-info { flex: 1; min-width: 0; }
+.sys-name { font-size: 14px; font-weight: 600; }
+.sys-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+.sys-badge {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  padding: 2px 7px; border-radius: 5px;
+  background: var(--blue-light); color: var(--blue); margin-top: 5px;
+}
+.sys-total { text-align: right; flex-shrink: 0; }
+.sys-total .price { font-size: 16px; font-weight: 700; color: var(--blue); }
+.sys-total .lbl { font-size: 10px; color: var(--gray-400); }
+.sys-remove {
+  background: none; border: none; color: var(--gray-400);
+  font-size: 18px; cursor: pointer; padding: 0 2px;
+  line-height: 1; flex-shrink: 0;
+}
+
+.sys-rows { padding: 6px 14px 8px; }
+.sys-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 12px;
+}
+.sys-row:last-child { border-bottom: none; }
+.row-label { font-size: 10px; font-weight: 600; color: var(--gray-400); width: 32px; flex-shrink: 0; }
+.row-model { font-family: var(--mono); font-size: 11px; color: var(--blue); flex-shrink: 0; }
+.row-desc { font-size: 11px; color: var(--gray-600); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avail-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.avail-dot.g { background: var(--green); }
+.avail-dot.y { background: #f59e0b; }
+.avail-dot.r { background: var(--red); }
+.avail-dot.u { background: var(--gray-200); } /* unknown/loading */
+.row-price { font-size: 12px; font-weight: 600; color: var(--gray-900); white-space: nowrap; flex-shrink: 0; }
+
+/* ── Wide card (add-ons, items) ── */
+.wide-header {
+  padding: 10px 14px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+}
+.wide-header .title { font-size: 13px; font-weight: 600; flex: 1; }
+.wide-header .count { font-size: 11px; color: var(--gray-400); }
+.wide-header .chevron { color: var(--gray-400); font-size: 16px; transition: transform .2s; }
+.wide-header.open .chevron { transform: rotate(90deg); }
+.wide-body { padding: 6px 14px 10px; }
+.wide-cat {
+  font-size: 10px; font-weight: 700; color: var(--gray-400);
+  text-transform: uppercase; letter-spacing: .06em;
+  margin: 8px 0 4px;
+}
+.wide-cat:first-child { margin-top: 2px; }
+.wide-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px dashed var(--gray-100);
+  font-size: 12px;
+}
+.wide-row:last-child { border-bottom: none; }
+.wide-label { font-size: 10px; color: var(--gray-400); width: 32px; flex-shrink: 0; }
+.wide-model { font-family: var(--mono); font-size: 11px; color: var(--gray-600); flex-shrink: 0; }
+.wide-desc { color: var(--gray-600); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.wide-price { font-size: 11px; font-weight: 500; color: var(--gray-600); white-space: nowrap; flex-shrink: 0; }
+.ledger-note { font-size: 11px; color: #555; padding: 2px 0 2px 42px; line-height: 1.4; }
+
+/* ── Quote total card ── */
+.total-card {
+  background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px; margin-bottom: 10px;
+}
+.total-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; font-size: 13px;
+}
+.total-row.grand {
+  border-top: 1px solid var(--gray-200); margin-top: 8px; padding-top: 10px;
+}
+.total-row.grand .label { font-size: 15px; font-weight: 700; }
+.total-row.grand .value { font-size: 20px; font-weight: 700; color: var(--blue); }
+.total-row .label { color: var(--gray-600); }
+.total-row .value { font-weight: 500; }
+
+/* ── Action bar (fixed bottom) ── */
+.action-bar {
+  background: #fff;
+  border-top: 1px solid var(--gray-200);
+  padding: 10px 12px env(safe-area-inset-bottom, 10px);
+  display: flex; gap: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 12px rgba(0,0,0,.06);
+}
+.action-btn {
+  flex: 1; height: 44px; border-radius: var(--radius-sm);
+  font-family: var(--font); font-size: 13px; font-weight: 600;
+  border: none; cursor: pointer; transition: opacity .15s;
+}
+.action-btn:active { opacity: .8; }
+.action-btn.icon { flex: 0 0 44px; font-size: 18px; }
+.action-btn.secondary { background: var(--gray-100); color: var(--gray-600); }
+.action-btn.primary { background: var(--blue); color: #fff; }
+.action-btn.green { background: var(--green); color: #fff; }
+.action-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Selector tabs (SZ/MZ filter chips) ── */
+.chip-row {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  padding-bottom: 2px; margin-bottom: 10px;
+}
+.chip-row::-webkit-scrollbar { display: none; }
+.chip {
+  flex-shrink: 0; height: 32px; padding: 0 14px;
+  border-radius: 20px; font-size: 12px; font-weight: 500;
+  border: 1.5px solid var(--gray-200); background: #fff; color: var(--gray-600);
+  cursor: pointer; white-space: nowrap; font-family: var(--font);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+/* ── Product card (SZ results) ── */
+.product-card {
+  background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 8px; overflow: hidden;
+}
+.product-inner {
+  padding: 12px 14px; display: flex; align-items: center; gap: 12px;
+}
+.brand-badge {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--gray-100);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; color: var(--gray-600);
+  text-align: center; line-height: 1.2; letter-spacing: .02em;
+  flex-shrink: 0;
+}
+.product-info { flex: 1; min-width: 0; }
+.product-name { font-size: 14px; font-weight: 600; }
+.product-model { font-family: var(--mono); font-size: 11px; color: var(--blue); margin-top: 2px; }
+.product-specs { font-size: 11px; color: var(--gray-400); margin-top: 3px; }
+.product-stock { text-align: right; flex-shrink: 0; }
+.product-price-val { font-size: 16px; font-weight: 700; }
+.product-avail { font-size: 10px; font-weight: 600; margin-top: 2px; }
+.product-avail.g { color: var(--green); }
+.product-avail.y { color: var(--yellow); }
+.product-avail.r { color: var(--red); }
+.product-avail.u { color: var(--gray-400); }
+
+.add-bar {
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--gray-100);
+  display: flex; align-items: center; gap: 8px;
+}
+.qty-ctrl {
+  display: flex; align-items: center;
+  border: 1.5px solid var(--gray-200); border-radius: var(--radius-sm); overflow: hidden;
+}
+.qty-btn {
+  width: 34px; height: 34px; background: var(--gray-50); border: none;
+  font-size: 18px; color: var(--gray-600); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font);
+}
+.qty-val { width: 32px; text-align: center; font-size: 14px; font-weight: 600; }
+.add-to-quote-btn {
+  flex: 1; height: 36px; border-radius: var(--radius-sm);
+  background: var(--blue); color: #fff; border: none;
+  font-family: var(--font); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+
+/* ── Multi-zone ── */
+.ou-scroll {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+  padding-bottom: 8px; margin-bottom: 4px;
+}
+.ou-scroll::-webkit-scrollbar { display: none; }
+.ou-card {
+  flex-shrink: 0; min-width: 140px;
+  background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 10px 14px;
+  border: 2px solid transparent; cursor: pointer;
+  transition: border-color .15s;
+}
+.ou-card.selected { border-color: var(--blue); }
+.ou-brand { font-size: 10px; color: var(--gray-400); font-weight: 600; margin-bottom: 2px; }
+.ou-model { font-size: 13px; font-weight: 600; font-family: var(--mono); }
+.ou-spec { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+.ou-price { font-size: 12px; font-weight: 700; color: var(--blue); margin-top: 6px; }
+.ou-stock { font-size: 10px; font-weight: 600; margin-top: 2px; }
+
+.zone-card {
+  background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 8px; overflow: hidden;
+}
+.zone-header {
+  padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.zone-num {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--blue); color: #fff;
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.zone-title { font-size: 13px; font-weight: 600; flex: 1; }
+.zone-price { font-size: 12px; font-weight: 600; }
+.zone-body { padding: 8px 14px; }
+.zone-sublabel { font-size: 11px; color: var(--gray-400); margin-bottom: 6px; }
+.idu-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+.idu-chips::-webkit-scrollbar { display: none; }
+.idu-chip {
+  flex-shrink: 0; padding: 5px 10px; border-radius: 20px;
+  border: 1.5px solid var(--gray-200); color: var(--gray-600);
+  font-size: 11px; font-weight: 500; cursor: pointer;
+  background: #fff; font-family: var(--font);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.idu-chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+.zone-model { margin-top: 8px; font-size: 12px; font-family: var(--mono); color: var(--blue); }
+.zone-spec { font-size: 11px; color: var(--gray-400); }
+
+/* ── Search bar ── */
+.search-wrap {
+  display: flex; align-items: center; gap: 8px;
+  background: #fff; border-radius: var(--radius);
+  padding: 0 12px; height: 44px; box-shadow: var(--shadow);
+  margin-bottom: 10px;
+}
+.search-wrap svg { flex-shrink: 0; }
+.search-wrap input {
+  flex: 1; border: none; outline: none;
+  font-family: var(--font); font-size: 14px;
+  background: transparent; color: var(--gray-900);
+}
+.search-wrap input::placeholder { color: var(--gray-400); }
+
+/* ── Order cards ── */
+.order-card {
+  background: #fff; border-radius: var(--radius);
+  box-shadow: var(--shadow); margin-bottom: 8px; overflow: hidden;
+}
+.order-header {
+  padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--gray-100);
+}
+.order-num { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--blue); }
+.order-customer { font-size: 12px; color: var(--gray-600); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-status-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; flex-shrink: 0;
+}
+.order-status-badge.open { background: var(--green-bg); color: var(--green); }
+.order-status-badge.pending { background: var(--yellow-bg); color: var(--yellow); }
+.order-status-badge.bid { background: var(--blue-light); color: var(--blue); }
+.order-lines { padding: 8px 14px; }
+.order-line {
+  font-size: 11px; color: var(--gray-600); padding: 3px 0;
+  display: flex; gap: 8px; align-items: baseline;
+}
+.order-line .ln-model { font-family: var(--mono); font-size: 10px; color: var(--blue); flex-shrink: 0; }
+.order-line .ln-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.order-footer {
+  padding: 8px 14px 10px; display: flex; gap: 8px; align-items: center;
+  border-top: 1px solid var(--gray-100);
+}
+.order-meta { font-size: 10px; color: var(--gray-400); flex: 1; }
+.order-total { font-size: 13px; font-weight: 700; }
+.order-view { font-size: 11px; color: var(--blue); font-weight: 600; }
+
+/* ── Empty/loading states ── */
+.empty-state {
+  text-align: center; padding: 48px 24px;
+}
+.empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+.empty-state .title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.empty-state .sub { font-size: 13px; color: var(--gray-400); line-height: 1.5; }
+.loading-state { padding: 32px; text-align: center; color: var(--gray-400); font-size: 13px; }
+
+/* ── Modals / bottom sheets ── */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 200;
+  display: flex; align-items: flex-end;
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s;
+}
+.overlay.open { opacity: 1; pointer-events: all; }
+.sheet {
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-height: 90dvh;
+  overflow-y: auto;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  transform: translateY(100%);
+  transition: transform .25s cubic-bezier(.32,.72,0,1);
+}
+.overlay.open .sheet { transform: translateY(0); }
+.sheet-handle {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--gray-200); margin: 0 auto 16px;
+}
+.sheet-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+.sheet-input {
+  width: 100%; height: 44px; padding: 0 14px;
+  border: 1.5px solid var(--gray-200); border-radius: 10px;
+  font-family: var(--font); font-size: 15px; color: var(--gray-900);
+  outline: none; transition: border-color .15s;
+  margin-bottom: 12px;
+}
+.sheet-input:focus { border-color: var(--blue); }
+.sheet-btn {
+  width: 100%; height: 46px; border-radius: 10px;
+  font-family: var(--font); font-size: 15px; font-weight: 600;
+  border: none; cursor: pointer;
+}
+.sheet-btn.primary { background: var(--blue); color: #fff; margin-bottom: 10px; }
+.sheet-btn.secondary { background: var(--gray-100); color: var(--gray-600); }
+.sheet-btn.danger { background: var(--red-bg); color: var(--red); }
+
+/* ── Customer search results ── */
+.customer-result {
+  padding: 12px 14px; border-bottom: 1px solid var(--gray-100);
+  cursor: pointer;
+}
+.customer-result:last-child { border-bottom: none; }
+.customer-result:active { background: var(--gray-50); }
+.cr-name { font-size: 14px; font-weight: 600; }
+.cr-id { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+
+/* ── Product search picker ── */
+.pp-result {
+  padding: 12px 14px; border-bottom: 1px solid var(--gray-100);
+}
+.pp-result:last-child { border-bottom: none; }
+.pp-inner { display: flex; gap: 10px; align-items: flex-start; }
+.pp-body { flex: 1; min-width: 0; }
+.pp-cat { font-family: var(--mono); font-size: 12px; color: var(--blue); font-weight: 500; }
+.pp-desc { font-size: 13px; color: var(--gray-900); margin-top: 2px; line-height: 1.4; }
+.pp-stock { font-size: 11px; margin-top: 4px; }
+.pp-controls { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; flex-shrink: 0; }
+.pp-qty { width: 52px; height: 30px; text-align: center; border: 1.5px solid var(--gray-200); border-radius: 6px; font-size: 14px; font-weight: 600; font-family: var(--font); }
+.pp-add {
+  height: 30px; padding: 0 14px; border: none; border-radius: 6px;
+  background: var(--blue); color: #fff;
+  font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font);
+  white-space: nowrap;
+}
+.pp-add.added { background: var(--green); }
+.pp-inv-btn {
+  height: 24px; padding: 0 10px; border: 1px solid var(--gray-200);
+  border-radius: 5px; background: #fff; color: var(--blue);
+  font-size: 11px; font-weight: 500; cursor: pointer; font-family: var(--font);
+}
+
+/* ── Inventory modal ── */
+.inv-branch-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid var(--gray-100);
+}
+.inv-branch-row:last-child { border-bottom: none; }
+.inv-branch { font-size: 14px; font-weight: 500; }
+.inv-qty { font-size: 16px; font-weight: 700; }
+.inv-qty.has { color: var(--green); }
+.inv-qty.none { color: var(--gray-400); }
+
+/* ── Eclipse push sheet ── */
+.branch-select {
+  width: 100%; height: 46px; padding: 0 14px;
+  border: 1.5px solid var(--gray-200); border-radius: 10px;
+  font-family: var(--font); font-size: 15px;
+  margin-bottom: 12px; appearance: none; outline: none;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239ba3ae' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 14px center;
+}
+
+/* ── Misc ── */
+.pill {
+  display: inline-block; padding: 2px 8px; border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+}
+.pill.blue { background: var(--blue-light); color: var(--blue); }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+input[type=number] { -moz-appearance: textfield; }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- Top nav -->
+  <div class="top-nav">
+    <div class="nav-logo">Ductless <span>Quotes</span></div>
+    <div class="nav-session" id="nav-session" onclick="openLoginSheet()">
+      <div class="dot offline" id="session-dot"></div>
+      <div class="name" id="session-name">Sign in</div>
+    </div>
+  </div>
+
+  <!-- Session expired banner -->
+  <div class="session-banner" id="session-banner">
+    <span style="flex:1">⚠ Eclipse session expired</span>
+    <button onclick="openLoginSheet()">Sign in again</button>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar" id="tab-bar">
+    <div class="tab active" data-tab="quote" onclick="switchTab('quote')">Quote</div>
+    <div class="tab" data-tab="sz" onclick="switchTab('sz')">Single Zone</div>
+    <div class="tab" data-tab="mz" onclick="switchTab('mz')">Multi-Zone</div>
+    <div class="tab" data-tab="addons" onclick="switchTab('addons')">Add-ons</div>
+    <div class="tab" data-tab="orders" onclick="switchTab('orders')">Open Orders</div>
+    <div class="tab" data-tab="quotes" onclick="switchTab('quotes')">Quotes</div>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+
+    <!-- ══ QUOTE TAB ══ -->
+    <div class="panel active" id="panel-quote">
+      <div id="q-customer-wrap"></div>
+      <div id="q-body"></div>
+    </div>
+
+    <!-- ══ SINGLE ZONE TAB ══ -->
+    <div class="panel" id="panel-sz">
+      <div class="search-wrap">
+        <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="sz-search" placeholder="Search model or brand..." oninput="szFilter()"/>
+      </div>
+      <div class="chip-row" id="sz-brand-chips"></div>
+      <div class="chip-row" id="sz-size-chips"></div>
+      <div id="sz-results"></div>
+    </div>
+
+    <!-- ══ MULTI-ZONE TAB ══ -->
+    <div class="panel" id="panel-mz">
+      <div class="section-label">Step 1 — Outdoor Unit</div>
+      <div class="ou-scroll" id="mz-ou-list"></div>
+      <div id="mz-zones-wrap" style="display:none">
+        <div class="section-label" id="mz-zones-label">Step 2 — Indoor Units</div>
+        <div id="mz-zones"></div>
+        <button style="width:100%;height:40px;border:1.5px dashed var(--gray-200);border-radius:var(--radius);background:none;color:var(--blue);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);margin-bottom:10px" onclick="mzAddZone()">+ Add Zone</button>
+        <div class="card" style="padding:14px;margin-bottom:10px">
+          <div class="total-row" style="margin-bottom:10px">
+            <span class="label">System total</span>
+            <span class="value" id="mz-total" style="font-size:15px;font-weight:700;color:var(--blue)">—</span>
+          </div>
+          <button class="sheet-btn primary" onclick="mzAddToQuote()">+ Add to Quote</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ ADD-ONS TAB ══ -->
+    <div class="panel" id="panel-addons">
+      <div id="addons-body"></div>
+    </div>
+
+    <!-- ══ OPEN ORDERS TAB ══ -->
+    <div class="panel" id="panel-orders">
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 1 — Customer</div>
+      <div class="search-wrap" style="margin-bottom:12px">
+        <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="oo-customer-search" placeholder="Search customer..." oninput="ooCustomerInput()"/>
+        <div id="oo-customer-results" style="position:absolute;top:100%;left:0;right:0;display:none;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);z-index:50"></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 2 — Filter (optional)</div>
+      <div class="search-wrap" style="margin-bottom:12px">
+        <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="oo-product-filter" placeholder="SKU or product name (optional)" disabled oninput="ooProductInput()"/>
+      </div>
+      <div id="oo-results"><div class="empty-state"><div class="icon">🔍</div><div class="title">Find a customer</div><div class="sub">Search for a customer above to see their open orders.</div></div></div>
+    </div>
+
+    <!-- ══ QUOTES TAB ══ -->
+    <div class="panel" id="panel-quotes">
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 1 — Customer</div>
+      <div class="search-wrap" style="margin-bottom:12px">
+        <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="rq-customer-search" placeholder="Search customer..." oninput="rqCustomerInput()"/>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Step 2 — Filter (optional)</div>
+      <div class="search-wrap" style="margin-bottom:12px">
+        <svg width="16" height="16" fill="none" stroke="var(--gray-400)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" id="rq-product-filter" placeholder="SKU or product name (optional)" disabled oninput="rqProductInput()"/>
+      </div>
+      <div id="rq-results"><div class="empty-state"><div class="icon">🔍</div><div class="title">Find a customer</div><div class="sub">Search for a customer above to see their recent quotes.</div></div></div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="action-btn icon secondary" onclick="showClearSheet()" title="Clear / Copy">⋯</button>
+    <button class="action-btn primary" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
+    <button class="action-btn green" id="eclipse-btn" onclick="openEclipseSheet()">→ Eclipse</button>
+  </div>
+
+</div><!-- /app -->
+
+<!-- ══ OVERLAYS / SHEETS ══ -->
+
+<!-- Login -->
+<div class="overlay" id="login-overlay" onclick="if(event.target===this&&eclipseSession.token)closeOverlay('login-overlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Sign in to Eclipse</div>
+    <input class="sheet-input" id="login-user" type="text" placeholder="Username" autocomplete="username"/>
+    <input class="sheet-input" id="login-pass" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <div id="login-error" style="color:var(--red);font-size:13px;margin-bottom:10px;display:none"></div>
+    <button class="sheet-btn primary" onclick="doLogin()" id="login-btn">Sign In</button>
+    <button class="sheet-btn secondary" onclick="closeOverlay('login-overlay')" id="login-cancel" style="display:none">Cancel</button>
+  </div>
+</div>
+
+<!-- Customer picker (quote tab) -->
+<div class="overlay" id="customer-overlay" onclick="if(event.target===this)closeOverlay('customer-overlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Find Customer</div>
+    <input class="sheet-input" id="q-customer-input" type="text" placeholder="Name or account number..." oninput="qCustomerInput()"/>
+    <div id="q-customer-results" style="margin-top:4px;border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;min-height:48px">
+      <div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Type to search</div>
+    </div>
+  </div>
+</div>
+
+<!-- Add product (quote tab) -->
+<div class="overlay" id="pp-overlay" onclick="if(event.target===this)closeOverlay('pp-overlay')">
+  <div class="sheet" style="padding-bottom:8px">
+    <div class="sheet-handle"></div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+      <div class="sheet-title" style="margin-bottom:0;flex:1">Add Product</div>
+      <button onclick="closeOverlay('pp-overlay')" style="background:none;border:none;color:var(--gray-400);font-size:22px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <input class="sheet-input" id="pp-search" type="text" placeholder="SKU, mfg #, or description..." oninput="ppInput()" autocomplete="off"/>
+    <div id="pp-results" style="min-height:120px;border:1px solid var(--gray-100);border-radius:10px;overflow:hidden">
+      <div class="loading-state">Type at least 2 characters…</div>
+    </div>
+    <button class="sheet-btn secondary" onclick="closeOverlay('pp-overlay')" style="margin-top:10px">Close</button>
+  </div>
+</div>
+
+<!-- Inventory detail -->
+<div class="overlay" id="inv-overlay" onclick="if(event.target===this)closeOverlay('inv-overlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title" id="inv-title">Inventory</div>
+    <div style="font-family:var(--mono);font-size:12px;color:var(--gray-400);margin-bottom:14px" id="inv-model"></div>
+    <div id="inv-body"><div class="loading-state">Loading…</div></div>
+    <button class="sheet-btn secondary" onclick="closeOverlay('inv-overlay')" style="margin-top:10px">Close</button>
+  </div>
+</div>
+
+<!-- Eclipse push -->
+<div class="overlay" id="eclipse-overlay" onclick="if(event.target===this)closeOverlay('eclipse-overlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Create Quote in Eclipse</div>
+    <div style="font-size:13px;color:var(--gray-600);margin-bottom:12px">Customer: <strong id="eclipse-customer-name">—</strong></div>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Branch</label>
+    <select class="branch-select" id="eclipse-branch">
+      <option value="BALD">BALD — Baldwin</option>
+      <option value="BKLN">BKLN — Brooklyn</option>
+      <option value="BOH">BOH — Bohemia</option>
+      <option value="FARM" selected>FARM — Farmingdale</option>
+      <option value="NHP">NHP — New Hyde Park</option>
+      <option value="MANH">MANH — Manhattan</option>
+      <option value="STAM">STAM — Stamford</option>
+      <option value="MILF">MILF — Milford</option>
+      <option value="HART">HART — Hartford</option>
+      <option value="CPCT">CPCT — CP Connecticut</option>
+      <option value="CPNY">CPNY — CP New York</option>
+      <option value="REDH">REDH — Red Hook</option>
+      <option value="WHNY">WHNY — White Plains</option>
+    </select>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">PO Number (optional)</label>
+    <input class="sheet-input" id="eclipse-po" type="text" placeholder="Customer PO"/>
+    <div id="eclipse-status" style="font-size:13px;color:var(--gray-600);margin-bottom:10px;min-height:20px"></div>
+    <button class="sheet-btn primary" onclick="doPushToEclipse()" id="eclipse-submit-btn">Create Quote</button>
+    <button class="sheet-btn secondary" onclick="closeOverlay('eclipse-overlay')" style="margin-top:8px">Cancel</button>
+  </div>
+</div>
+
+<!-- More options (clear/copy) -->
+<div class="overlay" id="more-overlay" onclick="if(event.target===this)closeOverlay('more-overlay')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Options</div>
+    <button class="sheet-btn secondary" onclick="doCopyQuote();closeOverlay('more-overlay')" style="margin-bottom:8px">⎘ Copy to Clipboard</button>
+    <button class="sheet-btn danger" onclick="doClearQuote();closeOverlay('more-overlay')">🗑 Clear Quote</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════
+const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
+const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
+const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
+const ALL_BRANCHES = ['BALD','BKLN','BOH','FARM','NHP','MANH','STAM','MILF','HART','CPCT','CPNY','REDH','WHNY'];
+const BRANCH_LABELS = {'BALD':'Baldwin','BKLN':'Brooklyn','BOH':'Bohemia','FARM':'Farmingdale','NHP':'New Hyde Park','MANH':'Manhattan','STAM':'Stamford','MILF':'Milford','HART':'Hartford','CPCT':'CP Connecticut','CPNY':'CP New York','REDH':'Red Hook','WHNY':'White Plains'};
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let eclipseSession = { token: null, username: null, password: null };
+let qSelectedCustomer = null;
+let quote = []; // system entries
+let quoteWideState = { common: {}, customItems: {} };
+let quotePricing = { pricing: {}, inventory: {} };
+let COMMON_ADDONS = null;
+let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {};
+let mzState = { ou: null, zones: [] };
+let ppSearchTimer = null, ppSearchGen = 0, ppLastResults = [], ppFutureLedger = {};
+let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
+
+// Intercept /api/eclipse calls for session expiry
+const _origFetch = window.fetch.bind(window);
+window.fetch = async (url, opts) => {
+  const res = await _origFetch(url, opts);
+  const u = typeof url === 'string' ? url : '';
+  if (u.includes('/api/eclipse')) {
+    try {
+      const clone = res.clone();
+      if (res.status === 401) showSessionBanner();
+      else if (res.ok) hideSessionBanner();
+    } catch(e) {}
+  }
+  return res;
+};
+function showSessionBanner() { document.getElementById('session-banner').classList.add('visible'); }
+function hideSessionBanner() { document.getElementById('session-banner').classList.remove('visible'); }
+
+// ══════════════════════════════════════════════
+// UTILITIES
+// ══════════════════════════════════════════════
+const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const ea = s => String(s || '').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+function fmt(v) { return v != null ? '$' + Number(v).toFixed(2) : '—'; }
+function getPrice(key) {
+  if (!key || !quotePricing.pricing) return null;
+  return quotePricing.pricing[key] || null;
+}
+function getInv(key) {
+  if (!key || !quotePricing.inventory) return null;
+  return quotePricing.inventory[key] || null;
+}
+function invDot(key) {
+  const inv = getInv(key);
+  if (!inv) return 'u';
+  if (inv.userQty > 0) return 'g';
+  if (inv.total > 0) return 'y';
+  return 'r';
+}
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if (name === 'addons') renderAddonsTab();
+}
+
+// ══════════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════════
+function openLoginSheet() {
+  openOverlay('login-overlay');
+  const u = document.getElementById('login-user');
+  const p = document.getElementById('login-pass');
+  if (eclipseSession.username) u.value = eclipseSession.username;
+  p.value = '';
+  document.getElementById('login-cancel').style.display = eclipseSession.token ? '' : 'none';
+  setTimeout(() => (eclipseSession.username ? p : u).focus(), 100);
+}
+async function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  const btn = document.getElementById('login-btn');
+  if (!username || !password) { err.textContent = 'Username and password required.'; err.style.display = ''; return; }
+  btn.textContent = 'Signing in…'; btn.disabled = true; err.style.display = 'none';
+  try {
+    const res = await _origFetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', username, password })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.token) throw new Error(data.error || 'Login failed');
+    eclipseSession = { token: data.token, username, password };
+    userBranch = data.userBranch || data.homeBranch || 'FARM';
+    localStorage.setItem('eclipseHomeBranch', userBranch);
+    const br = document.getElementById('eclipse-branch');
+    if (br) br.value = userBranch;
+    document.getElementById('session-dot').className = 'dot';
+    document.getElementById('session-name').textContent = username.toUpperCase();
+    hideSessionBanner();
+    updateGetPricingBtn();
+    closeOverlay('login-overlay');
+    // Auto-load catalog data
+    loadCatalogs();
+  } catch(e) {
+    err.textContent = e.message; err.style.display = '';
+  } finally {
+    btn.textContent = 'Sign In'; btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════
+// CATALOG DATA
+// ══════════════════════════════════════════════
+async function loadCatalogs() {
+  const [szRes, mzRes, mzIduRes, mzCombosRes] = await Promise.all([
+    fetch(`${SB_URL}/rest/v1/ductless_sz?select=*`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz?select=*`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_idu?select=*`, { headers: H }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=*`, { headers: H }),
+  ]);
+  SZ = await szRes.json();
+  MZ = await mzRes.json();
+  const mzIduArr = await mzIduRes.json();
+  MZ_IDU = {};
+  mzIduArr.forEach(r => { if (!MZ_IDU[r.ou_model]) MZ_IDU[r.ou_model] = []; MZ_IDU[r.ou_model].push(r); });
+  const mzCombosArr = await mzCombosRes.json();
+  MZ_COMBOS = {};
+  mzCombosArr.forEach(r => { MZ_COMBOS[r.combo_key || (r.ou_model + '|' + r.idu_models)] = r; });
+  renderSZTab();
+  renderMZTab();
+  const caRes = await fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H });
+  COMMON_ADDONS = await caRes.json();
+  renderAddonsTab();
+}
+
+// ══════════════════════════════════════════════
+// SINGLE ZONE TAB
+// ══════════════════════════════════════════════
+let szBrandFilter = 'All', szSizeFilter = 'All', szSearchTerm = '';
+
+function renderSZTab() {
+  const brands = ['All', ...new Set(SZ.map(r => r.brand).filter(Boolean))].sort((a,b) => a==='All'?-1:b==='All'?1:a.localeCompare(b));
+  const sizes = ['All', '9K', '12K', '18K', '24K', '36K', '42K', '48K'];
+  document.getElementById('sz-brand-chips').innerHTML = brands.map(b =>
+    `<div class="chip ${b===szBrandFilter?'active':''}" onclick="szSetBrand('${ea(b)}')">${esc(b)}</div>`
+  ).join('');
+  document.getElementById('sz-size-chips').innerHTML = sizes.map(s =>
+    `<div class="chip ${s===szSizeFilter?'active':''}" onclick="szSetSize('${ea(s)}')">${esc(s)}</div>`
+  ).join('');
+  let results = SZ;
+  if (szBrandFilter !== 'All') results = results.filter(r => r.brand === szBrandFilter);
+  if (szSizeFilter !== 'All') results = results.filter(r => String(r.capacity_btu || '').includes(szSizeFilter.replace('K','')));
+  if (szSearchTerm) {
+    const t = szSearchTerm.toLowerCase();
+    results = results.filter(r => (r.ou_model||'').toLowerCase().includes(t) || (r.iu_model||'').toLowerCase().includes(t) || (r.brand||'').toLowerCase().includes(t) || (r.name||'').toLowerCase().includes(t) || (r.category||'').toLowerCase().includes(t));
+  }
+  const el = document.getElementById('sz-results');
+  if (!results.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="title">No results</div><div class="sub">Try a different brand or size.</div></div>'; return; }
+  el.innerHTML = results.slice(0, 50).map((r, i) => {
+    const priceOu = getPrice(r.ou_model);
+    const priceIu = getPrice(r.iu_model);
+    const total = priceOu && priceIu ? priceOu.price + priceIu.price : null;
+    const dot = invDot(r.ou_model);
+    const avail = dot === 'g' ? ['g','In Stock'] : dot === 'y' ? ['y','Other Branch'] : dot === 'r' ? ['r','Out of Stock'] : ['u','—'];
+    return `<div class="product-card">
+      <div class="product-inner">
+        <div class="brand-badge">${esc(r.brand||'').substring(0,6)}</div>
+        <div class="product-info">
+          <div class="product-name">${esc(r.name || r.ou_model)}</div>
+          <div class="product-model">${esc(r.ou_model)} + ${esc(r.iu_model||'')}</div>
+          <div class="product-specs">${r.seer2 ? 'SEER2: '+r.seer2+' · ' : ''}${esc(r.refrigerant||'')} · ${esc(r.voltage||'')}</div>
+        </div>
+        <div class="product-stock">
+          <div class="product-price-val">${total ? fmt(total) : '—'}</div>
+          <div class="product-avail ${avail[0]}">● ${avail[1]}</div>
+        </div>
+      </div>
+      <div class="add-bar">
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="szQty(${i},-1)">−</button>
+          <span class="qty-val" id="sz-qty-${i}">1</span>
+          <button class="qty-btn" onclick="szQty(${i},1)">+</button>
+        </div>
+        <button class="add-to-quote-btn" onclick="szAdd(${i})">+ Add to Quote</button>
+      </div>
+    </div>`;
+  }).join('');
+  window._szResults = results;
+}
+function szFilter() { szSearchTerm = document.getElementById('sz-search').value; renderSZTab(); }
+function szSetBrand(b) { szBrandFilter = b; renderSZTab(); }
+function szSetSize(s) { szSizeFilter = s; renderSZTab(); }
+function szQty(i, d) {
+  const el = document.getElementById(`sz-qty-${i}`);
+  if (!el) return;
+  el.textContent = Math.max(1, (parseInt(el.textContent)||1) + d);
+}
+function szAdd(i) {
+  const r = (window._szResults || [])[i];
+  if (!r) return;
+  const qty = parseInt(document.getElementById(`sz-qty-${i}`)?.textContent) || 1;
+  quote.push({ qtype: 'sz', ou: r.ou_model, iu: r.iu_model, brand: r.brand, name: r.name, qty, addons: [], seer2: r.seer2, ahri: r.ahri_ref, refrigerant: r.refrigerant, voltage: r.voltage, liq: r.liquid_line, gas: r.suction_line });
+  renderQuoteTab();
+  updateGetPricingBtn();
+  switchTab('quote');
+}
+
+// ══════════════════════════════════════════════
+// MULTI-ZONE TAB
+// ══════════════════════════════════════════════
+function renderMZTab() {
+  document.getElementById('mz-ou-list').innerHTML = MZ.map((ou, i) => {
+    const p = getPrice(ou.model);
+    const dot = invDot(ou.model);
+    const sc = dot === 'g' ? 'var(--green)' : dot === 'y' ? 'var(--yellow)' : dot === 'r' ? 'var(--red)' : 'var(--gray-400)';
+    const sl = dot === 'g' ? 'In Stock' : dot === 'y' ? 'Other Branch' : dot === 'r' ? 'Out of Stock' : '—';
+    const selected = mzState.ou && mzState.ou.model === ou.model;
+    return `<div class="ou-card ${selected?'selected':''}" onclick="mzSelectOU(${i})">
+      <div class="ou-brand">${esc(ou.brand||'BOSCH')}</div>
+      <div class="ou-model">${esc(ou.model)}</div>
+      <div class="ou-spec">${ou.capacity_btu ? Math.round(ou.capacity_btu/1000)+'K · ' : ''}${ou.zones_min||2}–${ou.zones_max||5} zones</div>
+      <div class="ou-price">${p ? fmt(p.price) : '—'}</div>
+      <div class="ou-stock" style="color:${sc}">● ${sl}</div>
+    </div>`;
+  }).join('');
+}
+function mzSelectOU(i) {
+  mzState.ou = MZ[i];
+  if (!mzState.zones.length) mzState.zones = [{ idu: null, type: null }];
+  renderMZTab();
+  renderMZZones();
+  document.getElementById('mz-zones-wrap').style.display = '';
+}
+function renderMZZones() {
+  const ou = mzState.ou;
+  if (!ou) return;
+  const idus = MZ_IDU[ou.model] || [];
+  const types = [...new Set(idus.map(r => r.category))];
+  document.getElementById('mz-zones-label').textContent = `Step 2 — Indoor Units (${mzState.zones.length} zone${mzState.zones.length>1?'s':''})`;
+  document.getElementById('mz-zones').innerHTML = mzState.zones.map((z, zi) => {
+    const matching = idus.filter(r => !z.type || r.category === z.type);
+    const idu = z.idu || matching[0];
+    const p = idu ? getPrice(idu.model) : null;
+    const dot = idu ? invDot(idu.model) : 'u';
+    const sc = dot === 'g' ? 'var(--green)' : dot === 'y' ? 'var(--yellow)' : dot === 'r' ? 'var(--red)' : 'var(--gray-400)';
+    return `<div class="zone-card">
+      <div class="zone-header">
+        <div class="zone-num">${zi+1}</div>
+        <div class="zone-title">Zone ${zi+1}</div>
+        <div class="zone-price" style="color:${sc}">● ${p ? fmt(p.price) : '—'}</div>
+        ${mzState.zones.length > 1 ? `<button onclick="mzRemoveZone(${zi})" style="background:none;border:none;color:var(--gray-400);cursor:pointer;font-size:18px;line-height:1">×</button>` : ''}
+      </div>
+      <div class="zone-body">
+        <div class="zone-sublabel">IDU Type</div>
+        <div class="idu-chips">${types.map(t => `<div class="idu-chip ${t===z.type?'active':''}" onclick="mzSetType(${zi},'${ea(t)}')">${esc(t)}</div>`).join('')}</div>
+        ${idu ? `<div class="zone-model">${esc(idu.model)}</div><div class="zone-spec">${idu.capacity_btu ? Math.round(idu.capacity_btu/1000)+'K BTU · ' : ''}${esc(idu.category||'')}</div>` : '<div class="zone-spec" style="margin-top:8px">Select a type above</div>'}
+      </div>
+    </div>`;
+  }).join('');
+  // Update total
+  let total = getPrice(ou.model)?.price || 0;
+  mzState.zones.forEach(z => { const idus2 = MZ_IDU[ou.model]||[]; const idu = z.idu || idus2[0]; if (idu) total += getPrice(idu.model)?.price || 0; });
+  document.getElementById('mz-total').textContent = total > 0 ? fmt(total) : '—';
+}
+function mzSetType(zi, type) {
+  const ou = mzState.ou;
+  if (!ou) return;
+  const idus = (MZ_IDU[ou.model]||[]).filter(r => r.category === type);
+  mzState.zones[zi] = { type, idu: idus[0] || null };
+  renderMZZones();
+}
+function mzAddZone() {
+  const ou = mzState.ou;
+  if (!ou || mzState.zones.length >= (ou.zones_max || 5)) return;
+  mzState.zones.push({ idu: null, type: null });
+  renderMZZones();
+}
+function mzRemoveZone(zi) {
+  mzState.zones.splice(zi, 1);
+  renderMZZones();
+}
+function mzAddToQuote() {
+  const ou = mzState.ou;
+  if (!ou || !mzState.zones.length) return;
+  const zones = mzState.zones.map((z, zi) => {
+    const idus = (MZ_IDU[ou.model]||[]).filter(r => !z.type || r.category === z.type);
+    const idu = z.idu || idus[0];
+    return { model: idu?.model, category: z.type, name: idu?.name };
+  });
+  quote.push({ qtype: 'mz', ou: ou.model, brand: ou.brand, name: ou.name, qty: 1, addons: [], zones });
+  mzState = { ou: null, zones: [] };
+  document.getElementById('mz-zones-wrap').style.display = 'none';
+  renderMZTab();
+  updateGetPricingBtn();
+  switchTab('quote');
+}
+
+// ══════════════════════════════════════════════
+// QUOTE TAB
+// ══════════════════════════════════════════════
+function renderQuoteTab() {
+  // Customer section
+  const cWrap = document.getElementById('q-customer-wrap');
+  if (qSelectedCustomer) {
+    cWrap.innerHTML = `<div class="customer-card" onclick="openOverlay('customer-overlay')">
+      <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+      <div class="customer-info">
+        <div class="customer-name">${esc(qSelectedCustomer.name)}</div>
+        <div class="customer-id">Account #${esc(qSelectedCustomer.id)}</div>
+      </div>
+      <div class="customer-change">Change</div>
+    </div>`;
+  } else {
+    cWrap.innerHTML = `<div class="customer-card" onclick="openOverlay('customer-overlay')">
+      <div class="customer-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B5FA8" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+      <div class="customer-info"><div class="customer-name" style="color:var(--gray-400)">Select a customer…</div></div>
+      <div class="customer-change">Find</div>
+    </div>`;
+  }
+
+  const body = document.getElementById('q-body');
+  if (!quote.length && !Object.keys(quoteWideState.customItems).length) {
+    body.innerHTML = `<div class="empty-state"><div class="icon">📋</div><div class="title">Empty quote</div><div class="sub">Add systems from the Single Zone or Multi-Zone tabs, or search for products below.</div></div>
+    <button class="sheet-btn primary" onclick="openOverlay('pp-overlay');document.getElementById('pp-search').focus()" style="border-radius:var(--radius-sm)">+ Add Product</button>`;
+    return;
+  }
+
+  let html = '';
+
+  // Systems
+  if (quote.length) {
+    html += `<div class="section-label">Systems (${quote.length})</div>`;
+    quote.forEach((q, qi) => {
+      const ouPrice = getPrice(q.ou);
+      const iuPrice = q.qtype === 'sz' ? getPrice(q.iu) : null;
+      const addonTotal = (q.addons||[]).filter(a=>a.checked).reduce((s,a) => s + (getPrice(a.catalogNumber)?.price||0), 0);
+      const sysTotal = (ouPrice?.price||0) + (iuPrice?.price||0) + addonTotal;
+      html += `<div class="system-card">
+        <div class="sys-header">
+          <div class="sys-qty">${q.qty}</div>
+          <div class="sys-info">
+            <div class="sys-name">${esc(q.brand)} ${esc(q.name||q.ou)}</div>
+            <div class="sys-sub">${q.ahri ? 'AHRI '+esc(q.ahri)+' · ' : ''}${esc(q.refrigerant||'')}</div>
+            <div class="sys-badge">${q.qtype === 'mz' ? 'Multi-Zone' : 'Single Zone'}</div>
+          </div>
+          <div class="sys-total">
+            <div class="price">${sysTotal ? fmt(sysTotal) : '—'}</div>
+            <div class="lbl">w/ add-ons</div>
+          </div>
+          <button class="sys-remove" onclick="removeSystem(${qi})">×</button>
+        </div>
+        <div class="sys-rows">`;
+      if (q.qtype === 'sz') {
+        html += sysRow('IDU', q.iu, `${esc(q.liq||'')} · ${esc(q.gas||'')}`, iuPrice);
+        html += sysRow('ODU', q.ou, `SEER2: ${q.seer2||'—'}`, ouPrice);
+      } else {
+        html += sysRow('ODU', q.ou, `${q.zones?.length||0} zones`, ouPrice);
+        (q.zones||[]).forEach((z,zi) => {
+          const zp = getPrice(z.model);
+          html += sysRow(`Z${zi+1}`, z.model, esc(z.category||''), zp);
+        });
+      }
+      const checkedAddons = (q.addons||[]).filter(a=>a.checked);
+      checkedAddons.forEach(a => {
+        const ap = getPrice(a.catalogNumber);
+        html += `<div class="sys-row">
+          <span class="row-label" style="color:var(--blue);font-size:9px">Add-on</span>
+          <span class="row-model">${esc(a.catalogNumber)}</span>
+          <span class="row-desc">${esc(a.productDescription?.split('\n')[0]||'')}</span>
+          <div class="avail-dot ${invDot(a.catalogNumber)}"></div>
+          <span class="row-price">${ap ? fmt(ap.price) : '—'}</span>
+        </div>`;
+      });
+      html += `</div></div>`;
+    });
+  }
+
+  // Custom items
+  const customItems = Object.values(quoteWideState.customItems || {}).filter(it => it && it.qty > 0);
+  if (customItems.length) {
+    html += `<div class="card">
+      <div class="wide-header"><span class="title">+ Items</span><span class="count">${customItems.length}</span></div>
+      <div class="wide-body">`;
+    customItems.forEach(it => {
+      const key = it.orderNumber || it.catalogNumber;
+      const p = getPrice(key);
+      const ledNote = renderLedgerNote(key);
+      html += `<div class="wide-row">
+        <span class="wide-label" style="color:var(--blue);font-size:9px">Item</span>
+        <span class="wide-model">${esc(key)}</span>
+        <span class="wide-desc">${esc(it.description||'')}</span>
+        <div class="avail-dot ${invDot(key)}"></div>
+        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+      </div>${ledNote ? `<div class="ledger-note">${ledNote}</div>` : ''}`;
+    });
+    html += `</div></div>`;
+  }
+
+  // Common addons summary
+  if (COMMON_ADDONS) {
+    const selected = COMMON_ADDONS.filter(a => (quoteWideState.common[a.sku]||0) > 0);
+    if (selected.length) {
+      const groups = {};
+      selected.forEach(a => { const cat = categorize(a); if (!groups[cat]) groups[cat] = []; groups[cat].push(a); });
+      html += `<div class="card">
+        <div class="wide-header"><span class="title">Common Add-ons</span><span class="count">${selected.length} selected</span><span class="chevron">›</span></div>
+        <div class="wide-body">`;
+      Object.entries(groups).forEach(([cat, items]) => {
+        html += `<div class="wide-cat">${esc(cat)}</div>`;
+        items.forEach(a => {
+          const p = getPrice(a.sku);
+          const ledNote = renderLedgerNote(a.sku);
+          html += `<div class="wide-row">
+            <span class="wide-label">Add-on</span>
+            <span class="wide-model">${esc(a.sku)}</span>
+            <span class="wide-desc">${esc(a.description||'')}</span>
+            <div class="avail-dot ${invDot(a.sku)}"></div>
+            <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+          </div>${ledNote ? `<div class="ledger-note">${ledNote}</div>` : ''}`;
+        });
+      });
+      html += `</div></div>`;
+    }
+  }
+
+  // Grand total
+  let equip = 0, addonsTotal = 0;
+  quote.forEach(q => {
+    const op = getPrice(q.ou);
+    const ip = q.qtype === 'sz' ? getPrice(q.iu) : null;
+    equip += (op?.price||0) + (ip?.price||0);
+    (q.zones||[]).forEach(z => { equip += getPrice(z.model)?.price||0; });
+    (q.addons||[]).filter(a=>a.checked).forEach(a => { addonsTotal += getPrice(a.catalogNumber)?.price||0; });
+  });
+  (COMMON_ADDONS||[]).forEach(a => {
+    const qty = quoteWideState.common[a.sku]||0;
+    if (qty) addonsTotal += (getPrice(a.sku)?.price||0)*qty;
+  });
+  customItems.forEach(it => {
+    const key = it.orderNumber || it.catalogNumber;
+    addonsTotal += (getPrice(key)?.price||0)*it.qty;
+  });
+  const grand = equip + addonsTotal;
+  if (grand > 0) {
+    html += `<div class="total-card">
+      <div class="total-row"><span class="label">Equipment</span><span class="value">${fmt(equip)}</span></div>
+      <div class="total-row"><span class="label">Add-ons</span><span class="value">${fmt(addonsTotal)}</span></div>
+      <div class="total-row grand"><span class="label">Total</span><span class="value">${fmt(grand)}</span></div>
+    </div>`;
+  }
+
+  // Add product button
+  html += `<button onclick="openOverlay('pp-overlay');document.getElementById('pp-search').focus()" style="width:100%;height:42px;background:#fff;border:1.5px dashed var(--gray-200);color:var(--blue);border-radius:var(--radius);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font);margin-bottom:8px">+ Add Product</button>`;
+
+  body.innerHTML = html;
+}
+
+function sysRow(label, model, desc, price) {
+  return `<div class="sys-row">
+    <span class="row-label">${esc(label)}</span>
+    <span class="row-model">${esc(model||'')}</span>
+    <span class="row-desc">${desc}</span>
+    <div class="avail-dot ${invDot(model)}"></div>
+    <span class="row-price">${price ? fmt(price.price) : '—'}</span>
+  </div>`;
+}
+
+function removeSystem(qi) {
+  if (!confirm('Remove this system?')) return;
+  quote.splice(qi, 1);
+  renderQuoteTab();
+  updateGetPricingBtn();
+}
+
+function renderLedgerNote(key) { return ''; } // placeholder — hook in later
+
+function categorize(a) {
+  const d = (a.description||'').toLowerCase();
+  if (/pump|condensate/i.test(d)) return 'Condensate';
+  if (/wire|clad|whip|lineset|line set|coupler/i.test(d)) return 'Linesets & Wiring';
+  if (/bracket|mount|pad|stand/i.test(d)) return 'Mounting';
+  if (/locknut|nipple|fitting|flare|valve/i.test(d)) return 'Fittings';
+  return 'Other';
+}
+
+function updateGetPricingBtn() {
+  const has = quote.length > 0 || Object.keys(quoteWideState.customItems||{}).length > 0 || Object.keys(quoteWideState.common||{}).some(k => quoteWideState.common[k] > 0);
+  document.getElementById('get-pricing-btn').disabled = !qSelectedCustomer || !has;
+}
+
+// ══════════════════════════════════════════════
+// ADD-ONS TAB
+// ══════════════════════════════════════════════
+function renderAddonsTab() {
+  if (!COMMON_ADDONS) { document.getElementById('addons-body').innerHTML = '<div class="loading-state">Loading…</div>'; return; }
+  const groups = {};
+  COMMON_ADDONS.forEach(a => { const cat = categorize(a); if (!groups[cat]) groups[cat] = []; groups[cat].push(a); });
+  let html = '<div class="section-label">Common Add-ons</div>';
+  Object.entries(groups).forEach(([cat, items]) => {
+    html += `<div class="card" style="margin-bottom:10px"><div class="wide-body">
+      <div class="wide-cat">${esc(cat)}</div>`;
+    items.forEach(a => {
+      const qty = quoteWideState.common[a.sku] || 0;
+      const p = getPrice(a.sku);
+      const checked = qty > 0;
+      html += `<div class="wide-row" style="align-items:center">
+        <input type="checkbox" ${checked?'checked':''} onchange="toggleAddon('${ea(a.sku)}',this.checked)" style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)"/>
+        <span class="wide-model" style="min-width:60px">${esc(a.sku)}</span>
+        <span class="wide-desc" style="flex:1">${esc(a.description||'')}</span>
+        <div class="avail-dot ${invDot(a.sku)}"></div>
+        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+      </div>`;
+    });
+    html += `</div></div>`;
+  });
+  document.getElementById('addons-body').innerHTML = html;
+}
+function toggleAddon(sku, checked) {
+  if (checked) {
+    const a = (COMMON_ADDONS||[]).find(x => x.sku === sku);
+    quoteWideState.common[sku] = a?.default_qty || 1;
+  } else {
+    delete quoteWideState.common[sku];
+  }
+  renderQuoteTab();
+  updateGetPricingBtn();
+}
+
+// ══════════════════════════════════════════════
+// CUSTOMER SEARCH
+// ══════════════════════════════════════════════
+let qCustTimer = null;
+function qCustomerInput() {
+  clearTimeout(qCustTimer);
+  const q2 = document.getElementById('q-customer-input').value.trim();
+  if (q2.length < 2) { document.getElementById('q-customer-results').innerHTML = '<div style="padding:16px;text-align:center;color:var(--gray-400);font-size:13px">Type to search</div>'; return; }
+  qCustTimer = setTimeout(() => doCustomerSearch(q2, 'q-customer-results', selectQCustomer), 300);
+}
+async function doCustomerSearch(keyword, resultsId, onSelect) {
+  const el = document.getElementById(resultsId);
+  el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray-400);font-size:13px">Searching…</div>';
+  try {
+    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
+    const data = await res.json();
+    const customers = data.customers || [];
+    if (!customers.length) { el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--gray-400);font-size:13px">No customers found</div>'; return; }
+    el.innerHTML = customers.slice(0, 10).map(c =>
+      `<div class="customer-result" onclick='(${onSelect.toString()})(${JSON.stringify(c)})'>
+        <div class="cr-name">${esc(c.name)}</div>
+        <div class="cr-id">#${esc(c.id)}</div>
+      </div>`
+    ).join('');
+  } catch(e) { el.innerHTML = `<div style="padding:12px;color:var(--red);font-size:13px">Error: ${esc(e.message)}</div>`; }
+}
+function selectQCustomer(c) {
+  qSelectedCustomer = c;
+  closeOverlay('customer-overlay');
+  document.getElementById('eclipse-customer-name').textContent = c.name;
+  renderQuoteTab();
+  updateGetPricingBtn();
+  // Enable order/quote search filters
+  document.getElementById('oo-product-filter').disabled = false;
+  document.getElementById('rq-product-filter').disabled = false;
+}
+
+// ══════════════════════════════════════════════
+// OPEN ORDERS & QUOTES
+// ══════════════════════════════════════════════
+let ooCustomer = null, rqCustomer = null;
+let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
+
+function ooCustomerInput() {
+  clearTimeout(ooTimer);
+  const q = document.getElementById('oo-customer-search').value.trim();
+  if (q.length < 2) return;
+  ooTimer = setTimeout(() => doOOCustomerSearch(q), 300);
+}
+async function doOOCustomerSearch(keyword) {
+  if (!eclipseSession.token) return;
+  const el = document.getElementById('oo-results');
+  el.innerHTML = '<div class="loading-state">Searching customers…</div>';
+  try {
+    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
+    const data = await res.json();
+    const customers = data.customers || [];
+    if (!customers.length) { el.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><div class="title">No customers found</div></div>'; return; }
+    el.innerHTML = `<div class="card">${customers.slice(0,8).map(c =>
+      `<div class="customer-result" onclick="ooSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})">
+        <div class="cr-name">${esc(c.name)}</div><div class="cr-id">#${esc(c.id)}</div>
+      </div>`
+    ).join('')}</div>`;
+  } catch(e) {}
+}
+function ooSelectCustomer(c) {
+  ooCustomer = c;
+  document.getElementById('oo-customer-search').value = c.name + ' #' + c.id;
+  document.getElementById('oo-product-filter').disabled = false;
+  loadOpenOrders();
+}
+async function loadOpenOrders() {
+  if (!ooCustomer || !eclipseSession.token) return;
+  const el = document.getElementById('oo-results');
+  el.innerHTML = '<div class="loading-state">Loading open orders…</div>';
+  const productCatalog = document.getElementById('oo-product-filter').value.trim() || null;
+  try {
+    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchOpenOrders', sessionToken: eclipseSession.token, customerId: ooCustomer.id, productCatalog }) });
+    const data = await res.json();
+    renderOrderCards(data.orders || [], el);
+  } catch(e) { el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><div class="title">Error</div><div class="sub">${esc(e.message)}</div></div>`; }
+}
+function ooProductInput() { clearTimeout(ooProductTimer); ooProductTimer = setTimeout(loadOpenOrders, 400); }
+
+function rqCustomerInput() {
+  clearTimeout(rqTimer);
+  const q = document.getElementById('rq-customer-search').value.trim();
+  if (q.length < 2) return;
+  rqTimer = setTimeout(() => doRQCustomerSearch(q), 300);
+}
+async function doRQCustomerSearch(keyword) {
+  if (!eclipseSession.token) return;
+  const el = document.getElementById('rq-results');
+  el.innerHTML = '<div class="loading-state">Searching customers…</div>';
+  try {
+    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchCustomers', sessionToken: eclipseSession.token, keyword }) });
+    const data = await res.json();
+    const customers = data.customers || [];
+    el.innerHTML = `<div class="card">${customers.slice(0,8).map(c =>
+      `<div class="customer-result" onclick="rqSelectCustomer(${JSON.stringify(c).replace(/"/g,'&quot;')})">
+        <div class="cr-name">${esc(c.name)}</div><div class="cr-id">#${esc(c.id)}</div>
+      </div>`
+    ).join('')}</div>`;
+  } catch(e) {}
+}
+function rqSelectCustomer(c) {
+  rqCustomer = c;
+  document.getElementById('rq-customer-search').value = c.name + ' #' + c.id;
+  document.getElementById('rq-product-filter').disabled = false;
+  loadRecentQuotes();
+}
+async function loadRecentQuotes() {
+  if (!rqCustomer || !eclipseSession.token) return;
+  const el = document.getElementById('rq-results');
+  el.innerHTML = '<div class="loading-state">Loading quotes…</div>';
+  const productCatalog = document.getElementById('rq-product-filter').value.trim() || null;
+  try {
+    const res = await fetch('/api/eclipse', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchOrders', sessionToken: eclipseSession.token, customerId: rqCustomer.id, productCatalog }) });
+    const data = await res.json();
+    renderOrderCards(data.orders || [], el);
+  } catch(e) {}
+}
+function rqProductInput() { clearTimeout(rqProductTimer); rqProductTimer = setTimeout(loadRecentQuotes, 400); }
+
+function renderOrderCards(orders, el) {
+  if (!orders.length) { el.innerHTML = '<div class="empty-state"><div class="icon">📋</div><div class="title">No results</div></div>'; return; }
+  el.innerHTML = orders.map(o => `<div class="order-card">
+    <div class="order-header">
+      <span class="order-num">#${esc(o.id)}</span>
+      <span class="order-customer">${esc(o.customer||'')}</span>
+      <span class="order-status-badge ${o.status==='Bid'?'bid':o.status?'open':''}">${esc(o.status||'Open')}</span>
+    </div>
+    <div class="order-lines">${(o.lines||[]).slice(0,3).map(l =>
+      `<div class="order-line"><span class="ln-model">${esc(l.id||'')}</span><span class="ln-desc">${esc(l.description||'')}</span></div>`
+    ).join('')}${o.lines?.length > 3 ? `<div class="order-line" style="color:var(--gray-400)">+ ${o.lines.length-3} more</div>` : ''}</div>
+    <div class="order-footer">
+      <span class="order-meta">${o.date ? new Date(o.date).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}) : ''} · ${esc(o.branch||'')}</span>
+      <span class="order-total">${o.total ? fmt(o.total) : ''}</span>
+    </div>
+  </div>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// GET PRICING
+// ══════════════════════════════════════════════
+async function getPricing() {
+  if (!qSelectedCustomer || !eclipseSession.token) return;
+  const btn = document.getElementById('get-pricing-btn');
+  btn.textContent = 'Loading…'; btn.disabled = true;
+  try {
+    // Build catalog pairs
+    const pairs = [];
+    const addPair = (cat, order=null) => { if (cat) pairs.push({ cat, order: order||null }); };
+    quote.forEach(q => {
+      if (q.qtype === 'sz') { addPair(q.ou); addPair(q.iu); }
+      else { addPair(q.ou); (q.zones||[]).forEach(z => addPair(z.model)); }
+      (q.addons||[]).forEach(a => { if (a.catalogNumber) addPair(a.catalogNumber); });
+    });
+    (COMMON_ADDONS||[]).forEach(a => { const cn = a.mfg_num || a.sku; if (cn) addPair(cn, a.sku); });
+    Object.values(quoteWideState.customItems||{}).forEach(it => { if (it?.catalogNumber) addPair(it.catalogNumber, it.orderNumber||null); });
+    const seen = new Set();
+    const uniquePairs = pairs.filter(p => { const k = (p.cat||'')+'|'+(p.order||''); if (seen.has(k)) return false; seen.add(k); return true; });
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'pricing',
+        sessionToken: eclipseSession.token,
+        customerId: qSelectedCustomer.id,
+        userId: eclipseSession.username,
+        userBranch,
+        catalogNumbers: uniquePairs.map(p => p.cat),
+        catalogPairs: uniquePairs
+      })
+    });
+    const data = await res.json();
+    quotePricing = { pricing: data.pricing||{}, inventory: data.inventory||{}, userBranch: data.userBranch };
+    renderQuoteTab();
+    renderSZTab();
+    renderMZTab();
+    renderAddonsTab();
+  } catch(e) { alert('Pricing error: ' + e.message); }
+  btn.textContent = 'Refresh Pricing'; btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════
+// PRODUCT PICKER
+// ══════════════════════════════════════════════
+function ppInput() {
+  clearTimeout(ppSearchTimer);
+  const q = document.getElementById('pp-search').value.trim();
+  if (q.length < 2) { document.getElementById('pp-results').innerHTML = '<div class="loading-state">Type at least 2 characters…</div>'; return; }
+  document.getElementById('pp-results').innerHTML = '<div class="loading-state">Searching Eclipse…</div>';
+  ppSearchTimer = setTimeout(() => ppSearch(q), 350);
+}
+async function ppSearch(keyword) {
+  ppSearchGen++;
+  const gen = ppSearchGen;
+  ppLastResults = []; ppFutureLedger = {};
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'searchProductsLite', sessionToken: eclipseSession.token, keyword, userBranch, userId: eclipseSession.username })
+    });
+    if (gen !== ppSearchGen) return;
+    const data = await res.json();
+    ppLastResults = data.results || [];
+    ppRenderResults(gen);
+    ppFetchInventory(gen, data.userBranch || userBranch);
+  } catch(e) {
+    document.getElementById('pp-results').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`;
+  }
+}
+function ppRenderResults(gen) {
+  if (gen !== ppSearchGen) return;
+  const el = document.getElementById('pp-results');
+  if (!ppLastResults.length) { el.innerHTML = '<div class="loading-state">No results found.</div>'; return; }
+  el.innerHTML = ppLastResults.map((r, i) => {
+    const codeLabel = r.orderNumber ? `${esc(r.orderNumber)} · ${esc(r.catalogNumber)}` : esc(r.catalogNumber);
+    let stockHtml = '';
+    if (r.stockTier === -1) stockHtml = `<span id="pp-stock-${i}" style="color:var(--gray-400)">● Checking…</span>`;
+    else if (r.stockTier === 0) stockHtml = `<span id="pp-stock-${i}" style="color:var(--green);font-weight:600">● ${r.userQty} in stock</span>`;
+    else if (r.stockTier === 1) stockHtml = `<span id="pp-stock-${i}" style="color:var(--yellow);font-weight:500">● ${r.totalQty} at other branch</span>`;
+    else stockHtml = `<span id="pp-stock-${i}" style="color:var(--red);font-weight:500">● Out of stock</span>`;
+    return `<div class="pp-result">
+      <div class="pp-inner">
+        <div class="pp-body">
+          <div class="pp-cat">${codeLabel}</div>
+          <div class="pp-desc">${esc(r.description||'')}</div>
+          <div class="pp-stock">${stockHtml}</div>
+        </div>
+        <div class="pp-controls">
+          <input type="number" class="pp-qty" id="pp-qty-${i}" value="1" min="1"/>
+          <button class="pp-add" onclick="ppAdd(${i})" id="pp-add-${i}">Add</button>
+          <button class="pp-inv-btn" onclick="showInvSheet('${ea(r.catalogNumber)}','${ea(r.description||'')}')">Inv</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function ppFetchInventory(gen, branch) {
+  if (!ppLastResults.length || !eclipseSession.token) return;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'inventoryForProducts', sessionToken: eclipseSession.token, userBranch: branch, userId: eclipseSession.username,
+        products: ppLastResults.filter(r=>r.catalogNumber).map(r=>({productId:r.productId,catalogNumber:r.catalogNumber})) })
+    });
+    if (gen !== ppSearchGen) return;
+    const data = await res.json();
+    const inv = data.inventory || {};
+    ppLastResults = ppLastResults.map(r => { const s = inv[r.catalogNumber]; return s ? {...r, userQty:s.userQty, totalQty:s.total, stockTier:s.stockTier} : r; });
+    ppLastResults.forEach((r, i) => {
+      const el = document.getElementById(`pp-stock-${i}`);
+      if (!el) return;
+      if (r.stockTier === 0) { el.style.color='var(--green)'; el.style.fontWeight='600'; el.textContent=`● ${r.userQty} in stock`; }
+      else if (r.stockTier === 1) { el.style.color='var(--yellow)'; el.style.fontWeight='500'; el.textContent=`● ${r.totalQty} at other branch`; }
+      else if (r.stockTier === 2) { el.style.color='var(--red)'; el.style.fontWeight='500'; el.textContent='● Out of stock'; }
+    });
+  } catch(e) {}
+}
+function ppAdd(i) {
+  const r = ppLastResults[i];
+  if (!r) return;
+  const qty = parseInt(document.getElementById(`pp-qty-${i}`)?.value) || 1;
+  const key = r.orderNumber || r.catalogNumber;
+  if (quoteWideState.customItems[key]) quoteWideState.customItems[key].qty += qty;
+  else quoteWideState.customItems[key] = { catalogNumber: r.catalogNumber, orderNumber: r.orderNumber, description: r.description, qty };
+  const btn = document.getElementById(`pp-add-${i}`);
+  if (btn) { btn.textContent = '✓ Added'; btn.classList.add('added'); setTimeout(() => { btn.textContent = 'Add'; btn.classList.remove('added'); }, 1500); }
+  renderQuoteTab();
+  updateGetPricingBtn();
+}
+
+// ══════════════════════════════════════════════
+// INVENTORY SHEET
+// ══════════════════════════════════════════════
+async function showInvSheet(model, desc) {
+  document.getElementById('inv-title').textContent = 'Inventory';
+  document.getElementById('inv-model').textContent = model + (desc ? ' — ' + desc.substring(0,40) : '');
+  document.getElementById('inv-body').innerHTML = '<div class="loading-state">Loading…</div>';
+  openOverlay('inv-overlay');
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'branchInventory', sessionToken: eclipseSession.token, catalogNumber: model, userId: eclipseSession.username })
+    });
+    const data = await res.json();
+    const branches = data.branches || [];
+    if (!branches.length) { document.getElementById('inv-body').innerHTML = '<div class="loading-state">No inventory data</div>'; return; }
+    document.getElementById('inv-body').innerHTML = branches.map(b => `
+      <div class="inv-branch-row">
+        <span class="inv-branch">${BRANCH_LABELS[b.code]||b.code} <span style="font-size:11px;color:var(--gray-400)">(${b.code})</span></span>
+        <span class="inv-qty ${b.qty>0?'has':'none'}">${b.qty}</span>
+      </div>`).join('');
+  } catch(e) { document.getElementById('inv-body').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`; }
+}
+
+// ══════════════════════════════════════════════
+// ECLIPSE PUSH
+// ══════════════════════════════════════════════
+function openEclipseSheet() {
+  const hasItems = quote.length || Object.keys(quoteWideState.customItems||{}).length || Object.keys(quoteWideState.common||{}).some(k=>quoteWideState.common[k]>0);
+  if (!hasItems) { alert('Add a system or product first.'); return; }
+  document.getElementById('eclipse-customer-name').textContent = qSelectedCustomer?.name || '—';
+  document.getElementById('eclipse-status').textContent = '';
+  document.getElementById('eclipse-submit-btn').disabled = false;
+  document.getElementById('eclipse-submit-btn').textContent = 'Create Quote';
+  openOverlay('eclipse-overlay');
+}
+async function doPushToEclipse() {
+  const btn = document.getElementById('eclipse-submit-btn');
+  const status = document.getElementById('eclipse-status');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  status.textContent = ''; status.style.color = '';
+  try {
+    // Build line items (same as desktop)
+    const lines = [];
+    quote.forEach(q => {
+      if (q.qtype === 'sz') { lines.push({cat:q.ou,qty:q.qty}); lines.push({cat:q.iu,qty:q.qty}); }
+      else { lines.push({cat:q.ou,qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({cat:z.model,qty:1});}); }
+      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({cat:a.catalogNumber,qty:1}));
+    });
+    (COMMON_ADDONS||[]).forEach(a => { const qty=quoteWideState.common[a.sku]||0; if(qty) lines.push({cat:a.mfg_num||a.sku,qty}); });
+    Object.values(quoteWideState.customItems||{}).forEach(it => { if(it?.qty) lines.push({cat:it.catalogNumber,qty:it.qty}); });
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'order',
+        sessionToken: eclipseSession.token,
+        customerId: qSelectedCustomer.id,
+        branch: document.getElementById('eclipse-branch').value,
+        poNumber: document.getElementById('eclipse-po').value.trim(),
+        lines
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Push failed');
+    status.textContent = `✓ Quote #${data.orderId || data.id || '—'} created`;
+    status.style.color = 'var(--green)';
+    btn.textContent = 'Done';
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = 'var(--red)';
+    btn.textContent = 'Create Quote'; btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════
+// COPY / CLEAR
+// ══════════════════════════════════════════════
+function showClearSheet() { openOverlay('more-overlay'); }
+function doCopyQuote() {
+  if (!quote.length) { alert('Add systems first.'); return; }
+  const lines = ['DUCTLESS QUOTE — Johnstone Supply NY/CT', `Date: ${new Date().toLocaleDateString()}`, ''];
+  quote.forEach((q, i) => {
+    lines.push(`--- System ${i+1} ---`);
+    if (q.qtype === 'sz') { lines.push(`ODU: ${q.ou}  |  ${fmt(getPrice(q.ou)?.price)}`); lines.push(`IDU: ${q.iu}  |  ${fmt(getPrice(q.iu)?.price)}`); }
+    else { lines.push(`ODU: ${q.ou}  |  ${fmt(getPrice(q.ou)?.price)}`); (q.zones||[]).forEach((z,zi) => lines.push(`Zone ${zi+1}: ${z.model}  |  ${fmt(getPrice(z.model)?.price)}`)); }
+  });
+  navigator.clipboard.writeText(lines.join('\n')).then(() => alert('Copied to clipboard!')).catch(() => alert('Copy failed'));
+}
+function doClearQuote() {
+  if (!confirm('Clear the entire quote?')) return;
+  quote = []; quoteWideState = { common: {}, customItems: {} };
+  quotePricing = { pricing: {}, inventory: {} };
+  renderQuoteTab(); updateGetPricingBtn();
+}
+
+// ══════════════════════════════════════════════
+// OVERLAY HELPERS
+// ══════════════════════════════════════════════
+function openOverlay(id) { document.getElementById(id).classList.add('open'); }
+function closeOverlay(id) { document.getElementById(id).classList.remove('open'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(el => el.classList.remove('open'));
+});
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+renderQuoteTab();
+updateGetPricingBtn();
+// Prompt login on load
+openOverlay('login-overlay');
+</script>
+</body>
+</html>
