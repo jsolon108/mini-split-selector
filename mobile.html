@@ -5,6 +5,8 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Johnstone Ductless</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -25,8 +27,8 @@
 –gray-400: #9ba3ae;
 –gray-600: #5a6473;
 –gray-900: #1a1f27;
-–font: ‘DM Sans’, -apple-system, sans-serif;
-–mono: ‘DM Mono’, ‘SF Mono’, monospace;
+–font: -apple-system, BlinkMacSystemFont, ‘DM Sans’, sans-serif;
+–mono: ‘SF Mono’, ‘DM Mono’, ui-monospace, monospace;
 –radius: 14px;
 –radius-sm: 8px;
 –shadow: 0 1px 8px rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.04);
@@ -296,7 +298,7 @@ box-shadow: 0 -2px 12px rgba(0,0,0,.06);
 }
 .action-btn {
 flex: 1; height: 44px; border-radius: var(–radius-sm);
-font-family: var(–font); font-size: 13px; font-weight: 600;
+font-family: -apple-system, ‘DM Sans’, sans-serif; font-size: 13px; font-weight: 600;
 border: none; cursor: pointer; transition: opacity .15s;
 }
 .action-btn:active { opacity: .8; }
@@ -308,17 +310,43 @@ border: none; cursor: pointer; transition: opacity .15s;
 
 /* ── Selector tabs (SZ/MZ filter chips) ── */
 .chip-row {
-display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
-padding-bottom: 2px; margin-bottom: 10px;
+display: -webkit-flex;
+display: flex;
+gap: 6px;
+overflow-x: auto;
+-webkit-overflow-scrolling: touch;
+scrollbar-width: none;
+padding-bottom: 4px;
+margin-bottom: 10px;
+min-height: 40px;
+align-items: center;
 }
 .chip-row::-webkit-scrollbar { display: none; }
 .chip {
-flex-shrink: 0; height: 32px; padding: 0 14px;
-border-radius: 20px; font-size: 12px; font-weight: 500;
-border: 1.5px solid var(–gray-200); background: #fff; color: var(–gray-600);
-cursor: pointer; white-space: nowrap; font-family: var(–font);
-display: flex; align-items: center; justify-content: center;
+flex-shrink: 0;
+height: 32px;
+min-height: 32px;
+padding: 0 14px;
+border-radius: 20px;
+font-size: 13px;
+font-weight: 500;
+border: 1.5px solid var(–gray-200);
+background: #fff;
+color: var(–gray-600);
+cursor: pointer;
+white-space: nowrap;
+font-family: -apple-system, ‘DM Sans’, sans-serif;
+display: -webkit-inline-flex;
+display: inline-flex;
+-webkit-align-items: center;
+align-items: center;
+-webkit-justify-content: center;
+justify-content: center;
+-webkit-appearance: none;
+appearance: none;
 transition: background .12s, color .12s, border-color .12s;
+box-sizing: border-box;
+line-height: 1;
 }
 .chip.active { background: var(–blue); border-color: var(–blue); color: #fff; }
 
