@@ -1493,10 +1493,10 @@ function renderQuoteTab() {
               const qty = a.qtyOverride ?? a.qtyNeeded;
               const dot = stockDot(a.catalogNumber);
               return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--gray-100)">
-                <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddonItem(${qi},${a.ai})"
-                  style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
+                <input type="checkbox" ${a.checked?'checked':''} ${a.required?'disabled':''} onchange="${a.required?'':'toggleAddonItem('+qi+','+a.ai+')'}"
+                  style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:${a.required?'not-allowed':'pointer'}" title="${a.required?'Required add-on':''}"/>
                 <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:58px">${esc(a.catalogNumber)}</span>
-                <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;line-height:1.3">${esc(a.description||'')}</span>
+                <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;line-height:1.3">${esc(a.description||'')}${a.required?' <span style="font-size:9px;font-weight:700;color:var(--red);background:#fef2f2;padding:1px 4px;border-radius:3px;margin-left:3px">REQ</span>':''}</span>
                 <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
                 <input type="number" value="${qty}" min="0" onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
                   style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
@@ -1723,7 +1723,7 @@ function toggleSysAddons(qi) {
 
 function toggleAddonItem(qi, ai) {
   const addon = quote[qi]?.addons?.[ai];
-  if (!addon) return;
+  if (!addon || addon.required) return;
   addon.checked = !addon.checked;
   renderQuoteTab();
 }
