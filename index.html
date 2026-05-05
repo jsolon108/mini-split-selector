@@ -754,7 +754,7 @@ function logEvent(action, detail = {}) {
         username: eclipseSession.username || 'unknown',
         action,
         detail,
-        user_branch: userBranch || null,
+        user_branch: localStorage.getItem('eclipseHomeBranch') || null,
         device: 'desktop'
       })
     }).catch(() => {});
