@@ -743,6 +743,23 @@ const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {}, equipmentCatalogs = new Set();
+
+// ── Usage tracking ────────────────────────────────────────────────
+function logEvent(action, detail = {}) {
+  try {
+    fetch(`${SB_URL}/rest/v1/usage_events`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        username: eclipseSession.username || 'unknown',
+        action,
+        detail,
+        user_branch: userBranch || null,
+        device: 'desktop'
+      })
+    }).catch(() => {});
+  } catch(e) {}
+}
 let eclipseSession = { token: null, username: null, password: null };
 
 // ---- UNITARY (hidden behind ?unitary=1 URL flag) ----
@@ -876,6 +893,7 @@ function addSZ(id) {
   } else {
     const s = SZ.find(x => x.id === id);
     if (s) {
+      logEvent('add_system', { type: 'sz', brand: s.brand, cap: s.cap });
       quote.push({...s, qty:1, qtype:'sz'});
       const newIdx = quote.length - 1;
       updateCount(); renderSingle(); renderQuote();
@@ -2027,6 +2045,7 @@ async function ppSearch(keyword) {
     }
     // Render immediately — all results show "Checking stock..." dots
     ppRenderResults(data.userBranch || userBranch);
+    logEvent('product_search', { keyword, results: ppLastResults.length });
     // Fetch inventory lazily — dots update as results come in
     ppFetchInventory(data.userBranch || userBranch);
     // Fetch images lazily — appear as they load without blocking
@@ -3247,6 +3266,7 @@ async function pushToEclipse() {
     if (data.success) {
       statusEl.style.color = '#0f6e56';
       statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
+      logEvent('eclipse_push', { orderId: data.orderId, customer: qSelectedCustomer?.name, systems: quote.length });
       document.getElementById('modal-close-btn').style.display = 'block';
     } else if (res.status === 401) {
       statusEl.style.color = '#E24B4A';
@@ -3438,6 +3458,7 @@ function clearQCustomer() {
 
 async function getPricing() {
   if (!qSelectedCustomer) return;
+  logEvent('get_pricing', { customer: qSelectedCustomer?.name, systems: quote.length });
   // Make sure quote-wide catalogs are loaded so we know what's selected
   await Promise.all([loadCommonAddons(), loadLineHideProducts()]);
   // Allow pricing if there's a system OR any quote-wide item (custom items, common addons, line hide)
