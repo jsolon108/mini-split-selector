@@ -861,6 +861,7 @@ let _custResults = [], _ooResults = [], _rqResults = [];
 let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
 let ADDON_RULES = null;
 const DEFAULT_ADDON_CATEGORY = 'Other Accessories';
+let equipmentCatalogs = new Set(); // all known equipment models — excluded from add-ons
 let ooCustomer = null, rqCustomer = null;
 let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
 let qCustTimer = null;
@@ -1006,6 +1007,11 @@ async function loadCatalogs() {
     COMMON_ADDONS = await caR.json();
     const arRows = await arR.json();
     ADDON_RULES = Array.isArray(arRows) ? arRows : [];
+    // Build equipment exclusion set — all known ODU/IDU models across SZ and MZ
+    equipmentCatalogs = new Set();
+    SZ.forEach(s => { if (s.ou) equipmentCatalogs.add(fmtCat(s.ou)); if (s.iu) equipmentCatalogs.add(fmtCat(s.iu)); });
+    MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(fmtCat(o.ou)); });
+    Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(fmtCat(r.model)); });
     renderSZTab();
     renderMZTab();
     renderAddonsTab();
@@ -1678,7 +1684,6 @@ async function loadAddonsForQuoteItem(qi) {
         }
       } catch(e) { /* skip */ }
     }
-    const equipCats = new Set([q.ou, q.iu, ...(q.zones||[]).map(z=>z.model)].filter(Boolean).map(fmtCat));
     const addons = [];
     for (const pid of Object.keys(tagAlongAgg)) {
       try {
@@ -1687,7 +1692,8 @@ async function loadAddonsForQuoteItem(qi) {
           body: JSON.stringify({ action: 'getProduct', sessionToken: eclipseSession.token, productId: pid })
         });
         const detail = await res.json();
-        if (!detail.catalogNumber || equipCats.has(detail.catalogNumber)) continue;
+        if (!detail.catalogNumber) continue;
+        if (equipmentCatalogs.has(fmtCat(detail.catalogNumber)) || equipmentCatalogs.has(detail.catalogNumber)) continue;
         const agg = tagAlongAgg[pid];
         addons.push({
           productId: pid,
