@@ -858,6 +858,8 @@ let ppSearchTimer = null, ppSearchGen = 0, ppLastResults = [];
 let ppImageCache = {}; // productId → url | null, persists across renders within same session
 let _custResults = [], _ooResults = [], _rqResults = [];
 let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
+let ADDON_RULES = null;
+const DEFAULT_ADDON_CATEGORY = 'Other Accessories';
 let ooCustomer = null, rqCustomer = null;
 let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
 let qCustTimer = null;
@@ -981,12 +983,13 @@ async function doLogin() {
 // ══════════════════════════════════════════════
 async function loadCatalogs() {
   try {
-    const [szR, mzR, iduR, comboR, caR] = await Promise.all([
+    const [szR, mzR, iduR, comboR, caR, arR] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=2000`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/addon_categories?active=eq.true&order=priority.asc`, { headers: H }),
     ]);
     SZ = await szR.json();
     MZ = await mzR.json();
@@ -1000,6 +1003,8 @@ async function loadCatalogs() {
       MZ_COMBOS[r.ou_id].add([...r.combo].sort((a,b)=>a-b).join(','));
     });
     COMMON_ADDONS = await caR.json();
+    const arRows = await arR.json();
+    ADDON_RULES = Array.isArray(arRows) ? arRows : [];
     renderSZTab();
     renderMZTab();
     renderAddonsTab();
@@ -1093,8 +1098,10 @@ function szToggle(i) {
   if (idx >= 0) {
     quote.splice(idx, 1);
   } else {
-    quote.push({ ...s, qty: 1, qtype: 'sz', addons: [] });
+    const newSzIdx = quote.length;
+    quote.push({ ...s, qty: 1, qtype: 'sz', addons: null });
     switchTab('quote');
+    loadAddonsForQuoteItem(newSzIdx);
   }
   renderSZTab();
   renderQuoteTab();
@@ -1358,15 +1365,17 @@ function mzAdd(oi) {
     const row = iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
     return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'' };
   }).filter(Boolean);
+  const newMzIdx = quote.length;
   quote.push({
     id: o.id+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
     ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
-    zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: []
+    zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: null
   });
   renderMZMatchingOUs();
   renderQuoteTab();
   updateGetPricingBtn();
   switchTab('quote');
+  loadAddonsForQuoteItem(newMzIdx);
 }
 
 
@@ -1449,6 +1458,52 @@ function renderQuoteTab() {
         grandAddons += ap?.price || 0;
       });
 
+      // Addon section
+      let addonsHtml = '';
+      if (q.addonsLoading) {
+        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--gray-400)">⏳ Loading add-ons…</div>`;
+      } else if (q.addonsError) {
+        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--red)">${esc(q.addonsError)}</div>`;
+      } else if (Array.isArray(q.addons) && q.addons.length > 0) {
+        // Group by category
+        const addonGroups = {};
+        q.addons.forEach((a, ai) => {
+          if (!addonGroups[a.category]) addonGroups[a.category] = [];
+          addonGroups[a.category].push({ ...a, ai });
+        });
+        const addonGroupsHtml = Object.entries(addonGroups).map(([cat, items]) => {
+          const rows = items.map(a => {
+            const ap = getPrice(a.catalogNumber);
+            const qty = a.qtyOverride ?? a.qtyNeeded;
+            const dot = stockDot(a.catalogNumber);
+            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--gray-100)">
+              <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddonItem(${qi},${a.ai})"
+                style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
+              <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:60px">${esc(a.catalogNumber)}</span>
+              <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;white-space:normal;line-height:1.3">${esc(a.description||'')}</span>
+              <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
+              <input type="number" value="${qty}" min="0"
+                onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
+                style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
+              <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;flex-shrink:0;min-width:44px;text-align:right">${ap ? fmt(ap.price) : '—'}</span>
+            </div>`;
+          }).join('');
+          return `<div style="font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 3px">${esc(cat)}</div>${rows}`;
+        }).join('');
+        addonsHtml = `<div style="padding:0 14px 8px;border-top:1px solid var(--gray-100)">
+          <div style="font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">System Add-ons</div>
+          ${addonGroupsHtml}
+        </div>`;
+      } else if (Array.isArray(q.addons) && q.addons.length === 0) {
+        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--gray-400)">No add-ons found for this system.</div>`;
+      }
+
+      // Include checked system addons in totals
+      (q.addons || []).filter(a => a.checked).forEach(a => {
+        const ap = getPrice(a.catalogNumber);
+        if (ap) { const qty = a.qtyOverride ?? a.qtyNeeded; grandAddons += ap.price * qty; }
+      });
+
       grandEquip += sysTotal;
 
       html += `<div class="system-card">
@@ -1466,6 +1521,7 @@ function renderQuoteTab() {
           <button class="sys-remove" onclick="removeSystem(${qi})">×</button>
         </div>
         <div class="sys-rows">${rowsHtml}</div>
+        ${addonsHtml}
       </div>`;
     });
   }
@@ -1543,12 +1599,120 @@ function removeSystem(qi) {
 }
 
 function catGroup(a) {
-  const d = (a.description||'').toLowerCase();
-  if (/pump|condensate/.test(d)) return 'Condensate';
-  if (/wire|clad|whip|lineset|line set|coupler/.test(d)) return 'Linesets & Wiring';
-  if (/bracket|mount|pad/.test(d)) return 'Mounting';
-  return 'Other';
+  return categorizeAddon(a.description || '', a.sku || a.catalogNumber || '');
 }
+
+function categorizeAddon(desc, sku) {
+  const d = (desc || '').toUpperCase();
+  const s = (sku || '').toUpperCase();
+  const rules = ADDON_RULES || [];
+  for (const r of rules) {
+    const p = (r.pattern || '').toUpperCase();
+    if (!p) continue;
+    let hit = false;
+    switch (r.match_type) {
+      case 'keyword':      hit = d.includes(p); break;
+      case 'sku_prefix':   hit = s.startsWith(p); break;
+      case 'sku_exact':    hit = s === p; break;
+      case 'sku_contains': hit = s.includes(p); break;
+    }
+    if (hit) return r.category;
+  }
+  return DEFAULT_ADDON_CATEGORY;
+}
+
+async function loadAddonsForQuoteItem(qi) {
+  const q = quote[qi];
+  if (!q || !eclipseSession.token) return;
+  q.addonsLoading = true;
+  q.addons = null;
+  q.addonsError = null;
+  renderQuoteTab();
+  try {
+    const catalogs = [];
+    if (q.qtype === 'sz') {
+      if (q.ou) catalogs.push(fmtCat(q.ou));
+      if (q.iu) catalogs.push(fmtCat(q.iu));
+    } else {
+      if (q.ou) catalogs.push(fmtCat(q.ou));
+      (q.zones || []).forEach(z => { if (z.model) catalogs.push(fmtCat(z.model)); });
+    }
+    const tagAlongAgg = {};
+    for (const cat of catalogs) {
+      try {
+        const res = await fetch('/api/eclipse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'searchProducts', sessionToken: eclipseSession.token, keyword: cat })
+        });
+        const data = await res.json();
+        const product = (data.results || []).find(p => p.catalogNumber === cat) || (data.results || [])[0];
+        if (!product) continue;
+        for (const ta of (product.tagAlongs || [])) {
+          const pid = ta.tagAlongProductId || ta.productId || ta.id;
+          if (!pid) continue;
+          if (!tagAlongAgg[pid]) tagAlongAgg[pid] = { qtyNeeded: 0, required: false, type: ta.tagAlongType || '' };
+          tagAlongAgg[pid].qtyNeeded += (ta.orderQty || 1);
+          if (ta.requiredFlag) tagAlongAgg[pid].required = true;
+        }
+      } catch(e) { /* skip */ }
+    }
+    const equipCats = new Set([q.ou, q.iu, ...(q.zones||[]).map(z=>z.model)].filter(Boolean).map(fmtCat));
+    const addons = [];
+    for (const pid of Object.keys(tagAlongAgg)) {
+      try {
+        const res = await fetch('/api/eclipse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getProduct', sessionToken: eclipseSession.token, productId: pid })
+        });
+        const detail = await res.json();
+        if (!detail.catalogNumber || equipCats.has(detail.catalogNumber)) continue;
+        const agg = tagAlongAgg[pid];
+        addons.push({
+          productId: pid,
+          catalogNumber: detail.catalogNumber,
+          description: detail.description || detail.catalogNumber,
+          qtyNeeded: agg.qtyNeeded,
+          qtyOverride: null,
+          required: agg.required,
+          tagAlongType: agg.type,
+          category: categorizeAddon(detail.description || '', detail.catalogNumber || ''),
+          checked: agg.required
+        });
+      } catch(e) { /* skip */ }
+    }
+    addons.sort((a, b) => {
+      if (a.required !== b.required) return a.required ? -1 : 1;
+      if (a.category !== b.category) return a.category.localeCompare(b.category);
+      return (a.description || '').localeCompare(b.description || '');
+    });
+    q.addons = addons;
+    q.addonsLoading = false;
+    renderQuoteTab();
+    if (qSelectedCustomer) getPricing();
+  } catch(err) {
+    q.addonsLoading = false;
+    q.addonsError = 'Failed to load add-ons';
+    renderQuoteTab();
+  }
+}
+
+function toggleAddonItem(qi, ai) {
+  const addon = quote[qi]?.addons?.[ai];
+  if (!addon) return;
+  addon.checked = !addon.checked;
+  renderQuoteTab();
+}
+
+function setAddonQtyMobile(qi, ai, val) {
+  const a = quote[qi]?.addons?.[ai];
+  if (!a) return;
+  const v = Math.max(0, Math.floor(val || 0));
+  if (v === 0) { a.checked = false; a.qtyOverride = null; }
+  else { a.qtyOverride = (v === a.qtyNeeded) ? null : v; if (!a.checked) a.checked = true; }
+  renderQuoteTab();
+}
+
+
 
 function updateGetPricingBtn() {
   const has = quote.length > 0
@@ -1988,7 +2152,7 @@ async function doPushToEclipse() {
     quote.forEach(q => {
       if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
       else { lines.push({model:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({model:fmtCat(z.model),qty:1});}); }
-      (q.addons||[]).filter(a=>a.checked).forEach(a=>lines.push({model:fmtCat(a.catalogNumber),qty:1}));
+      (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
     });
     (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
     Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
