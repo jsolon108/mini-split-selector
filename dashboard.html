@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Usage Dashboard — Johnstone Ductless</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --border: rgba(255,255,255,.07);
+  --blue: #3b82f6;
+  --blue-dim: rgba(59,130,246,.15);
+  --green: #10b981;
+  --green-dim: rgba(16,185,129,.15);
+  --yellow: #f59e0b;
+  --yellow-dim: rgba(245,158,11,.15);
+  --purple: #8b5cf6;
+  --purple-dim: rgba(139,92,246,.15);
+  --text: #f1f5f9;
+  --text-dim: #64748b;
+  --text-mid: #94a3b8;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; }
+
+/* ── Layout ── */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 32px;
+  height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.header-logo { display: flex; align-items: center; gap: 12px; }
+.header-logo .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+.header-title { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
+.header-sub { font-size: 11px; color: var(--text-dim); }
+.header-right { display: flex; align-items: center; gap: 16px; }
+.range-btn {
+  padding: 6px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: transparent; color: var(--text-mid); font-size: 12px; font-weight: 500;
+  cursor: pointer; font-family: var(--font); transition: all .15s;
+}
+.range-btn.active { background: var(--blue-dim); border-color: var(--blue); color: var(--blue); }
+.last-updated { font-size: 11px; color: var(--text-dim); }
+
+.main { flex: 1; padding: 28px 32px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+/* ── Stat cards ── */
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.stat-label { font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.stat-value { font-size: 32px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+.stat-sub { font-size: 11px; color: var(--text-dim); }
+.stat-card.blue .stat-value { color: var(--blue); }
+.stat-card.green .stat-value { color: var(--green); }
+.stat-card.yellow .stat-value { color: var(--yellow); }
+.stat-card.purple .stat-value { color: var(--purple); }
+
+/* ── Section heading ── */
+.section-label {
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px;
+}
+
+/* ── Two-col layout ── */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.grid3 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+/* ── Panel ── */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+.panel-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-size: 13px; font-weight: 600; }
+.panel-body { padding: 16px 20px; }
+
+/* ── Bar chart ── */
+.bar-chart { display: flex; flex-direction: column; gap: 10px; }
+.bar-row { display: flex; align-items: center; gap: 10px; }
+.bar-label { font-size: 12px; color: var(--text-mid); width: 80px; flex-shrink: 0; text-align: right; font-family: var(--mono); }
+.bar-track { flex: 1; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width .6s cubic-bezier(.4,0,.2,1); }
+.bar-count { font-size: 11px; color: var(--text-dim); font-family: var(--mono); width: 28px; text-align: right; flex-shrink: 0; }
+
+/* ── Sparkline ── */
+.sparkline-wrap { position: relative; height: 80px; margin: 4px 0; }
+.sparkline-wrap svg { width: 100%; height: 100%; overflow: visible; }
+
+/* ── Activity feed ── */
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-item {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+.activity-item:last-child { border-bottom: none; }
+.activity-icon {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; flex-shrink: 0;
+}
+.activity-body { flex: 1; min-width: 0; }
+.activity-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity-meta { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.activity-time { font-size: 11px; color: var(--text-dim); white-space: nowrap; font-family: var(--mono); flex-shrink: 0; }
+
+/* ── User table ── */
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table th { font-size: 10px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; padding: 0 0 10px; text-align: left; border-bottom: 1px solid var(--border); }
+.user-table td { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+.user-table tr:last-child td { border-bottom: none; }
+.user-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  font-size: 10px; font-weight: 700; margin-right: 8px;
+  background: var(--blue-dim); color: var(--blue);
+}
+.device-badge {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px;
+}
+.device-badge.mobile { background: var(--purple-dim); color: var(--purple); }
+.device-badge.desktop { background: var(--blue-dim); color: var(--blue); }
+
+/* ── Action pills ── */
+.action-pill {
+  font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px;
+  display: inline-block;
+}
+.action-pill.eclipse_push { background: var(--green-dim); color: var(--green); }
+.action-pill.get_pricing { background: var(--blue-dim); color: var(--blue); }
+.action-pill.add_system { background: var(--yellow-dim); color: var(--yellow); }
+.action-pill.product_search { background: var(--purple-dim); color: var(--purple); }
+
+/* ── Empty state ── */
+.empty { text-align: center; padding: 40px; color: var(--text-dim); }
+.empty .icon { font-size: 32px; margin-bottom: 10px; }
+.empty .msg { font-size: 13px; }
+
+/* ── Loading ── */
+.loading { text-align: center; padding: 32px; color: var(--text-dim); font-size: 13px; }
+
+/* ── Dot online ── */
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="dot" style="animation: pulse 2s infinite"></div>
+      <div>
+        <div class="header-title">Ductless Quotes — Usage Dashboard</div>
+        <div class="header-sub">Johnstone Supply NY/CT</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div id="range-btns" style="display:flex;gap:6px">
+        <button class="range-btn active" onclick="setRange(7)">7d</button>
+        <button class="range-btn" onclick="setRange(30)">30d</button>
+        <button class="range-btn" onclick="setRange(90)">90d</button>
+        <button class="range-btn" onclick="setRange(0)">All</button>
+      </div>
+      <div class="last-updated" id="last-updated">—</div>
+      <button onclick="loadAll()" style="padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;cursor:pointer;font-family:var(--font)">↻ Refresh</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Stat cards -->
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card blue"><div class="stat-label">Total Events</div><div class="stat-value" id="stat-total">—</div><div class="stat-sub" id="stat-total-sub">in selected period</div></div>
+      <div class="stat-card green"><div class="stat-label">Quotes Pushed</div><div class="stat-value" id="stat-pushes">—</div><div class="stat-sub" id="stat-pushes-sub">to Eclipse</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Active Users</div><div class="stat-value" id="stat-users">—</div><div class="stat-sub" id="stat-users-sub">unique usernames</div></div>
+      <div class="stat-card purple"><div class="stat-label">Searches</div><div class="stat-value" id="stat-searches">—</div><div class="stat-sub" id="stat-searches-sub">product lookups</div></div>
+    </div>
+
+    <!-- Activity chart + action breakdown -->
+    <div class="grid3" style="margin-bottom:16px">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Activity Over Time</div>
+          <div style="font-size:11px;color:var(--text-dim)" id="chart-label">events per day</div>
+        </div>
+        <div class="panel-body">
+          <div id="sparkline-container" class="sparkline-wrap"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">By Action Type</div></div>
+        <div class="panel-body">
+          <div class="bar-chart" id="action-bars"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- User table + recent activity -->
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Users</div>
+          <div style="font-size:11px;color:var(--text-dim)">by total events</div>
+        </div>
+        <div class="panel-body" id="user-table-wrap"><div class="loading">Loading…</div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Recent Activity</div>
+          <div style="font-size:11px;color:var(--text-dim)" id="recent-count">—</div>
+        </div>
+        <div class="panel-body" style="padding:0 20px" id="activity-feed"><div class="loading" style="padding:24px">Loading…</div></div>
+      </div>
+    </div>
+
+    <!-- Eclipse pushes table -->
+    <div class="panel" style="margin-top:16px">
+      <div class="panel-header">
+        <div class="panel-title">Eclipse Quotes Created</div>
+        <div style="font-size:11px;color:var(--text-dim)" id="push-count">—</div>
+      </div>
+      <div class="panel-body" id="push-table-wrap"><div class="loading">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
+const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
+const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
+
+let rangeDays = 7;
+let allEvents = [];
+
+function setRange(days) {
+  rangeDays = days;
+  document.querySelectorAll('.range-btn').forEach((b, i) => {
+    b.classList.toggle('active', [7,30,90,0][i] === days);
+  });
+  render(filterEvents(allEvents));
+}
+
+function filterEvents(events) {
+  if (!rangeDays) return events;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - rangeDays);
+  return events.filter(e => new Date(e.created_at) >= cutoff);
+}
+
+async function loadAll() {
+  document.getElementById('last-updated').textContent = 'Loading…';
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/usage_events?select=*&order=created_at.desc&limit=1000`, { headers: H });
+    allEvents = await res.json();
+    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    render(filterEvents(allEvents));
+  } catch(e) {
+    document.getElementById('last-updated').textContent = 'Error loading data';
+  }
+}
+
+function render(events) {
+  if (!Array.isArray(events)) events = [];
+
+  // ── Stat cards ──
+  const pushes = events.filter(e => e.action === 'eclipse_push');
+  const searches = events.filter(e => e.action === 'product_search');
+  const users = new Set(events.map(e => e.username).filter(Boolean));
+  document.getElementById('stat-total').textContent = events.length.toLocaleString();
+  document.getElementById('stat-pushes').textContent = pushes.length.toLocaleString();
+  document.getElementById('stat-users').textContent = users.size.toLocaleString();
+  document.getElementById('stat-searches').textContent = searches.length.toLocaleString();
+  document.getElementById('stat-total-sub').textContent = rangeDays ? `last ${rangeDays} days` : 'all time';
+  document.getElementById('stat-pushes-sub').textContent = `${pushes.length} quotes to Eclipse`;
+  document.getElementById('stat-users-sub').textContent = `${users.size} unique usernames`;
+  document.getElementById('stat-searches-sub').textContent = `${searches.length} product lookups`;
+
+  if (events.length === 0) {
+    const emptyHtml = `<div class="empty"><div class="icon">📊</div><div class="msg">No events yet — data will appear once users start using the app.</div></div>`;
+    ['sparkline-container','action-bars','user-table-wrap','activity-feed','push-table-wrap'].forEach(id => {
+      document.getElementById(id).innerHTML = emptyHtml;
+    });
+    document.getElementById('recent-count').textContent = '—';
+    document.getElementById('push-count').textContent = '—';
+    return;
+  }
+
+  renderSparkline(events);
+  renderActionBars(events);
+  renderUserTable(events);
+  renderActivityFeed(events);
+  renderPushTable(pushes);
+}
+
+function renderSparkline(events) {
+  // Group by date
+  const byDate = {};
+  events.forEach(e => {
+    const d = e.created_at.slice(0, 10);
+    byDate[d] = (byDate[d] || 0) + 1;
+  });
+  // Fill in missing days
+  const days = rangeDays || 30;
+  const dates = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  const counts = dates.map(d => byDate[d] || 0);
+  const max = Math.max(...counts, 1);
+
+  const w = 600, h = 80, pad = 4;
+  const points = counts.map((c, i) => {
+    const x = pad + (i / (counts.length - 1 || 1)) * (w - pad * 2);
+    const y = h - pad - (c / max) * (h - pad * 2);
+    return `${x},${y}`;
+  }).join(' ');
+
+  // Area path
+  const firstX = pad;
+  const lastX = pad + (w - pad * 2);
+  const areaPoints = `${firstX},${h} ${points} ${lastX},${h}`;
+
+  // Bar chart version (if few days)
+  if (counts.length <= 14) {
+    const barW = (w - pad * 2) / counts.length - 2;
+    const bars = counts.map((c, i) => {
+      const x = pad + i * ((w - pad * 2) / counts.length) + 1;
+      const barH = c > 0 ? Math.max(4, (c / max) * (h - pad * 2)) : 0;
+      const y = h - pad - barH;
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="2" fill="url(#barGrad)" opacity="${c > 0 ? 1 : 0.2}"/>`;
+    }).join('');
+    document.getElementById('sparkline-container').innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3b82f6"/>
+            <stop offset="100%" stop-color="#1d4ed8"/>
+          </linearGradient>
+        </defs>
+        ${bars}
+      </svg>`;
+    return;
+  }
+
+  document.getElementById('sparkline-container').innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3b82f6" stop-opacity=".3"/>
+          <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <polygon points="${areaPoints}" fill="url(#areaGrad)"/>
+      <polyline points="${points}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>
+    </svg>`;
+}
+
+function renderActionBars(events) {
+  const actions = {
+    eclipse_push:   { label: 'Eclipse Push', color: '#10b981' },
+    get_pricing:    { label: 'Get Pricing',  color: '#3b82f6' },
+    add_system:     { label: 'Add System',   color: '#f59e0b' },
+    product_search: { label: 'Search',       color: '#8b5cf6' },
+  };
+  const counts = {};
+  events.forEach(e => { counts[e.action] = (counts[e.action] || 0) + 1; });
+  const max = Math.max(...Object.values(counts), 1);
+  const html = Object.entries(actions).map(([key, cfg]) => {
+    const c = counts[key] || 0;
+    const pct = Math.round(c / max * 100);
+    return `<div class="bar-row">
+      <div class="bar-label">${cfg.label}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${cfg.color}"></div></div>
+      <div class="bar-count">${c}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('action-bars').innerHTML = html;
+}
+
+function renderUserTable(events) {
+  const userMap = {};
+  events.forEach(e => {
+    const u = e.username || 'unknown';
+    if (!userMap[u]) userMap[u] = { total: 0, pushes: 0, searches: 0, devices: new Set(), last: e.created_at };
+    userMap[u].total++;
+    if (e.action === 'eclipse_push') userMap[u].pushes++;
+    if (e.action === 'product_search') userMap[u].searches++;
+    if (e.device) userMap[u].devices.add(e.device);
+    if (e.created_at > userMap[u].last) userMap[u].last = e.created_at;
+  });
+  const sorted = Object.entries(userMap).sort((a,b) => b[1].total - a[1].total);
+  if (!sorted.length) { document.getElementById('user-table-wrap').innerHTML = '<div class="empty"><div class="msg">No users yet.</div></div>'; return; }
+  const rows = sorted.map(([name, s]) => {
+    const initials = name.slice(0,2).toUpperCase();
+    const devices = [...s.devices].map(d => `<span class="device-badge ${d}">${d}</span>`).join(' ');
+    const last = timeAgo(s.last);
+    return `<tr>
+      <td><span class="user-badge">${initials}</span>${name}</td>
+      <td style="font-family:var(--mono);color:var(--text-mid)">${s.total}</td>
+      <td style="font-family:var(--mono);color:var(--green)">${s.pushes}</td>
+      <td style="font-family:var(--mono);color:var(--purple)">${s.searches}</td>
+      <td>${devices}</td>
+      <td style="color:var(--text-dim);font-family:var(--mono);font-size:11px">${last}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('user-table-wrap').innerHTML = `
+    <table class="user-table">
+      <thead><tr>
+        <th>User</th><th>Events</th><th>Pushes</th><th>Searches</th><th>Device</th><th>Last Seen</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderActivityFeed(events) {
+  const icons = {
+    eclipse_push:   { bg: 'var(--green-dim)',  icon: '📤' },
+    get_pricing:    { bg: 'var(--blue-dim)',   icon: '💲' },
+    add_system:     { bg: 'var(--yellow-dim)', icon: '➕' },
+    product_search: { bg: 'var(--purple-dim)', icon: '🔍' },
+  };
+  const recent = events.slice(0, 25);
+  document.getElementById('recent-count').textContent = `${recent.length} of ${events.length}`;
+  const html = recent.map(e => {
+    const ic = icons[e.action] || { bg: 'var(--surface2)', icon: '•' };
+    let title = e.action.replace(/_/g, ' ');
+    if (e.action === 'eclipse_push' && e.detail?.customer) title = `Pushed quote for ${e.detail.customer}`;
+    else if (e.action === 'get_pricing' && e.detail?.customer) title = `Priced for ${e.detail.customer}`;
+    else if (e.action === 'add_system' && e.detail?.brand) title = `Added ${e.detail.brand} ${e.detail.cap||''}K ${e.detail.type||''}`;
+    else if (e.action === 'product_search' && e.detail?.keyword) title = `Searched "${e.detail.keyword}"`;
+    const meta = [e.username, e.user_branch, e.device].filter(Boolean).join(' · ');
+    return `<div class="activity-item">
+      <div class="activity-icon" style="background:${ic.bg}">${ic.icon}</div>
+      <div class="activity-body">
+        <div class="activity-title">${title}</div>
+        <div class="activity-meta">${meta}</div>
+      </div>
+      <div class="activity-time">${timeAgo(e.created_at)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('activity-feed').innerHTML = html || '<div class="empty"><div class="msg">No activity yet.</div></div>';
+}
+
+function renderPushTable(pushes) {
+  document.getElementById('push-count').textContent = `${pushes.length} total`;
+  if (!pushes.length) { document.getElementById('push-table-wrap').innerHTML = '<div class="empty"><div class="icon">📤</div><div class="msg">No Eclipse quotes yet.</div></div>'; return; }
+  const rows = pushes.slice(0, 50).map(e => {
+    const d = e.detail || {};
+    const ts = new Date(e.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    return `<tr>
+      <td style="color:var(--text-dim);font-family:var(--mono);font-size:11px">${ts}</td>
+      <td><span class="user-badge">${(e.username||'?').slice(0,2).toUpperCase()}</span>${e.username||'—'}</td>
+      <td style="font-weight:600">${d.customer||'—'}</td>
+      <td style="font-family:var(--mono);color:var(--green)">${d.orderId||'—'}</td>
+      <td style="color:var(--text-dim)">${d.systems||0} systems</td>
+      <td style="color:var(--text-dim)">${d.branch||e.user_branch||'—'}</td>
+      <td><span class="device-badge ${e.device||'desktop'}">${e.device||'desktop'}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('push-table-wrap').innerHTML = `
+    <table class="user-table">
+      <thead><tr><th>Time</th><th>User</th><th>Customer</th><th>Order #</th><th>Systems</th><th>Branch</th><th>Device</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function timeAgo(ts) {
+  const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return `${Math.floor(diff/86400)}d ago`;
+}
+
+// Auto-refresh every 60s
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
