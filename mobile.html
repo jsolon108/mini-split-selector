@@ -873,6 +873,23 @@ let ooCustomer = null, rqCustomer = null;
 let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
 let qCustTimer = null;
 
+
+// ── Usage tracking ────────────────────────────────────────────────
+function logEvent(action, detail = {}) {
+  try {
+    fetch(`${SB_URL}/rest/v1/usage_events`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        username: eclipseSession.username || 'unknown',
+        action,
+        detail,
+        user_branch: userBranch || null,
+        device: 'mobile'
+      })
+    }).catch(() => {}); // fire and forget — never block the UI
+  } catch(e) {}
+}
 // ══════════════════════════════════════════════
 // SESSION INTERCEPTOR
 // ══════════════════════════════════════════════
@@ -1116,6 +1133,7 @@ function szToggle(i) {
   } else {
     const newSzIdx = quote.length;
     quote.push({ ...s, qty: 1, qtype: 'sz', addons: null });
+    logEvent('add_system', { type: 'sz', brand: s.brand, series: s.series, cap: s.cap });
     switchTab('quote');
     loadAddonsForQuoteItem(newSzIdx);
   }
@@ -1382,6 +1400,7 @@ function mzAdd(oi) {
     return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'' };
   }).filter(Boolean);
   const newMzIdx = quote.length;
+  logEvent('add_system', { type: 'mz', brand: o.brand, series: o.series, cap: o.ou_cap, zones: zones.length });
   quote.push({
     id: o.id+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
     ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
@@ -2061,6 +2080,7 @@ async function getPricing() {
   if (!qSelectedCustomer || !eclipseSession.token) return;
   const btn = document.getElementById('get-pricing-btn');
   btn.textContent = 'Loading…'; btn.disabled = true;
+  logEvent('get_pricing', { customer: qSelectedCustomer?.name, systems: quote.length });
   try {
     const pairs = [];
     const addPair = (cat, order=null) => { if (cat) pairs.push({ cat: fmtCat(cat), order: order||null }); };
@@ -2112,6 +2132,7 @@ async function ppSearch(keyword) {
     ppRenderResults(gen);
     ppFetchInventory(gen, data.userBranch || userBranch);
     ppFetchImages(); // start fetching images immediately
+    logEvent('product_search', { keyword, results: ppLastResults.length });
   } catch(e) {
     document.getElementById('pp-results').innerHTML = `<div class="loading-state" style="color:var(--red)">Error: ${esc(e.message)}</div>`;
   }
@@ -2349,10 +2370,12 @@ async function doPushToEclipse() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Push failed');
-    status.textContent = `✓ Quote #${data.orderId||data.id||'—'} created`;
+    const orderId = data.orderId||data.id||'—';
+    status.textContent = `✓ Quote #${orderId} created`;
     status.style.color = 'var(--green)';
     btn.textContent = 'Done';
     btn.onclick = () => closeOverlay('eclipse-overlay');
+    logEvent('eclipse_push', { orderId, customer: qSelectedCustomer?.name, systems: quote.length, branch: document.getElementById('eclipse-branch').value });
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)';
     btn.textContent = 'Create Quote'; btn.disabled = false;
