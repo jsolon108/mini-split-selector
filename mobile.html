@@ -1458,44 +1458,63 @@ function renderQuoteTab() {
         grandAddons += ap?.price || 0;
       });
 
-      // Addon section
+      // Addon section — collapsible
+      const addonExpanded = q.addonsExpanded || false;
       let addonsHtml = '';
       if (q.addonsLoading) {
-        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--gray-400)">⏳ Loading add-ons…</div>`;
-      } else if (q.addonsError) {
-        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--red)">${esc(q.addonsError)}</div>`;
-      } else if (Array.isArray(q.addons) && q.addons.length > 0) {
-        // Group by category
-        const addonGroups = {};
-        q.addons.forEach((a, ai) => {
-          if (!addonGroups[a.category]) addonGroups[a.category] = [];
-          addonGroups[a.category].push({ ...a, ai });
-        });
-        const addonGroupsHtml = Object.entries(addonGroups).map(([cat, items]) => {
-          const rows = items.map(a => {
-            const ap = getPrice(a.catalogNumber);
-            const qty = a.qtyOverride ?? a.qtyNeeded;
-            const dot = stockDot(a.catalogNumber);
-            return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px dashed var(--gray-100)">
-              <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddonItem(${qi},${a.ai})"
-                style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
-              <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:60px">${esc(a.catalogNumber)}</span>
-              <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;white-space:normal;line-height:1.3">${esc(a.description||'')}</span>
-              <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
-              <input type="number" value="${qty}" min="0"
-                onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
-                style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
-              <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;flex-shrink:0;min-width:44px;text-align:right">${ap ? fmt(ap.price) : '—'}</span>
-            </div>`;
-          }).join('');
-          return `<div style="font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 3px">${esc(cat)}</div>${rows}`;
-        }).join('');
-        addonsHtml = `<div style="padding:0 14px 8px;border-top:1px solid var(--gray-100)">
-          <div style="font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 4px">System Add-ons</div>
-          ${addonGroupsHtml}
+        addonsHtml = `<div style="padding:10px 14px;border-top:1px solid var(--gray-100);font-size:11px;color:var(--gray-400);display:flex;align-items:center;gap:6px">
+          <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Loading add-ons…
         </div>`;
-      } else if (Array.isArray(q.addons) && q.addons.length === 0) {
-        addonsHtml = `<div style="padding:8px 14px;font-size:11px;color:var(--gray-400)">No add-ons found for this system.</div>`;
+      } else if (q.addonsError) {
+        addonsHtml = `<div style="padding:10px 14px;border-top:1px solid var(--gray-100);font-size:11px;color:var(--red)">${esc(q.addonsError)}</div>`;
+      } else if (Array.isArray(q.addons)) {
+        const checkedAddons = q.addons.filter(a => a.checked);
+        const checkedTotal = checkedAddons.reduce((s, a) => {
+          const ap = getPrice(a.catalogNumber);
+          return s + (ap ? ap.price * (a.qtyOverride ?? a.qtyNeeded) : 0);
+        }, 0);
+        const summaryText = q.addons.length === 0
+          ? 'No add-ons found'
+          : checkedAddons.length > 0
+            ? `${checkedAddons.length} of ${q.addons.length} selected · ${checkedTotal ? fmt(checkedTotal) : '—'}`
+            : `${q.addons.length} available · none selected`;
+        const summaryColor = checkedAddons.length > 0 ? 'var(--blue)' : 'var(--gray-400)';
+
+        let expandedHtml = '';
+        if (addonExpanded && q.addons.length > 0) {
+          const addonGroups = {};
+          q.addons.forEach((a, ai) => {
+            if (!addonGroups[a.category]) addonGroups[a.category] = [];
+            addonGroups[a.category].push({ ...a, ai });
+          });
+          expandedHtml = Object.entries(addonGroups).map(([cat, items]) => {
+            const rows = items.map(a => {
+              const ap = getPrice(a.catalogNumber);
+              const qty = a.qtyOverride ?? a.qtyNeeded;
+              const dot = stockDot(a.catalogNumber);
+              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--gray-100)">
+                <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddonItem(${qi},${a.ai})"
+                  style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:58px">${esc(a.catalogNumber)}</span>
+                <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;line-height:1.3">${esc(a.description||'')}</span>
+                <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
+                <input type="number" value="${qty}" min="0" onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
+                  style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
+                <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;min-width:44px;text-align:right">${ap ? fmt(ap.price) : '—'}</span>
+              </div>`;
+            }).join('');
+            return `<div style="font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 2px">${esc(cat)}</div>${rows}`;
+          }).join('');
+        }
+
+        addonsHtml = `<div style="border-top:1px solid var(--gray-100)">
+          <button onclick="toggleSysAddons(${qi})" style="width:100%;display:flex;align-items:center;gap:8px;padding:10px 14px;background:none;border:none;cursor:pointer;font-family:var(--font);text-align:left">
+            <span style="font-size:11px;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0">Add-ons</span>
+            <span style="font-size:11px;color:${summaryColor};flex:1">${summaryText}</span>
+            <span style="color:var(--gray-400);font-size:13px;transition:transform .2s;display:inline-block;transform:rotate(${addonExpanded?'90':'0'}deg)">›</span>
+          </button>
+          ${addonExpanded && q.addons.length > 0 ? `<div style="padding:0 14px 10px">${expandedHtml}</div>` : ''}
+        </div>`;
       }
 
       // Include checked system addons in totals
@@ -1694,6 +1713,12 @@ async function loadAddonsForQuoteItem(qi) {
     q.addonsError = 'Failed to load add-ons';
     renderQuoteTab();
   }
+}
+
+function toggleSysAddons(qi) {
+  if (!quote[qi]) return;
+  quote[qi].addonsExpanded = !quote[qi].addonsExpanded;
+  renderQuoteTab();
 }
 
 function toggleAddonItem(qi, ai) {
