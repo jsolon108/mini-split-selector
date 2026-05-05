@@ -1575,11 +1575,13 @@ function renderQuoteTab() {
       const p = getPrice(key);
       if (p) grandAddons += p.price * it.qty;
       html += `<div class="wide-row">
-        <span class="wide-label">Item</span>
         <span class="wide-model">${esc(key)}</span>
         <span class="wide-desc">${esc(it.description||'')}</span>
         <div class="avail-dot ${stockDot(key)}"></div>
-        <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+        <input type="number" value="${it.qty}" min="1"
+          onchange="setCustomItemQty('${esc(key)}',+this.value)"
+          style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font);flex-shrink:0"/>
+        <span class="wide-price">${p ? fmt(p.price * it.qty) : '—'}</span>
       </div>`;
     });
     html += `</div></div>`;
@@ -2066,6 +2068,14 @@ async function ppFetchInventory(gen, branch) {
     });
     ppFetchImages(); // lazy image load after stock dots update
   } catch(e) {}
+}
+
+function setCustomItemQty(key, val) {
+  const v = Math.max(1, Math.floor(val || 1));
+  if (quoteWideState.customItems[key]) {
+    quoteWideState.customItems[key].qty = v;
+    renderQuoteTab();
+  }
 }
 
 function ppAdd(i) {
