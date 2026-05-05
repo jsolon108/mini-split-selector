@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+// Redirect mobile devices to mobile-optimized version.
+// Add ?desktop=1 to URL to force desktop view on mobile.
+if (!/[?&]desktop/.test(location.search)) {
+  var ua = navigator.userAgent || navigator.vendor || window.opera;
+  if (/android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua) ||
+      (window.screen.width <= 768 && 'ontouchstart' in window)) {
+    location.replace('/mobile.html');
+  }
+}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ductless Quote Builder — Johnstone Supply NY/CT</title>
