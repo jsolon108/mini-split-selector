@@ -844,7 +844,7 @@ const BRANCH_LABELS = {'BALD':'Baldwin','BKLN':'Brooklyn','BOH':'Bohemia','FARM'
 let eclipseSession = { token: null, username: null, password: null };
 let qSelectedCustomer = null;
 let quote = [];
-let quoteWideState = { common: {}, customItems: {} };
+let quoteWideState = { common: {}, customItems: {}, lineHide: {}, lineHideColor: null, lineHideSize: null, lineHideOpen: false };
 let quotePricing = { pricing: {}, inventory: {} };
 let COMMON_ADDONS = null;
 // Catalog data — matches desktop schema exactly
@@ -862,6 +862,13 @@ let userBranch = localStorage.getItem('eclipseHomeBranch') || 'FARM';
 let ADDON_RULES = null;
 const DEFAULT_ADDON_CATEGORY = 'Other Accessories';
 let equipmentCatalogs = new Set(); // all known equipment models — excluded from add-ons
+let LINE_HIDE_PRODUCTS = null;
+const LH_COLORS = [
+  { name: 'White', hex: '#fafafa', border: '#ccc' },
+  { name: 'Ivory', hex: '#f5ecd5', border: '#d4c890' },
+  { name: 'Brown', hex: '#6b4423', border: '#5a3919' },
+];
+const LH_SIZES = [77, 100, 140];
 let ooCustomer = null, rqCustomer = null;
 let ooTimer = null, rqTimer = null, ooProductTimer = null, rqProductTimer = null;
 let qCustTimer = null;
@@ -985,13 +992,14 @@ async function doLogin() {
 // ══════════════════════════════════════════════
 async function loadCatalogs() {
   try {
-    const [szR, mzR, iduR, comboR, caR, arR] = await Promise.all([
+    const [szR, mzR, iduR, comboR, caR, arR, lhR] = await Promise.all([
       fetch(`${SB_URL}/rest/v1/ductless_sz?active=eq.true&order=brand,series,cap`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz?active=eq.true&order=brand,ou_cap`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz_idu?active=eq.true&order=ou_id,cap,type`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/ductless_mz_combos?select=ou_id,combo&order=ou_id&limit=2000`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&order=sort_order.asc,description.asc`, { headers: H }),
       fetch(`${SB_URL}/rest/v1/addon_categories?active=eq.true&order=priority.asc`, { headers: H }),
+      fetch(`${SB_URL}/rest/v1/line_hide_products?active=eq.true&order=sort_order.asc`, { headers: H }),
     ]);
     SZ = await szR.json();
     MZ = await mzR.json();
@@ -1007,6 +1015,7 @@ async function loadCatalogs() {
     COMMON_ADDONS = await caR.json();
     const arRows = await arR.json();
     ADDON_RULES = Array.isArray(arRows) ? arRows : [];
+    LINE_HIDE_PRODUCTS = await lhR.json();
     // Build equipment exclusion set — all known ODU/IDU models across SZ and MZ
     equipmentCatalogs = new Set();
     SZ.forEach(s => { if (s.ou) equipmentCatalogs.add(fmtCat(s.ou)); if (s.iu) equipmentCatalogs.add(fmtCat(s.iu)); });
@@ -1594,6 +1603,17 @@ function renderQuoteTab() {
     html += `</div></div>`;
   }
 
+  // Slim Duct section
+  html += renderSlimDuctSection();
+
+  // Include lh items in grand total
+  if (LINE_HIDE_PRODUCTS) {
+    LINE_HIDE_PRODUCTS.forEach(p => {
+      const qty = quoteWideState.lineHide[p.order_num] || 0;
+      if (qty > 0) { const pr = getPrice(p.order_num); if (pr?.price) grandAddons += pr.price * qty; }
+    });
+  }
+
   // Grand total
   const grand = grandEquip + grandAddons;
   if (grand > 0) {
@@ -1748,10 +1768,124 @@ function setAddonQtyMobile(qi, ai, val) {
 
 
 
+// ══════════════════════════════════════════════
+// SLIM DUCT / LINE HIDE
+// ══════════════════════════════════════════════
+function lhTotal() {
+  if (!LINE_HIDE_PRODUCTS) return { total: 0, count: 0 };
+  let total = 0, count = 0;
+  for (const p of LINE_HIDE_PRODUCTS) {
+    const qty = quoteWideState.lineHide[p.order_num] || 0;
+    if (qty > 0) {
+      count++;
+      const pr = getPrice(p.order_num);
+      if (pr?.price) total += pr.price * qty;
+    }
+  }
+  return { total, count };
+}
+
+function renderSlimDuctSection() {
+  if (!LINE_HIDE_PRODUCTS) return '<div style="padding:12px;font-size:12px;color:var(--gray-400)">Loading…</div>';
+  const { total, count } = lhTotal();
+  const isOpen = quoteWideState.lineHideOpen;
+  const summaryText = count > 0 ? `${count} selected · ${total > 0 ? fmt(total) : '—'}` : 'None selected';
+  const summaryColor = count > 0 ? 'var(--blue)' : 'var(--gray-400)';
+
+  let bodyHtml = '';
+  if (isOpen) {
+    const colorChips = LH_COLORS.map(c => {
+      const sel = quoteWideState.lineHideColor === c.name;
+      return `<button onclick="lhSetColor('${c.name}')" style="display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;border:1.5px solid ${sel?'var(--blue)':'var(--gray-200)'};background:${sel?'var(--blue-light)':'#fff'};color:${sel?'var(--blue)':'var(--gray-600)'};font-size:12px;font-weight:${sel?'700':'500'};cursor:pointer;font-family:var(--font)">
+        <span style="width:12px;height:12px;border-radius:50%;background:${c.hex};border:1px solid ${c.border};flex-shrink:0"></span>${c.name}
+      </button>`;
+    }).join('');
+
+    let sizeHtml = '';
+    if (quoteWideState.lineHideColor) {
+      const sizeChips = LH_SIZES.map(s => {
+        const sel = quoteWideState.lineHideSize === s;
+        const avail = LINE_HIDE_PRODUCTS.filter(p => p.color === quoteWideState.lineHideColor && p.size_code === s).length;
+        return `<button onclick="lhSetSize(${s})" ${avail===0?'disabled':''} style="height:32px;padding:0 14px;border-radius:20px;border:1.5px solid ${sel?'var(--blue)':'var(--gray-200)'};background:${sel?'var(--blue-light)':avail===0?'var(--gray-50)':'#fff'};color:${sel?'var(--blue)':avail===0?'var(--gray-200)':'var(--gray-600)'};font-size:12px;font-weight:${sel?'700':'500'};cursor:${avail===0?'not-allowed':'pointer'};font-family:var(--font)">${s}mm</button>`;
+      }).join('');
+      sizeHtml = `<div style="margin-top:10px">
+        <div style="font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Size</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">${sizeChips}</div>
+      </div>`;
+    }
+
+    let productsHtml = '';
+    if (quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
+      const products = LINE_HIDE_PRODUCTS.filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize);
+      const byFig = {};
+      products.forEach(p => { (byFig[p.fig] = byFig[p.fig] || []).push(p); });
+      const groupsHtml = Object.keys(byFig).sort().map(fig => {
+        const items = byFig[fig];
+        const rows = items.map(p => {
+          const qty = quoteWideState.lineHide[p.order_num] || 0;
+          const pr = getPrice(p.order_num);
+          const lineTotal = pr?.price && qty > 0 ? pr.price * qty : null;
+          const dot = stockDot(p.order_num);
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--gray-100)">
+            <input type="checkbox" ${qty>0?'checked':''} onchange="lhToggle('${p.order_num.replace(/'/g,"\\'")}')"
+              style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:11px;color:var(--gray-900);line-height:1.3">${esc(p.description)} <span style="color:var(--gray-400);font-size:10px">${esc(p.size_str||'')}</span></div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--blue);margin-top:1px">${esc(p.order_num)}</div>
+            </div>
+            <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
+            <input type="number" value="${qty||1}" min="0" onchange="lhSetQty('${p.order_num.replace(/'/g,"\\'")}',+this.value)"
+              style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font);flex-shrink:0"/>
+            <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;min-width:44px;text-align:right">${lineTotal!=null?fmt(lineTotal):pr?.price?fmt(pr.price):'—'}</span>
+          </div>`;
+        }).join('');
+        return `<div style="margin-top:8px">
+          <div style="font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">${esc(items[0]?.description||'')} — Fig ${fig}</div>
+          ${rows}
+        </div>`;
+      }).join('');
+      productsHtml = `<div style="margin-top:10px">${groupsHtml||'<div style="font-size:12px;color:var(--gray-400);padding:8px 0">No products for this combination.</div>'}</div>`;
+    }
+
+    bodyHtml = `<div style="padding:0 14px 12px;border-top:1px solid var(--gray-100)">
+      <div style="font-size:10px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px">Color</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${colorChips}</div>
+      ${sizeHtml}
+      ${productsHtml}
+    </div>`;
+  }
+
+  return `<div class="card" style="margin-bottom:10px">
+    <button onclick="lhToggleOpen()" style="width:100%;display:flex;align-items:center;gap:8px;padding:12px 14px;background:none;border:none;cursor:pointer;font-family:var(--font);text-align:left">
+      <span style="font-size:13px;font-weight:600;flex:1">Slim Duct / Line Hide</span>
+      <span style="font-size:11px;color:${summaryColor}">${summaryText}</span>
+      <span style="color:var(--gray-400);font-size:13px;display:inline-block;transform:rotate(${isOpen?'90':'0'}deg);transition:transform .2s">›</span>
+    </button>
+    ${bodyHtml}
+  </div>`;
+}
+
+function lhToggleOpen() { quoteWideState.lineHideOpen = !quoteWideState.lineHideOpen; renderQuoteTab(); }
+function lhSetColor(c) { quoteWideState.lineHideColor = c; renderQuoteTab(); }
+function lhSetSize(s) { quoteWideState.lineHideSize = s; renderQuoteTab(); }
+function lhToggle(orderNum) {
+  const cur = quoteWideState.lineHide[orderNum] || 0;
+  if (cur > 0) delete quoteWideState.lineHide[orderNum];
+  else quoteWideState.lineHide[orderNum] = 1;
+  renderQuoteTab();
+}
+function lhSetQty(orderNum, val) {
+  const v = Math.max(0, Math.floor(val || 0));
+  if (v === 0) delete quoteWideState.lineHide[orderNum];
+  else quoteWideState.lineHide[orderNum] = v;
+  renderQuoteTab();
+}
+
 function updateGetPricingBtn() {
   const has = quote.length > 0
     || Object.values(quoteWideState.customItems||{}).some(it=>it?.qty>0)
-    || Object.keys(quoteWideState.common||{}).some(k=>(quoteWideState.common[k]||0)>0);
+    || Object.keys(quoteWideState.common||{}).some(k=>(quoteWideState.common[k]||0)>0)
+    || Object.keys(quoteWideState.lineHide||{}).some(k=>(quoteWideState.lineHide[k]||0)>0);
   document.getElementById('get-pricing-btn').disabled = !qSelectedCustomer || !has || !eclipseSession.token;
 }
 
@@ -2197,6 +2331,7 @@ async function doPushToEclipse() {
       (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
     });
     (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
+    (LINE_HIDE_PRODUCTS||[]).forEach(p => { const qty=quoteWideState.lineHide[p.order_num]||0; if(qty) lines.push({model:fmtCat(p.mfg_num||p.order_num),qty}); });
     Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
     const res = await fetch('/api/eclipse', {
       method:'POST', headers:{'Content-Type':'application/json'},
