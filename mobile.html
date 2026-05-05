@@ -2352,6 +2352,7 @@ async function doPushToEclipse() {
     status.textContent = `✓ Quote #${data.orderId||data.id||'—'} created`;
     status.style.color = 'var(--green)';
     btn.textContent = 'Done';
+    btn.onclick = () => closeOverlay('eclipse-overlay');
   } catch(e) {
     status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)';
     btn.textContent = 'Create Quote'; btn.disabled = false;
