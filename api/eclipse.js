@@ -35,13 +35,17 @@ async function createSession(username, password) {
   return data.sessionToken;
 }
 
-function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes) {
+function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
   const lineItems = [];
+  let hasProductLine = false;
   lines.forEach(l => {
     if (l.commentOnly) {
-      // Pure comment line — no product
-      lineItems.push({ lineItemComment: { comments: l.comment || '' } });
+      // Only add comment if there's been at least one product line before it
+      if (hasProductLine) {
+        lineItems.push({ lineItemComment: { comments: l.comment || '' } });
+      }
     } else {
+      hasProductLine = true;
       lineItems.push({
         lineItemProduct: {
           catalogNumber: formatCatalogNumber(l.model),
@@ -51,7 +55,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
           productDescription: l.description || ''
         }
       });
-      // Attach line comment immediately after the product if present
+      // Attach inline line comment immediately after the product if present
       if (l.comment) {
         lineItems.push({ lineItemComment: { comments: l.comment } });
       }
@@ -69,7 +73,6 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     orderType: '',
     lines: lineItems
   };
-  if (internalNotes) payload.internalNotes = internalNotes;
   return payload;
 }
 
@@ -107,7 +110,7 @@ async function authedFetch(url, options, username, password, sessionToken) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines, keyword } = req.body;
+  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines, keyword, internalNotes } = req.body;
 
   // Login
   if (action === 'login') {
@@ -168,7 +171,6 @@ export default async function handler(req, res) {
   // Create order
   if (action === 'salesOrderPreview') {
     try {
-      const { branch, customerAccount, customerPO, orderBy, lines, internalNotes } = req.body;
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes);
       payload.orderStatus = 'Bid';
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
@@ -261,7 +263,7 @@ export default async function handler(req, res) {
 
   if (action === 'order') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes);
       let { status, text } = await postOrder(sessionToken, payload);
       if (status === 419) {
         let newToken;
@@ -282,6 +284,16 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
       const orderId = extractOrderId(text);
+      // Append internal notes if provided
+      if (internalNotes && orderId) {
+        try {
+          await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}/InternalNotes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': sessionToken },
+            body: JSON.stringify({ internalNotes })
+          });
+        } catch(e) { /* non-fatal */ }
+      }
       return res.status(200).json({ success: true, orderId });
     } catch (err) {
       return res.status(500).json({ error: err.message });
