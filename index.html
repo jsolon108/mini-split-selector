@@ -3348,7 +3348,6 @@ function buildDesktopOrderLines() {
       q.zones.forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
     }
     (q.addons || []).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
-    // Attach comment to last line of this system
     if (q.comment && lines.length > start) lines[lines.length - 1].comment = q.comment;
   });
   wideLines.forEach(l => {
