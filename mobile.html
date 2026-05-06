@@ -2365,11 +2365,11 @@ function buildEclipseLines() {
   return lines;
 }
 
-async function doPreviewOrder() {
+async function doPreviewOrder(skipValidation = false) {
   const obRow = document.getElementById('eclipse-ordered-by-row');
   const orderBy = document.getElementById('eclipse-ordered-by').value;
   const statusEl = document.getElementById('eclipse-status');
-  if (obRow.style.display !== 'none' && !orderBy) {
+  if (!skipValidation && obRow.style.display !== 'none' && !orderBy) {
     statusEl.textContent = 'Please select an Ordered By contact.';
     return;
   }
@@ -2520,7 +2520,7 @@ function mSwapForSub(originalCat, subCat, subDesc) {
   if (!swapped) { alert(`Could not find ${originalCat} to replace.`); return; }
   quotePricing = {};
   renderQuoteTab();
-  doPreviewOrder();
+  doPreviewOrder(true);
 }
 
 async function doPushToEclipse() {
