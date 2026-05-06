@@ -46,7 +46,6 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
         umQuantity: 1,
         productDescription: l.description || ''
       },
-      ...(l.comment ? { comments: [{ comment: l.comment, commentTypeId: '1', lineId: null }] } : {})
     }));
   return {
     priceBranch: branch,
@@ -253,8 +252,6 @@ export default async function handler(req, res) {
   if (action === 'order') {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
-      const commentLines = payload.lines.filter(l => l.comments?.length);
-      console.log('[order] lines with comments:', JSON.stringify(commentLines));
 
       
       async function postNotes(token, orderId) {
