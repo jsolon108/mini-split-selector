@@ -519,25 +519,25 @@ export default async function handler(req, res) {
       const result = {};
       await Promise.all(catalogNumbers.map(async cat => {
         try {
-          // Find product by catalog number
+          console.log(`[Subs] Looking up: ${cat}`);
           const sr = await eclipseFetch(
             `${ECLIPSE_BASE}/Products?CatalogNumber=${encodeURIComponent(cat)}&pageSize=1`,
             { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
           );
-          if (!sr.ok) return;
+          if (!sr.ok) { console.log(`[Subs] Product search failed: ${sr.status}`); return; }
           const sd = await sr.json();
           const product = (sd.results || [])[0];
-          if (!product?.productId) return;
-          // Get full product detail with substitutes
+          if (!product?.productId) { console.log(`[Subs] No product found for ${cat}`); return; }
+          console.log(`[Subs] Found productId: ${product.productId}`);
           const dr = await eclipseFetch(
             `${ECLIPSE_BASE}/Products/${product.productId}`,
             { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
           );
-          if (!dr.ok) return;
+          if (!dr.ok) { console.log(`[Subs] Product detail failed: ${dr.status}`); return; }
           const detail = await dr.json();
           const subs = (detail.substitutes || []).slice(0, 3);
+          console.log(`[Subs] ${cat} has ${subs.length} substitutes`);
           if (!subs.length) return;
-          // Check availability for each substitute
           const subResults = [];
           await Promise.all(subs.map(async s => {
             try {
@@ -564,12 +564,14 @@ export default async function handler(req, res) {
                   branchQty = ba.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? item.totalWarehouseQty ?? null;
                 }
               }
+              console.log(`[Subs]   Sub ${subCat}: branchQty=${branchQty}, price=${unitPrice}`);
               subResults.push({ catalogNumber: subCat, description: (subDetail.description || subDetail.alternateDescription || subCat).split('\n')[0], branchQty, unitPrice });
-            } catch(e) { /* skip */ }
+            } catch(e) { console.log(`[Subs] Sub error:`, e.message); }
           }));
           const available = subResults.filter(s => s.branchQty > 0);
+          console.log(`[Subs] ${cat}: ${available.length} available subs`);
           if (available.length) result[cat] = available;
-        } catch(e) { /* skip */ }
+        } catch(e) { console.log(`[Subs] Error for ${cat}:`, e.message); }
       }));
       return res.status(200).json({ substitutes: result });
     } catch(err) {
