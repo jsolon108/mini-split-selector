@@ -5265,5 +5265,73 @@ function chunkArray(arr, size) {
   </div>
 
 
+
+<!-- Feedback Button + Modal -->
+<button id="feedback-fab" onclick="openFeedbackModal()" title="Send feedback"
+  style="position:fixed;bottom:24px;right:24px;width:44px;height:44px;border-radius:50%;background:#185FA5;color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;justify-content:center;line-height:1">
+  💬
+</button>
+<div class="modal-overlay" id="feedback-overlay" onclick="if(event.target===this)closeFeedbackModal()" style="z-index:9001">
+  <div class="modal" style="max-width:460px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:700;font-size:16px">Send Feedback</div>
+      <button onclick="closeFeedbackModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+    </div>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Category</label>
+    <select id="feedback-category" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:12px">
+      <option value="Bug">🐛 Bug / Something broken</option>
+      <option value="Feature">✨ Feature request</option>
+      <option value="Data">📦 Product / data issue</option>
+      <option value="General">💬 General feedback</option>
+    </select>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Message <span style="color:red">*</span></label>
+    <textarea id="feedback-message" placeholder="Describe the issue or idea..." style="width:100%;height:100px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
+    <div id="feedback-status" style="font-size:13px;min-height:20px;margin-bottom:10px"></div>
+    <div style="display:flex;gap:8px">
+      <button onclick="closeFeedbackModal()" style="flex:1;height:36px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="submitFeedback()" id="feedback-submit-btn" style="flex:1;height:36px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Send Feedback</button>
+    </div>
+  </div>
+</div>
+<script>
+function openFeedbackModal() {
+  document.getElementById('feedback-message').value = '';
+  document.getElementById('feedback-status').textContent = '';
+  document.getElementById('feedback-submit-btn').textContent = 'Send Feedback';
+  document.getElementById('feedback-submit-btn').disabled = false;
+  document.getElementById('feedback-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('feedback-message').focus(), 100);
+}
+function closeFeedbackModal() {
+  document.getElementById('feedback-overlay').classList.remove('open');
+}
+async function submitFeedback() {
+  const message = document.getElementById('feedback-message').value.trim();
+  const category = document.getElementById('feedback-category').value;
+  const statusEl = document.getElementById('feedback-status');
+  const btn = document.getElementById('feedback-submit-btn');
+  if (!message) { statusEl.textContent = 'Please enter a message.'; statusEl.style.color = 'red'; return; }
+  btn.textContent = 'Sending…'; btn.disabled = true; statusEl.textContent = '';
+  try {
+    const res = await fetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category, message,
+        username: eclipseSession?.username || localStorage.getItem('eclipseUsername') || 'unknown',
+        page: 'desktop',
+        device: 'desktop'
+      })
+    });
+    if (!res.ok) throw new Error('Send failed');
+    statusEl.textContent = '✓ Feedback sent — thank you!'; statusEl.style.color = 'green';
+    btn.textContent = 'Done';
+    setTimeout(() => closeFeedbackModal(), 1500);
+  } catch(e) {
+    statusEl.textContent = 'Failed to send. Please try again.'; statusEl.style.color = 'red';
+    btn.textContent = 'Send Feedback'; btn.disabled = false;
+  }
+}
+</script>
+
 </body>
 </html>
