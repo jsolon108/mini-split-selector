@@ -1805,6 +1805,45 @@ let ppLastResults = [];
 let ppImageCache = {}; // productId → image URL, persists across re-renders
 let ppSearchGen = 0;   // incremented on each new search; stale async callbacks check this
 
+function swapForSub(originalCat, subCat, subDesc) {
+  if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
+
+  let swapped = false;
+
+  // Check system quote items (SZ ODU/IDU, MZ ODU, zones, addons)
+  quote.forEach(q => {
+    if (q.ou && formatCatNumLocal(q.ou) === originalCat) { q.ou = subCat; swapped = true; }
+    if (q.iu && formatCatNumLocal(q.iu) === originalCat) { q.iu = subCat; swapped = true; }
+    if (q.model && formatCatNumLocal(q.model) === originalCat) { q.model = subCat; swapped = true; }
+    (q.zones || []).forEach(z => { if (z.model && formatCatNumLocal(z.model) === originalCat) { z.model = subCat; swapped = true; } });
+    (q.addons || []).forEach(a => { if (a.catalogNumber === originalCat) { a.catalogNumber = subCat; a.description = subDesc || subCat; swapped = true; } });
+  });
+
+  // Check quote-wide custom items
+  Object.values(quoteWideState.customItems || {}).forEach(it => {
+    if (it && formatCatNumLocal(it.catalogNumber) === originalCat) { it.catalogNumber = subCat; it.description = subDesc || subCat; swapped = true; }
+  });
+
+  // Check line hide items
+  Object.keys(quoteWideState.lineHide || {}).forEach(orderNum => {
+    if (orderNum === originalCat) {
+      const qty = quoteWideState.lineHide[orderNum];
+      delete quoteWideState.lineHide[orderNum];
+      quoteWideState.lineHide[subCat] = qty;
+      swapped = true;
+    }
+  });
+
+  if (!swapped) { alert(`Could not find ${originalCat} in the quote to replace.`); return; }
+
+  // Clear pricing so it re-fetches with the new model
+  quotePricing = {};
+  renderQuote();
+  // Close and re-open the modal to trigger a fresh preview with updated lines
+  closeEclipseModal();
+  setTimeout(() => openEclipseModal(), 100);
+}
+
 function promptSystemComment(qi) {
   const q = quote[qi];
   if (!q) return;
@@ -3354,6 +3393,10 @@ async function doDesktopPreview() {
                 <span style="color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.description}</span>
                 <span style="color:#0f6e56;font-weight:600">${s.branchQty} available</span>
                 <span style="font-weight:600;min-width:60px;text-align:right">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
+                <button onclick="swapForSub('${cat}','${s.catalogNumber}','${(s.description||'').replace(/'/g,"\\'")}')" 
+                  style="flex-shrink:0;padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">
+                  Use this
+                </button>
               </div>`
             ).join('');
             rowEl.insertAdjacentHTML('afterend', subHtml);
