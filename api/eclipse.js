@@ -36,32 +36,23 @@ async function createSession(username, password) {
 }
 
 function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
-  const lineItems = [];
-  let hasProductLine = false;
-  lines.forEach(l => {
-    if (l.commentOnly) {
-      // Only add comment if there's been at least one product line before it
-      if (hasProductLine) {
-        lineItems.push({ lineItemComment: { comments: l.comment || '' } });
+  const lineItems = lines
+    .filter(l => l.model && !l.commentOnly) // skip comment-only lines — comments are inline on product
+    .map(l => ({
+      lineItemProduct: {
+        catalogNumber: formatCatalogNumber(l.model),
+        quantity: l.qty,
+        um: 'EA',
+        umQuantity: 1,
+        productDescription: l.description || '',
+        ...(l.comment ? { 
+          comments: l.comment, 
+          commentsId: `CMT${Date.now()}`,
+          commentId: `CMT${Date.now()}`
+        } : {})
       }
-    } else {
-      hasProductLine = true;
-      lineItems.push({
-        lineItemProduct: {
-          catalogNumber: formatCatalogNumber(l.model),
-          quantity: l.qty,
-          um: 'EA',
-          umQuantity: 1,
-          productDescription: l.description || ''
-        }
-      });
-      // Attach inline line comment immediately after the product if present
-      if (l.comment) {
-        lineItems.push({ lineItemComment: { comments: l.comment } });
-      }
-    }
-  });
-  const payload = {
+    }));
+  return {
     priceBranch: branch,
     shipBranch: branch,
     glBranch: branch,
@@ -73,7 +64,6 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     orderType: '',
     lines: lineItems
   };
-  return payload;
 }
 
 async function postOrder(token, payload) {
