@@ -708,7 +708,8 @@ select:focus,input:focus{outline:none;border-color:#999}
     <!-- Preview panel — only shown when ?preview=1 and user clicks Preview -->
     <div id="modal-preview-panel" style="display:none;margin-top:14px;border:1px solid #e8e8e8;border-radius:8px;overflow:hidden">
       <div style="padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.05em">Order Preview</div>
-      <div id="modal-preview-body" style="max-height:280px;overflow-y:auto"></div>
+      <div id="modal-preview-body" style="max-height:320px;overflow-y:auto"></div>
+      <div id="modal-preview-subs" style="font-size:11px;color:#888;padding:4px 12px;min-height:16px"></div>
       <div id="modal-preview-total" style="padding:10px 12px;border-top:1px solid #e8e8e8;background:#f8f9fa"></div>
     </div>
     <button id="modal-close-btn" onclick="closeEclipseModal()" style="display:none;width:100%;margin-top:10px;padding:9px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;font-family:inherit">Close Window</button>
@@ -3256,8 +3257,6 @@ async function doDesktopPreview() {
     // Build line display from quotePricing — already fetched, instant, no extra API call
     const pricing = quotePricing?.pricing || {};
     const inventory = quotePricing?.inventory || {};
-    console.log('[Preview] inventory keys sample:', Object.keys(inventory).slice(0, 10));
-    console.log('[Preview] line models/skus:', lines.map(l => ({ model: l.model, sku: l.sku })));
     const userBranch2 = quotePricing?.userBranch || localStorage.getItem('eclipseHomeBranch') || 'FARM';
 
     function lookupPrice(cat) {
@@ -3294,13 +3293,14 @@ async function doDesktopPreview() {
       const qty = l.qty || 1;
       const extended = unitPrice != null ? unitPrice * qty : null;
       const branchQty = lookupInvFull(cat, sku);
+      const isOOS = branchQty === 0;
       const availLabel = branchQty != null
-        ? `<span style="color:${branchQty>0?'#0f6e56':'#c0392b'};font-weight:600">${branchQty} available</span>`
+        ? `<span style="color:${branchQty>0?'#0f6e56':'#c0392b'};font-weight:600">${branchQty>0 ? branchQty+' available' : '⚠ 0 available'}</span>`
         : '';
       // Get description from pricing response
       const desc = p?.description || p?.productDescription || cat;
       const descClean = typeof desc === 'string' ? desc.split('\n')[0] : cat;
-      return `<div style="padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
+      return `<div id="preview-row-${cat}" style="padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px;${isOOS?'background:#fff8f8':''}">
         <div style="display:flex;align-items:center;gap:8px">
           <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${cat}</span>
           <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${descClean}">${descClean}</span>
@@ -3317,6 +3317,55 @@ async function doDesktopPreview() {
       <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Tax</span><span>${data.tax != null ? '$'+data.tax.toFixed(2) : '—'}</span></div>
       <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#185FA5;border-top:1px solid #e8e8e8;padding-top:6px;margin-top:4px"><span>Total</span><span>${data.total != null ? '$'+data.total.toFixed(2) : '—'}</span></div>`;
     panel.style.display = 'block';
+
+    // Auto-check substitutes for OOS lines
+    const oosLines = lines.filter(l => {
+      if (!l.model) return false;
+      const branchQty = lookupInvFull(l.model, l.sku);
+      return branchQty === 0;
+    });
+    if (oosLines.length && custId) {
+      const oosEl = document.getElementById('modal-preview-subs');
+      if (oosEl) oosEl.textContent = `Checking substitutes for ${oosLines.length} OOS item${oosLines.length>1?'s':''}…`;
+      try {
+        const subRes = await fetch('/api/eclipse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getSubstitutes',
+            sessionToken: eclipseSession.token,
+            username: eclipseSession.username,
+            password: eclipseSession.password,
+            catalogNumbers: oosLines.map(l => l.model),
+            branch,
+            customerId: custId
+          })
+        });
+        const subData = await subRes.json();
+        const subs = subData.substitutes || {};
+        if (Object.keys(subs).length > 0) {
+          // Inject substitute suggestions into preview rows
+          Object.entries(subs).forEach(([cat, available]) => {
+            const rowEl = document.getElementById(`preview-row-${cat}`);
+            if (!rowEl) return;
+            const subHtml = available.map(s =>
+              `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 20px;background:#f0fdf4;border-bottom:1px solid #dcfce7;font-size:11px">
+                <span style="color:#0f6e56">↳ Sub:</span>
+                <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
+                <span style="color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.description}</span>
+                <span style="color:#0f6e56;font-weight:600">${s.branchQty} available</span>
+                <span style="font-weight:600;min-width:60px;text-align:right">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
+              </div>`
+            ).join('');
+            rowEl.insertAdjacentHTML('afterend', subHtml);
+          });
+          if (oosEl) oosEl.textContent = '';
+        } else {
+          if (oosEl) oosEl.textContent = '';
+        }
+      } catch(e) {
+        if (oosEl) oosEl.textContent = '';
+      }
+    }
 
     if (!data.subtotal && !data.total) {
       statusEl.textContent = '⚠ Run Get Pricing first to see line item prices.';
