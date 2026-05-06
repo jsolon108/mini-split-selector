@@ -3178,6 +3178,7 @@ async function doDesktopPreview() {
     function lookupPrice(cat) {
       if (!cat) return null;
       const k = formatCatNumLocal(cat);
+      // Check raw cat, formatted cat, and also try stripping order# prefix from description keys
       return pricing[cat] || pricing[k] || null;
     }
     function lookupInv(cat) {
@@ -3186,16 +3187,24 @@ async function doDesktopPreview() {
       const inv = inventory[cat] || inventory[k] || null;
       return inv ? inv.userQty : null;
     }
+    // For wide lines, also try the sku/orderNumber as lookup key
+    function lookupPriceFull(cat, sku) {
+      return lookupPrice(cat) || lookupPrice(sku) || null;
+    }
+    function lookupInvFull(cat, sku) {
+      return lookupInv(cat) || lookupInv(sku) || null;
+    }
 
     const rowsHtml = lines.map(l => {
       const cat = l.model || '';
-      const p = lookupPrice(cat);
+      const sku = l.sku || '';
+      const p = lookupPriceFull(cat, sku);
       const unitPrice = p?.price ?? null;
       const qty = l.qty || 1;
       const extended = unitPrice != null ? unitPrice * qty : null;
-      const branchQty = lookupInv(cat);
+      const branchQty = lookupInvFull(cat, sku);
       const availLabel = branchQty != null
-        ? `<span style="color:${branchQty>0?'#0f6e56':'#c0392b'};font-weight:600">${branchQty} on hand</span>`
+        ? `<span style="color:${branchQty>0?'#0f6e56':'#c0392b'};font-weight:600">${branchQty} available</span>`
         : '';
       // Get description from pricing response
       const desc = p?.description || p?.productDescription || cat;
@@ -3243,7 +3252,7 @@ function buildDesktopOrderLines() {
   });
   wideLines.forEach(l => {
     const model = l.catalogNumber || l.cat || l.model || l.sku;
-    if (model) lines.push({ model: formatCatNumLocal(model), qty: l.qty || 1 });
+    if (model) lines.push({ model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 });
   });
   return lines.filter(l => l.model); // strip any lines with no catalog number
 }function closeEclipseModal() {
