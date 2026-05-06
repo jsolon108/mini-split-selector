@@ -520,15 +520,18 @@ export default async function handler(req, res) {
       await Promise.all(catalogNumbers.map(async cat => {
         try {
           console.log(`[Subs] Looking up: ${cat}`);
+          // Use keyword search — handles both order numbers and catalog numbers
           const sr = await eclipseFetch(
-            `${ECLIPSE_BASE}/Products?CatalogNumber=${encodeURIComponent(cat)}&pageSize=1`,
+            `${ECLIPSE_BASE}/Products/BasicInformation?keyword=${encodeURIComponent(cat)}&pageSize=3`,
             { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
           );
           if (!sr.ok) { console.log(`[Subs] Product search failed: ${sr.status}`); return; }
           const sd = await sr.json();
-          const product = (sd.results || [])[0];
-          if (!product?.productId) { console.log(`[Subs] No product found for ${cat}`); return; }
-          console.log(`[Subs] Found productId: ${product.productId}`);
+          // Find best match — prefer exact catalog number or order number match
+          const products = sd.results || [];
+          const product = products.find(p => p.catalogNumber === cat || p.orderNumber === cat) || products[0];
+          if (!product?.productId) { console.log(`[Subs] No product found for ${cat}, results: ${products.length}`); return; }
+          console.log(`[Subs] Found productId: ${product.productId} (${product.catalogNumber})`);
           const dr = await eclipseFetch(
             `${ECLIPSE_BASE}/Products/${product.productId}`,
             { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
