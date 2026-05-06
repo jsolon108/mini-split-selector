@@ -3151,6 +3151,44 @@ async function doDesktopPreview() {
   btn.textContent = 'Loading…'; btn.disabled = true; statusEl.textContent = '';
   try {
     const lines = buildDesktopOrderLines();
+    const branch = document.getElementById('modal-branch').value;
+    const custId = selectedCustomer?.id;
+
+    // Auto-fetch pricing if quotePricing is empty or stale — so Preview always shows prices
+    // without requiring the user to manually click Get Pricing first
+    const hasPricing = lines.some(l => {
+      const p = quotePricing?.pricing;
+      return p && (p[l.model] || p[formatCatNumLocal(l.model)] || p[l.sku]);
+    });
+    if (!hasPricing && custId && eclipseSession.token) {
+      btn.textContent = 'Fetching pricing…';
+      const pairs = lines.map(l => ({ cat: l.model, order: l.sku || null })).filter(p => p.cat);
+      const seen = new Set();
+      const uniquePairs = pairs.filter(p => { const k = p.cat+'|'+(p.order||''); if(seen.has(k))return false; seen.add(k); return true; });
+      try {
+        const pr = await fetch('/api/eclipse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'pricing',
+            sessionToken: eclipseSession.token,
+            customerId: custId,
+            userId: eclipseSession.username,
+            userBranch: branch,
+            catalogNumbers: uniquePairs.map(p => p.cat),
+            catalogPairs: uniquePairs
+          })
+        });
+        if (pr.ok) {
+          const pd = await pr.json();
+          // Merge into existing quotePricing without wiping it
+          quotePricing = quotePricing || {};
+          quotePricing.pricing = { ...(quotePricing.pricing||{}), ...(pd.pricing||{}) };
+          quotePricing.inventory = { ...(quotePricing.inventory||{}), ...(pd.inventory||{}) };
+          quotePricing.userBranch = pd.userBranch || branch;
+        }
+      } catch(e) { /* silent — preview still works, just without prices */ }
+      btn.textContent = 'Loading…';
+    }
 
     // Hit Eclipse Preview for authoritative totals (subtotal/tax/total)
     const res = await fetch('/api/eclipse', {
