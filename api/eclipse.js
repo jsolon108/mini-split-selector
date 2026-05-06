@@ -165,26 +165,67 @@ export default async function handler(req, res) {
       const text = await r.text();
       if (!r.ok) return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
       const data = JSON.parse(text);
-      // Eclipse wraps in results[] array
       const order = data.results?.[0] || data;
       const gen = order.generations?.[0] || {};
-      // Lines live at top level of the order object, or inside generations
-      const rawLines = order.lines || gen.lines || order.lineItems || gen.lineItems || [];
-      const lines2 = rawLines.map(l => {
-        const prod = l.lineItemProduct || l.product || l;
-        const cat = prod.catalogNumber || l.catalogNumber || '';
-        const desc = (prod.productDescription || prod.description || l.productDescription || l.description || '').split('\n')[0];
-        const qty = prod.quantity || l.orderQty || l.quantity || 1;
-        const unitPrice = prod.unitPrice ?? l.unitPrice ?? null;
+
+      // Eclipse preview doesn't return product details on lines — get pricing per line instead
+      const pricingParams = new URLSearchParams();
+      lines.forEach(l => { if (l.model) pricingParams.append('CatalogNumber', formatCatalogNumber(l.model)); });
+      pricingParams.append('BillTo', customerAccount);
+      pricingParams.append('Branch', branch);
+      pricingParams.append('pageSize', String(lines.length + 5));
+      let priceMap = {};
+      try {
+        const pr = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?` + pricingParams.toString(), {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        if (pr.ok) {
+          const pd = await pr.json();
+          for (const item of (pd.results || [])) {
+            const cat = (item.productDescription || '').match(/^(\S+)/)?.[1] || '';
+            if (cat) priceMap[cat] = { unitPrice: item.unitPrice?.value ?? null, description: item.productDescription || '' };
+            if (item.catalogNumber) priceMap[item.catalogNumber] = { unitPrice: item.unitPrice?.value ?? null, description: item.productDescription || '' };
+          }
+        }
+      } catch(e) { /* fall through — show lines without prices */ }
+
+      // Also fetch inventory for branch qty
+      const invMap = {};
+      try {
+        await Promise.all(lines.map(async l => {
+          if (!l.model) return;
+          const ip = new URLSearchParams({ CatalogNumber: formatCatalogNumber(l.model), ConsiderUserAuthBranch: 'true' });
+          const ir = await eclipseFetch(`${ECLIPSE_BASE}/ProductInventoryMassInquiry?` + ip.toString(), {
+            headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+          });
+          if (!ir.ok) return;
+          const id2 = await ir.json();
+          const item = (id2.results || [])[0];
+          if (item) {
+            const branchArr = item.branchAvailableQuantity || [];
+            const brQty = branchArr.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? null;
+            invMap[formatCatalogNumber(l.model)] = brQty;
+          }
+        }));
+      } catch(e) { /* skip */ }
+
+      // Build clean lines from what we sent, enriched with pricing + inventory
+      const lines2 = lines.map(l => {
+        const cat = formatCatalogNumber(l.model || '');
+        const p = priceMap[cat] || priceMap[l.model] || {};
+        const unitPrice = p.unitPrice ?? null;
+        const desc = (p.description || '').split('\n')[0];
+        const qty = l.qty || 1;
         return {
           catalogNumber: cat,
           description: desc,
           qty,
           unitPrice,
           extended: unitPrice != null ? unitPrice * qty : null,
-          branchQty: prod.branchQty ?? l.branchQty ?? null,
+          branchQty: invMap[cat] ?? null,
         };
       });
+
       return res.status(200).json({
         lines: lines2,
         subtotal: gen.salesTotal?.value ?? null,
