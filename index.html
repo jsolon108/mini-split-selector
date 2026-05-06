@@ -3194,16 +3194,20 @@ async function doDesktopPreview() {
       const qty = l.qty || 1;
       const extended = unitPrice != null ? unitPrice * qty : null;
       const branchQty = lookupInv(cat);
-      const dot = branchQty > 0 ? '🟢' : branchQty === 0 ? '🔴' : '⚪';
+      const availLabel = branchQty != null
+        ? `<span style="color:${branchQty>0?'#0f6e56':'#c0392b'};font-weight:600">${branchQty} on hand</span>`
+        : '';
       // Get description from pricing response
       const desc = p?.description || p?.productDescription || cat;
       const descClean = typeof desc === 'string' ? desc.split('\n')[0] : cat;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
-        <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${cat}</span>
-        <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${descClean}">${descClean}</span>
-        <span style="flex-shrink:0;color:#666">×${qty}</span>
-        <span style="flex-shrink:0">${dot}</span>
-        <span style="flex-shrink:0;font-weight:600;min-width:60px;text-align:right">${extended != null ? '$'+extended.toFixed(2) : '—'}</span>
+      return `<div style="padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${cat}</span>
+          <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${descClean}">${descClean}</span>
+          <span style="flex-shrink:0;color:#666">×${qty}</span>
+          <span style="flex-shrink:0;font-weight:600;min-width:60px;text-align:right">${extended != null ? '$'+extended.toFixed(2) : '—'}</span>
+        </div>
+        ${availLabel ? `<div style="padding-left:108px;font-size:10px;margin-top:2px">${availLabel}</div>` : ''}
       </div>`;
     }).join('');
 
