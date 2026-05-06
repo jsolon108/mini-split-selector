@@ -651,7 +651,10 @@ select:focus,input:focus{outline:none;border-color:#999}
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div style="margin-bottom:10px">
-      <button onclick="openProductPicker()" style="width:100%;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
+      <div style="display:flex;gap:8px;margin-bottom:4px">
+        <button onclick="openProductPicker()" style="flex:1;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
+        <button onclick="openLineCommentModal()" style="height:36px;padding:0 16px;background:#fff;border:1px dashed #c5c5c5;color:#555;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add comment</button>
+      </div>
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <div id="quote-wide-sections"></div>
@@ -697,6 +700,8 @@ select:focus,input:focus{outline:none;border-color:#999}
     </div>
     <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
+    <label style="margin-top:10px">Order Comment <span style="color:#aaa;font-weight:400">(optional)</span></label>
+    <textarea id="modal-order-comment" placeholder="e.g. Please call before delivery" style="width:100%;height:64px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:4px"></textarea>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeEclipseModal()">Cancel</button>
       <button class="btn-submit" id="modal-preview-btn" onclick="doDesktopPreview()" style="display:none;background:#6366f1">Preview Order</button>
@@ -710,6 +715,22 @@ select:focus,input:focus{outline:none;border-color:#999}
       <div id="modal-preview-total" style="padding:10px 12px;border-top:1px solid #e8e8e8;background:#f8f9fa"></div>
     </div>
     <button id="modal-close-btn" onclick="closeEclipseModal()" style="display:none;width:100%;margin-top:10px;padding:9px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;font-family:inherit">Close Window</button>
+  </div>
+</div>
+
+<!-- Line Comment Modal -->
+<div class="modal-overlay" id="line-comment-overlay" onclick="if(event.target===this)closeLineCommentModal()">
+  <div class="modal" style="max-width:480px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="font-weight:700;font-size:16px">Add Line Comment</div>
+      <button onclick="closeLineCommentModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+    </div>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Comment text</label>
+    <textarea id="line-comment-text" placeholder="e.g. Ship to jobsite, call ahead" style="width:100%;height:80px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
+    <div style="display:flex;gap:8px">
+      <button onclick="closeLineCommentModal()" style="flex:1;height:36px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+      <button onclick="saveLineComment()" style="flex:1;height:36px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Add Comment</button>
+    </div>
   </div>
 </div>
 
@@ -1311,7 +1332,8 @@ function renderQuote() {
   const sdSummary = renderSlimDuctSummary();
   const caSummary = renderCommonAddonsSummary();
   const ciSummary = renderCustomItemsSummary();
-  const summaries = ciSummary + caSummary + sdSummary;
+  const lcSummary = renderLineComments();
+  const summaries = ciSummary + lcSummary + caSummary + sdSummary;
   if(!quote.length){
     el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
@@ -1464,7 +1486,7 @@ function renderQuote() {
       </div>
       <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
     </div>`;
-  }).join('') + ciSummary + caSummary + sdSummary;
+  }).join('') + ciSummary + lcSummary + caSummary + sdSummary;
   renderQuoteWideSections();
 }
 
@@ -1545,6 +1567,7 @@ let quoteWideState = {
   commonOpen: false,
   lineHideOpen: false,
   customItems: {},      // {key: {catalogNumber, orderNumber, description, qty}} — ad-hoc products added via picker
+  lineComments: [],     // [{id, text}] — standalone comment lines
 };
 
 async function loadCommonAddons(force=false) {
@@ -1775,11 +1798,51 @@ function clearAllCustomItems() {
   renderQuote();
 }
 
+function renderLineComments() {
+  const comments = quoteWideState.lineComments || [];
+  if (!comments.length) return '';
+  const rows = comments.map(c => `
+    <div class="q-model-row" style="font-size:13px">
+      <span class="q-model-label" style="color:#888">💬</span>
+      <span style="color:#555;flex:1;font-style:italic">${escHtml(c.text)}</span>
+      <button onclick="removeLineComment('${escAttr(c.id)}')" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+    </div>`).join('');
+  return `<div class="quote-line">
+    <div style="width:44px;flex-shrink:0"></div>
+    <div class="q-body">
+      <div class="q-name">Line Comments</div>
+      <div class="q-model-list">${rows}</div>
+    </div>
+  </div>`;
+}
+
 // ─── Product picker modal (+ Add product button) ─────────────────────
 let ppSearchTimer = null;
 let ppLastResults = [];
 let ppImageCache = {}; // productId → image URL, persists across re-renders
 let ppSearchGen = 0;   // incremented on each new search; stale async callbacks check this
+
+// ── Line comment modal ─────────────────────────────────────────────
+function openLineCommentModal() {
+  document.getElementById('line-comment-text').value = '';
+  document.getElementById('line-comment-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('line-comment-text').focus(), 100);
+}
+function closeLineCommentModal() {
+  document.getElementById('line-comment-overlay').classList.remove('open');
+}
+function saveLineComment() {
+  const text = document.getElementById('line-comment-text').value.trim();
+  if (!text) return;
+  quoteWideState.lineComments = quoteWideState.lineComments || [];
+  quoteWideState.lineComments.push({ id: `CMT-${Date.now()}`, text });
+  closeLineCommentModal();
+  renderQuote();
+}
+function removeLineComment(id) {
+  quoteWideState.lineComments = (quoteWideState.lineComments || []).filter(c => c.id !== id);
+  renderQuote();
+}
 
 function openProductPicker() {
   if (!eclipseSession.token) {
@@ -3202,6 +3265,7 @@ async function doDesktopPreview() {
         branch: document.getElementById('modal-branch').value,
         customerPO: document.getElementById('modal-po').value.trim(),
         orderBy: document.getElementById('modal-ordered-by')?.value || '',
+        internalNotes: (document.getElementById('modal-order-comment')?.value || '').trim(),
         lines
       })
     });
@@ -3234,6 +3298,12 @@ async function doDesktopPreview() {
     }
 
     const rowsHtml = lines.map(l => {
+      // Comment-only lines render differently
+      if (l.commentOnly) {
+        return `<div style="padding:6px 12px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#666;font-style:italic;display:flex;align-items:center;gap:8px">
+          <span style="color:#aaa;flex-shrink:0">💬</span><span>${l.comment || ''}</span>
+        </div>`;
+      }
       const cat = l.model || '';
       const sku = l.sku || '';
       const p = lookupPriceFull(cat, sku);
@@ -3292,7 +3362,11 @@ function buildDesktopOrderLines() {
     const model = l.catalogNumber || l.cat || l.model || l.sku;
     if (model) lines.push({ model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 });
   });
-  return lines.filter(l => l.model); // strip any lines with no catalog number
+  // Add standalone line comments at the end
+  (quoteWideState.lineComments || []).forEach(c => {
+    if (c.text) lines.push({ commentOnly: true, comment: c.text });
+  });
+  return lines.filter(l => l.model || l.commentOnly); // strip lines with neither
 }function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
 }
@@ -3418,6 +3492,7 @@ async function pushToEclipse() {
         customerAccount: selectedCustomer.id,
         customerPO,
         orderBy,
+        internalNotes: (document.getElementById('modal-order-comment')?.value || '').trim(),
         lines
       })
     });
