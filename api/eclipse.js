@@ -151,6 +151,43 @@ export default async function handler(req, res) {
   }
 
   // Create order
+  if (action === 'salesOrderPreview') {
+    try {
+      const { branch, customerAccount, customerPO, orderBy, lines } = req.body;
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
+      payload.orderStatus = 'Bid';
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': sessionToken },
+        body: JSON.stringify(payload)
+      });
+      if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
+      const text = await r.text();
+      if (!r.ok) return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
+      const data = JSON.parse(text);
+      const gen = data.generations?.[0] || data;
+      const lines2 = (data.lines || gen.lines || []).map(l => ({
+        catalogNumber: l.lineItemProduct?.catalogNumber || l.catalogNumber,
+        description: (l.lineItemProduct?.productDescription || l.productDescription || '').split('\n')[0],
+        qty: l.lineItemProduct?.quantity || l.quantity || 1,
+        unitPrice: l.lineItemProduct?.unitPrice ?? l.unitPrice ?? null,
+        extended: l.lineItemProduct?.unitPrice != null ? l.lineItemProduct.unitPrice * (l.lineItemProduct.quantity || 1) : null,
+        availability: l.lineItemProduct?.availability || l.availability || null,
+        branchQty: l.lineItemProduct?.branchQty ?? l.branchQty ?? null,
+      }));
+      return res.status(200).json({
+        lines: lines2,
+        subtotal: gen.salesTotal?.value ?? null,
+        tax: gen.taxTotal?.value ?? null,
+        total: (gen.salesTotal?.value ?? 0) + (gen.taxTotal?.value ?? 0) || null,
+        branch: gen.shipBranch || branch,
+        customer: gen.shipToName || gen.billToName || customerAccount,
+      });
+    } catch(err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (action === 'order') {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
