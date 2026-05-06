@@ -823,7 +823,8 @@ input[type=number] { -moz-appearance: textfield; }
     <!-- Step 2: preview -->
     <div id="eclipse-preview-step" style="display:none">
       <div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Order Preview</div>
-      <div id="eclipse-preview-body" style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:12px;max-height:320px;overflow-y:auto"></div>
+      <div id="eclipse-preview-body" style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:6px;max-height:320px;overflow-y:auto"></div>
+      <div id="eclipse-preview-subs" style="font-size:11px;color:var(--gray-400);min-height:16px;margin-bottom:6px;padding:0 2px"></div>
       <div id="eclipse-preview-total" style="margin-bottom:12px"></div>
       <div id="eclipse-submit-status" style="font-size:13px;margin-bottom:10px;min-height:20px"></div>
       <button class="sheet-btn primary" onclick="doPushToEclipse()" id="eclipse-submit-btn">✓ Confirm &amp; Create Quote</button>
@@ -2417,10 +2418,11 @@ async function doPreviewOrder() {
       const qty = l.qty || 1;
       const extended = unitPrice != null ? unitPrice * qty : null;
       const branchQty = iLookup(cat, sku);
+      const isOOS = branchQty === 0 || branchQty === null;
       const avail = branchQty != null
-        ? `<span style="color:${branchQty>0?'var(--green)':'var(--red)'};font-weight:600;font-size:11px">${branchQty} available</span>`
+        ? `<span style="color:${branchQty>0?'var(--green)':'var(--red)'};font-weight:600;font-size:11px">${branchQty>0 ? branchQty+' available' : '⚠ 0 available'}</span>`
         : '';
-      return `<div style="padding:8px 12px;border-bottom:1px solid var(--gray-100);font-size:12px">
+      return `<div id="m-preview-row-${esc(cat)}" style="padding:8px 12px;border-bottom:1px solid var(--gray-100);font-size:12px;${isOOS?'background:#fff8f8':''}">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
           <span style="font-family:var(--mono);color:var(--blue);flex-shrink:0">${esc(cat)}</span>
           <span style="color:var(--gray-600);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cat)}</span>
@@ -2444,6 +2446,53 @@ async function doPreviewOrder() {
     document.getElementById('eclipse-submit-status').textContent = '';
     document.getElementById('eclipse-form-step').style.display = 'none';
     document.getElementById('eclipse-preview-step').style.display = '';
+
+    // Auto-check substitutes for OOS lines
+    const oosLines = lines.filter(l => {
+      const bq = iLookup(l.model || '', l.sku || '');
+      return bq === 0 || bq === null;
+    });
+    const subsEl = document.getElementById('eclipse-preview-subs');
+    if (oosLines.length && qSelectedCustomer) {
+      if (subsEl) subsEl.textContent = `Checking substitutes for ${oosLines.length} item${oosLines.length>1?'s':''}…`;
+      try {
+        const subRes = await fetch('/api/eclipse', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'getSubstitutes',
+            sessionToken: eclipseSession.token,
+            username: eclipseSession.username,
+            password: eclipseSession.password,
+            catalogNumbers: oosLines.map(l => l.model),
+            branch: document.getElementById('eclipse-branch').value,
+            customerId: qSelectedCustomer.id
+          })
+        });
+        const subData = await subRes.json();
+        const subs = subData.substitutes || {};
+        Object.entries(subs).forEach(([cat, available]) => {
+          const rowEl = document.getElementById(`m-preview-row-${cat}`);
+          if (!rowEl) return;
+          const subHtml = available.map(s =>
+            `<div style="padding:6px 12px 6px 20px;background:#f0fdf4;border-bottom:1px solid #dcfce7;font-size:11px">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                <span style="color:#0f6e56">↳ Sub:</span>
+                <span style="font-family:var(--mono);color:var(--blue)">${esc(s.catalogNumber)}</span>
+                <span style="color:#0f6e56;font-weight:600">${s.branchQty} available</span>
+                <span style="font-weight:600">${s.unitPrice != null ? fmt(s.unitPrice) : '—'}</span>
+                <button onclick="mSwapForSub('${esc(cat)}','${esc(s.catalogNumber)}','${esc((s.description||'').replace(/'/g,"\\'"))}')"
+                  style="padding:4px 12px;background:#0f6e56;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">
+                  Use this
+                </button>
+              </div>
+              <div style="color:var(--gray-600);margin-top:2px;font-size:11px">${esc(s.description||'')}</div>
+            </div>`
+          ).join('');
+          rowEl.insertAdjacentHTML('afterend', subHtml);
+        });
+      } catch(e) { /* silent */ }
+      if (subsEl) subsEl.textContent = '';
+    }
   } catch(e) {
     statusEl.textContent = 'Preview error: ' + e.message;
   } finally {
@@ -2452,6 +2501,27 @@ async function doPreviewOrder() {
 }
 
 
+
+function mSwapForSub(originalCat, subCat, subDesc) {
+  if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
+  let swapped = false;
+  quote.forEach(q => {
+    if (q.ou && fmtCat(q.ou) === originalCat) { q.ou = subCat; swapped = true; }
+    if (q.iu && fmtCat(q.iu) === originalCat) { q.iu = subCat; swapped = true; }
+    (q.zones||[]).forEach(z => { if (z.model && fmtCat(z.model) === originalCat) { z.model = subCat; swapped = true; } });
+    (q.addons||[]).forEach(a => { if (a.catalogNumber === originalCat) { a.catalogNumber = subCat; a.description = subDesc||subCat; swapped = true; } });
+  });
+  Object.values(quoteWideState.customItems||{}).forEach(it => {
+    if (it && fmtCat(it.catalogNumber) === originalCat) { it.catalogNumber = subCat; it.description = subDesc||subCat; swapped = true; }
+  });
+  Object.keys(quoteWideState.lineHide||{}).forEach(k => {
+    if (k === originalCat) { const qty = quoteWideState.lineHide[k]; delete quoteWideState.lineHide[k]; quoteWideState.lineHide[subCat] = qty; swapped = true; }
+  });
+  if (!swapped) { alert(`Could not find ${originalCat} to replace.`); return; }
+  quotePricing = {};
+  renderQuoteTab();
+  doPreviewOrder();
+}
 
 async function doPushToEclipse() {
   const btn = document.getElementById('eclipse-submit-btn');
