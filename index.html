@@ -1836,12 +1836,10 @@ function swapForSub(originalCat, subCat, subDesc) {
 
   if (!swapped) { alert(`Could not find ${originalCat} in the quote to replace.`); return; }
 
-  // Clear pricing so it re-fetches with the new model
+  // Clear pricing and re-run preview automatically — stay on preview step
   quotePricing = {};
   renderQuote();
-  // Close and re-open the modal to trigger a fresh preview with updated lines
-  closeEclipseModal();
-  setTimeout(() => openEclipseModal(), 100);
+  doDesktopPreview();
 }
 
 function promptSystemComment(qi) {
