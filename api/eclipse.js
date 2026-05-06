@@ -258,6 +258,7 @@ export default async function handler(req, res) {
 
   if (action === 'order') {
     try {
+      console.log('[order] lines:', JSON.stringify(lines?.map(l => ({ model: l.model, comment: l.comment, commentOnly: l.commentOnly }))));
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       
       async function postNotes(token, orderId) {
