@@ -2502,7 +2502,7 @@ async function doPreviewOrder(skipValidation = false) {
 
 
 
-function mSwapForSub(originalCat, subCat, subDesc) {
+async function mSwapForSub(originalCat, subCat, subDesc) {
   if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
   let swapped = false;
   quote.forEach(q => {
@@ -2520,6 +2520,7 @@ function mSwapForSub(originalCat, subCat, subDesc) {
   if (!swapped) { alert(`Could not find ${originalCat} to replace.`); return; }
   quotePricing = {};
   renderQuoteTab();
+  await getPricing();
   doPreviewOrder(true);
 }
 
