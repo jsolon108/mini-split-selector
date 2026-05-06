@@ -3168,8 +3168,6 @@ async function doDesktopPreview() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Preview failed');
     console.log('[Preview response]', data);
-    console.log('[Preview _raw keys]', data._raw ? Object.keys(data._raw) : 'no _raw');
-    console.log('[Preview _raw]', JSON.stringify(data._raw || {}).slice(0, 3000));
     const previewLines = (data.lines || []);
     if (!previewLines.length) {
       statusEl.textContent = `⚠ Preview returned no lines. Check console for full response.`;
