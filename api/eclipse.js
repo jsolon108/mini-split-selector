@@ -45,11 +45,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
         um: 'EA',
         umQuantity: 1,
         productDescription: l.description || '',
-        ...(l.comment ? { 
-          comments: l.comment, 
-          commentsId: `CMT${Date.now()}`,
-          commentId: `CMT${Date.now()}`
-        } : {})
+        ...(l.comment ? { comments: l.comment } : {})
       }
     }));
   return {
