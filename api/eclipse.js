@@ -395,6 +395,31 @@ export default async function handler(req, res) {
   }
 
   // Search recent orders by customer
+  // Look up a specific order by ID — used by dashboard to check quote conversion status
+  if (action === 'getOrder') {
+    try {
+      const { orderId } = req.body;
+      if (!orderId) return res.status(400).json({ error: 'orderId required' });
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired' });
+      if (r.status === 404) return res.status(200).json({ status: 'Not Found', orderId });
+      if (!r.ok) return res.status(200).json({ status: 'Error', orderId });
+      const data = await r.json();
+      const gen = data.generations?.[0] || data;
+      return res.status(200).json({
+        orderId,
+        status: gen.status || data.status || 'Unknown',
+        total: gen.salesTotal?.value || data.salesTotal?.value || null,
+        customer: gen.shipToName || gen.billToName || null,
+        orderDate: gen.orderDate || data.orderDate || null,
+      });
+    } catch(err) {
+      return res.status(200).json({ status: 'Error', orderId: req.body.orderId, error: err.message });
+    }
+  }
+
   if (action === 'searchOrders') {
     try {
       const { customerId, username, orderStatus, productCatalog } = req.body;
