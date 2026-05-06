@@ -47,7 +47,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
         productDescription: l.description || ''
       },
       ...(l.comment ? {
-        comments: [{ comment: l.comment, commentTypeId: null, lineId: null }]
+        comments: [{ comment: l.comment, commentTypeId: 'G', lineId: null }]
       } : {})
     }));
   return {
