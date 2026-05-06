@@ -2376,6 +2376,8 @@ async function doPreviewOrder() {
   btn.textContent = 'Loading preview…'; btn.disabled = true; statusEl.textContent = '';
   try {
     const lines = buildEclipseLines();
+
+    // Hit Eclipse Preview for authoritative totals only
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2393,31 +2395,50 @@ async function doPreviewOrder() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Preview failed');
 
-    // Render preview
-    const previewLines = (data.lines || []).map(l => {
-      const price = l.unitPrice != null ? fmt(l.unitPrice) : '—';
-      const ext = l.extended != null ? fmt(l.extended) : '—';
-      const avail = l.branchQty != null
-        ? `<span style="color:${l.branchQty>0?'var(--green)':'var(--red)'}">● ${l.branchQty} in stock</span>`
+    // Build line display from quotePricing — already in memory, no extra API calls
+    const pricing = quotePricing?.pricing || {};
+    const inventory = quotePricing?.inventory || {};
+
+    function mLookup(cat) {
+      if (!cat) return null;
+      return pricing[cat] || pricing[fmtCat(cat)] || null;
+    }
+    function iLookup(cat) {
+      if (!cat) return null;
+      const inv = inventory[cat] || inventory[fmtCat(cat)] || null;
+      return inv ? inv.userQty : null;
+    }
+
+    const previewLines = lines.map(l => {
+      const cat = l.model || '';
+      const p = mLookup(cat);
+      const unitPrice = p?.price ?? null;
+      const qty = l.qty || 1;
+      const extended = unitPrice != null ? unitPrice * qty : null;
+      const branchQty = iLookup(cat);
+      const avail = branchQty != null
+        ? `<span style="color:${branchQty>0?'var(--green)':'var(--red)'};font-weight:600;font-size:11px">${branchQty} on hand</span>`
         : '';
       return `<div style="padding:8px 12px;border-bottom:1px solid var(--gray-100);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
-          <span style="font-family:var(--mono);color:var(--blue);flex-shrink:0">${esc(l.catalogNumber||'')}</span>
-          <span style="color:var(--gray-600);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.description||'')}</span>
-          <span style="white-space:nowrap;font-weight:600">× ${l.qty}</span>
+          <span style="font-family:var(--mono);color:var(--blue);flex-shrink:0">${esc(cat)}</span>
+          <span style="color:var(--gray-600);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cat)}</span>
+          <span style="white-space:nowrap;font-weight:600">× ${qty}</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px">
           <span style="font-size:11px">${avail}</span>
-          <span style="font-size:11px;color:var(--gray-600)">${price} ea · <strong>${ext}</strong></span>
+          <span style="font-size:11px;color:var(--gray-600)">${unitPrice != null ? fmt(unitPrice)+' ea' : '—'} · <strong>${extended != null ? fmt(extended) : '—'}</strong></span>
         </div>
       </div>`;
     }).join('');
-    document.getElementById('eclipse-preview-body').innerHTML = previewLines || '<div style="padding:12px;color:var(--gray-400);font-size:12px">No line details returned.</div>';
+
+    document.getElementById('eclipse-preview-body').innerHTML = previewLines || '<div style="padding:12px;color:var(--gray-400);font-size:12px">No lines.</div>';
     document.getElementById('eclipse-preview-total').innerHTML = `
       <div style="background:var(--gray-50);border-radius:10px;padding:12px 14px">
         ${data.subtotal != null ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--gray-600)">Subtotal</span><span>${fmt(data.subtotal)}</span></div>` : ''}
         ${data.tax != null ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--gray-600)">Tax</span><span>${fmt(data.tax)}</span></div>` : ''}
         ${data.total != null ? `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--gray-200);padding-top:8px;margin-top:4px"><span>Total</span><span style="color:var(--blue)">${fmt(data.total)}</span></div>` : ''}
+        ${!data.subtotal ? `<div style="font-size:11px;color:var(--yellow);margin-top:6px">Run Get Pricing first to see line item prices.</div>` : ''}
       </div>`;
     document.getElementById('eclipse-submit-status').textContent = '';
     document.getElementById('eclipse-form-step').style.display = 'none';
