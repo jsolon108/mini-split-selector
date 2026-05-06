@@ -511,6 +511,72 @@ export default async function handler(req, res) {
     }
   }
 
+  // Get substitutes for OOS products and check their availability
+  if (action === 'getSubstitutes') {
+    try {
+      const { catalogNumbers, branch, customerId } = req.body;
+      if (!catalogNumbers?.length) return res.status(200).json({ substitutes: {} });
+      const result = {};
+      await Promise.all(catalogNumbers.map(async cat => {
+        try {
+          // Find product by catalog number
+          const sr = await eclipseFetch(
+            `${ECLIPSE_BASE}/Products?CatalogNumber=${encodeURIComponent(cat)}&pageSize=1`,
+            { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
+          );
+          if (!sr.ok) return;
+          const sd = await sr.json();
+          const product = (sd.results || [])[0];
+          if (!product?.productId) return;
+          // Get full product detail with substitutes
+          const dr = await eclipseFetch(
+            `${ECLIPSE_BASE}/Products/${product.productId}`,
+            { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
+          );
+          if (!dr.ok) return;
+          const detail = await dr.json();
+          const subs = (detail.substitutes || []).slice(0, 3);
+          if (!subs.length) return;
+          // Check availability for each substitute
+          const subResults = [];
+          await Promise.all(subs.map(async s => {
+            try {
+              const subr = await eclipseFetch(
+                `${ECLIPSE_BASE}/Products/${s.substituteProductId}`,
+                { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
+              );
+              if (!subr.ok) return;
+              const subDetail = await subr.json();
+              const subCat = subDetail.catalogNumber;
+              if (!subCat) return;
+              const pp = new URLSearchParams({ CatalogNumber: subCat, BillTo: customerId || '', Branch: branch || 'FARM' });
+              const pr = await eclipseFetch(
+                `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?${pp}`,
+                { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
+              );
+              let branchQty = null, unitPrice = null;
+              if (pr.ok) {
+                const pd = await pr.json();
+                const item = (pd.results || [])[0];
+                if (item) {
+                  unitPrice = item.unitPrice?.value ?? null;
+                  const ba = item.branchAvailableQuantity || [];
+                  branchQty = ba.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? item.totalWarehouseQty ?? null;
+                }
+              }
+              subResults.push({ catalogNumber: subCat, description: (subDetail.description || subDetail.alternateDescription || subCat).split('\n')[0], branchQty, unitPrice });
+            } catch(e) { /* skip */ }
+          }));
+          const available = subResults.filter(s => s.branchQty > 0);
+          if (available.length) result[cat] = available;
+        } catch(e) { /* skip */ }
+      }));
+      return res.status(200).json({ substitutes: result });
+    } catch(err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
 // Search recent orders by customer
   // Look up a specific order by ID — used by dashboard to check quote conversion status
 if (action === 'getOrder') {
