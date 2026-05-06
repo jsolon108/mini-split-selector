@@ -182,12 +182,16 @@ export default async function handler(req, res) {
         if (pr.ok) {
           const pd = await pr.json();
           for (const item of (pd.results || [])) {
-            const cat = (item.productDescription || '').match(/^(\S+)/)?.[1] || '';
-            if (cat) priceMap[cat] = { unitPrice: item.unitPrice?.value ?? null, description: item.productDescription || '' };
-            if (item.catalogNumber) priceMap[item.catalogNumber] = { unitPrice: item.unitPrice?.value ?? null, description: item.productDescription || '' };
+            const cat = item.catalogNumber || '';
+            const desc = (item.productDescription || '').split('\n')[0];
+            const price = item.unitPrice?.value ?? null;
+            if (cat) priceMap[cat] = { unitPrice: price, description: desc };
+            // Also index by order# prefix in description (e.g. "B69-625 AAS036...")
+            const orderNum = desc.match(/^(\S+)/)?.[1];
+            if (orderNum && orderNum !== cat) priceMap[orderNum] = { unitPrice: price, description: desc };
           }
         }
-      } catch(e) { /* fall through — show lines without prices */ }
+      } catch(e) { /* fall through */ }
 
       // Also fetch inventory for branch qty
       const invMap = {};
@@ -212,9 +216,10 @@ export default async function handler(req, res) {
       // Build clean lines from what we sent, enriched with pricing + inventory
       const lines2 = lines.map(l => {
         const cat = formatCatalogNumber(l.model || '');
-        const p = priceMap[cat] || priceMap[l.model] || {};
+        const rawCat = l.model || '';
+        const p = priceMap[cat] || priceMap[rawCat] || priceMap[cat.replace(/^BMS500-/,'')] || {};
         const unitPrice = p.unitPrice ?? null;
-        const desc = (p.description || '').split('\n')[0];
+        const desc = (p.description || cat).split('\n')[0];
         const qty = l.qty || 1;
         return {
           catalogNumber: cat,
@@ -222,7 +227,7 @@ export default async function handler(req, res) {
           qty,
           unitPrice,
           extended: unitPrice != null ? unitPrice * qty : null,
-          branchQty: invMap[cat] ?? null,
+          branchQty: invMap[cat] ?? invMap[rawCat] ?? null,
         };
       });
 
