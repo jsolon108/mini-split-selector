@@ -651,10 +651,7 @@ select:focus,input:focus{outline:none;border-color:#999}
       <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div style="margin-bottom:10px">
-      <div style="display:flex;gap:8px;margin-bottom:4px">
-        <button onclick="openProductPicker()" style="flex:1;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
-        <button onclick="openLineCommentModal()" style="height:36px;padding:0 16px;background:#fff;border:1px dashed #c5c5c5;color:#555;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add comment</button>
-      </div>
+      <button onclick="openProductPicker()" style="width:100%;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
     </div>
     <div class="quote-box" id="quote-box"><div class="empty">No systems added yet</div></div>
     <div id="quote-wide-sections"></div>
@@ -715,22 +712,6 @@ select:focus,input:focus{outline:none;border-color:#999}
       <div id="modal-preview-total" style="padding:10px 12px;border-top:1px solid #e8e8e8;background:#f8f9fa"></div>
     </div>
     <button id="modal-close-btn" onclick="closeEclipseModal()" style="display:none;width:100%;margin-top:10px;padding:9px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;font-family:inherit">Close Window</button>
-  </div>
-</div>
-
-<!-- Line Comment Modal -->
-<div class="modal-overlay" id="line-comment-overlay" onclick="if(event.target===this)closeLineCommentModal()">
-  <div class="modal" style="max-width:480px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-      <div style="font-weight:700;font-size:16px">Add Line Comment</div>
-      <button onclick="closeLineCommentModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
-    </div>
-    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Comment text</label>
-    <textarea id="line-comment-text" placeholder="e.g. Ship to jobsite, call ahead" style="width:100%;height:80px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>
-    <div style="display:flex;gap:8px">
-      <button onclick="closeLineCommentModal()" style="flex:1;height:36px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
-      <button onclick="saveLineComment()" style="flex:1;height:36px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Add Comment</button>
-    </div>
   </div>
 </div>
 
@@ -1332,8 +1313,7 @@ function renderQuote() {
   const sdSummary = renderSlimDuctSummary();
   const caSummary = renderCommonAddonsSummary();
   const ciSummary = renderCustomItemsSummary();
-  const lcSummary = renderLineComments();
-  const summaries = ciSummary + lcSummary + caSummary + sdSummary;
+  const summaries = ciSummary + caSummary + sdSummary;
   if(!quote.length){
     el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
@@ -1483,10 +1463,17 @@ function renderQuote() {
         ${totalRow}
         <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
         ${accordion}
+        ${q.comment ? `<div style="margin-top:6px;padding:5px 8px;background:#f8f9fa;border-left:3px solid #c5c5c5;border-radius:4px;font-size:12px;color:#555;font-style:italic;display:flex;align-items:center;gap:8px">
+          <span style="color:#aaa">💬</span><span style="flex:1">${escHtml(q.comment)}</span>
+          <button onclick="setSystemComment(${qi},'')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:12px;padding:0">✕</button>
+        </div>` : ''}
       </div>
-      <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+        <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
+        <button onclick="promptSystemComment(${qi})" title="Add line comment" style="background:none;border:1px solid #ddd;color:#888;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap">💬</button>
+      </div>
     </div>`;
-  }).join('') + ciSummary + lcSummary + caSummary + sdSummary;
+  }).join('') + ciSummary + caSummary + sdSummary;
   renderQuoteWideSections();
 }
 
@@ -1764,7 +1751,9 @@ function renderCustomItemsSummary() {
         </span>
         ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
         <button onclick="setCustomItemQty('${escAttr(it.key)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
+        <button onclick="promptCustomItemComment('${escAttr(it.key)}')" title="Add line comment" style="background:none;border:1px solid #ddd;color:#888;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px">💬</button>
       </div>
+      ${it.comment ? `<div style="margin-top:4px;padding:4px 8px;background:#f8f9fa;border-left:3px solid #c5c5c5;border-radius:4px;font-size:11px;color:#555;font-style:italic">${escHtml(it.comment)}</div>` : ''}
       ${ledgerNote}
     </div>`;
   }).join('');
@@ -1822,25 +1811,25 @@ let ppLastResults = [];
 let ppImageCache = {}; // productId → image URL, persists across re-renders
 let ppSearchGen = 0;   // incremented on each new search; stale async callbacks check this
 
-// ── Line comment modal ─────────────────────────────────────────────
-function openLineCommentModal() {
-  document.getElementById('line-comment-text').value = '';
-  document.getElementById('line-comment-overlay').classList.add('open');
-  setTimeout(() => document.getElementById('line-comment-text').focus(), 100);
-}
-function closeLineCommentModal() {
-  document.getElementById('line-comment-overlay').classList.remove('open');
-}
-function saveLineComment() {
-  const text = document.getElementById('line-comment-text').value.trim();
-  if (!text) return;
-  quoteWideState.lineComments = quoteWideState.lineComments || [];
-  quoteWideState.lineComments.push({ id: `CMT-${Date.now()}`, text });
-  closeLineCommentModal();
+function promptSystemComment(qi) {
+  const q = quote[qi];
+  if (!q) return;
+  const text = prompt('Line comment for this system:', q.comment || '');
+  if (text === null) return; // cancelled
+  quote[qi].comment = text.trim();
   renderQuote();
 }
-function removeLineComment(id) {
-  quoteWideState.lineComments = (quoteWideState.lineComments || []).filter(c => c.id !== id);
+
+function setSystemComment(qi, text) {
+  if (quote[qi]) { quote[qi].comment = text; renderQuote(); }
+}
+
+function promptCustomItemComment(key) {
+  const it = quoteWideState.customItems[key];
+  if (!it) return;
+  const text = prompt('Line comment for this item:', it.comment || '');
+  if (text === null) return;
+  quoteWideState.customItems[key].comment = text.trim();
   renderQuote();
 }
 
@@ -3348,24 +3337,30 @@ function buildDesktopOrderLines() {
   const lines = [];
   const wideLines = getQuoteWideLines ? getQuoteWideLines() : [];
   quote.forEach(q => {
-    if (q.qtype === 'sz') {
+    if (q.qtype === 'unitary') {
+      lines.push({ model: formatCatNumLocal(q.model), qty: q.qty });
+    } else if (q.qtype === 'sz') {
       lines.push({ model: formatCatNumLocal(q.ou), qty: q.qty });
       lines.push({ model: formatCatNumLocal(q.iu), qty: q.qty });
     } else {
       lines.push({ model: formatCatNumLocal(q.ou), qty: 1 });
-      (q.zones||[]).forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
+      q.zones.forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
     }
-    (q.addons||[]).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
+    (q.addons || []).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
+    // Attach system-level comment right after all lines for this system
+    if (q.comment) lines.push({ commentOnly: true, comment: q.comment });
   });
   wideLines.forEach(l => {
     const model = l.catalogNumber || l.cat || l.model || l.sku;
-    if (model) lines.push({ model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 });
+    if (model) {
+      lines.push({ model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 });
+      // Attach item-level comment from customItems
+      const it = quoteWideState.customItems?.[l.sku || l.catalogNumber];
+      if (it?.comment) lines.push({ commentOnly: true, comment: it.comment });
+    }
   });
-  // Add standalone line comments at the end
-  (quoteWideState.lineComments || []).forEach(c => {
-    if (c.text) lines.push({ commentOnly: true, comment: c.text });
-  });
-  return lines.filter(l => l.model || l.commentOnly); // strip lines with neither
+  // Remove old standalone lineComments block (now per-system)
+  return lines.filter(l => l.model || l.commentOnly);
 }function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
 }
