@@ -528,14 +528,16 @@ export default async function handler(req, res) {
           if (!sr.ok) { console.log(`[Subs] Product search failed: ${sr.status}`); return; }
           const sd = await sr.json();
           const products = sd.results || [];
-          console.log(`[Subs] First result for ${cat}:`, JSON.stringify(products[0]));
-          // Find best match — prefer exact catalog number or order number match
-          const product = products.find(p => p.catalogNumber === cat || p.orderNumber === cat) || products[0];
-          if (!product?.productId) { console.log(`[Subs] No product found for ${cat}, results: ${products.length}`); return; }
-          console.log(`[Subs] Found productId: ${product.productId} (${product.catalogNumber})`);
-          console.log(`[Subs] First result keys:`, JSON.stringify(products[0]));
+          // BasicInformation returns { basicInfo: [{key, value}] } — extract id and catalogNumber
+          const firstResult = products[0];
+          if (!firstResult) { console.log(`[Subs] No results for ${cat}`); return; }
+          const getField = (obj, key) => (obj.basicInfo || []).find(f => f.key === key)?.value;
+          const productId = getField(firstResult, 'id');
+          const resultCat = getField(firstResult, 'catalogNumber');
+          if (!productId) { console.log(`[Subs] No productId for ${cat}, catalogNumber=${resultCat}`); return; }
+          console.log(`[Subs] Found productId: ${productId} (${resultCat})`);
           const dr = await eclipseFetch(
-            `${ECLIPSE_BASE}/Products/${product.productId}`,
+            `${ECLIPSE_BASE}/Products/${productId}`,
             { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
           );
           if (!dr.ok) { console.log(`[Subs] Product detail failed: ${dr.status}`); return; }
