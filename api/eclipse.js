@@ -165,23 +165,23 @@ export default async function handler(req, res) {
       const text = await r.text();
       if (!r.ok) return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
       const data = JSON.parse(text);
-      // Log full raw structure so we can identify the correct paths
-      console.log('[Preview] raw keys:', Object.keys(data));
-      console.log('[Preview] raw data:', JSON.stringify(data).slice(0, 2000));
-      const gen = data.generations?.[0] || data;
-      console.log('[Preview] gen keys:', Object.keys(gen));
-      // Try every known path Eclipse uses for lines
-      const rawLines = data.lines || gen.lines || data.results?.[0]?.lines || gen.results?.[0]?.lines || [];
-      console.log('[Preview] rawLines count:', rawLines.length);
-      if (rawLines.length) console.log('[Preview] first line keys:', Object.keys(rawLines[0]));
+      // Eclipse wraps in results[] array
+      const order = data.results?.[0] || data;
+      const gen = order.generations?.[0] || {};
+      // Lines live at top level of the order object, or inside generations
+      const rawLines = order.lines || gen.lines || order.lineItems || gen.lineItems || [];
       const lines2 = rawLines.map(l => {
         const prod = l.lineItemProduct || l.product || l;
+        const cat = prod.catalogNumber || l.catalogNumber || '';
+        const desc = (prod.productDescription || prod.description || l.productDescription || l.description || '').split('\n')[0];
+        const qty = prod.quantity || l.orderQty || l.quantity || 1;
+        const unitPrice = prod.unitPrice ?? l.unitPrice ?? null;
         return {
-          catalogNumber: prod.catalogNumber || l.catalogNumber,
-          description: (prod.productDescription || prod.description || l.productDescription || l.description || '').split('\n')[0],
-          qty: prod.quantity || l.orderQty || l.quantity || 1,
-          unitPrice: prod.unitPrice ?? l.unitPrice ?? null,
-          extended: prod.unitPrice != null ? prod.unitPrice * (prod.quantity || 1) : null,
+          catalogNumber: cat,
+          description: desc,
+          qty,
+          unitPrice,
+          extended: unitPrice != null ? unitPrice * qty : null,
           branchQty: prod.branchQty ?? l.branchQty ?? null,
         };
       });
@@ -192,7 +192,6 @@ export default async function handler(req, res) {
         total: (gen.salesTotal?.value ?? 0) + (gen.taxTotal?.value ?? 0) || null,
         branch: gen.shipBranch || branch,
         customer: gen.shipToName || gen.billToName || customerAccount,
-        _raw: data, // include raw for debugging — remove once working
       });
     } catch(err) {
       return res.status(500).json({ error: err.message });
