@@ -3337,6 +3337,7 @@ function buildDesktopOrderLines() {
   const lines = [];
   const wideLines = getQuoteWideLines ? getQuoteWideLines() : [];
   quote.forEach(q => {
+    const start = lines.length;
     if (q.qtype === 'unitary') {
       lines.push({ model: formatCatNumLocal(q.model), qty: q.qty });
     } else if (q.qtype === 'sz') {
@@ -3347,20 +3348,19 @@ function buildDesktopOrderLines() {
       q.zones.forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
     }
     (q.addons || []).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
-    // Attach system-level comment right after all lines for this system
-    if (q.comment) lines.push({ commentOnly: true, comment: q.comment });
+    // Attach comment to last line of this system (as lineItemProduct.comments)
+    if (q.comment && lines.length > start) lines[lines.length - 1].comment = q.comment;
   });
   wideLines.forEach(l => {
     const model = l.catalogNumber || l.cat || l.model || l.sku;
     if (model) {
-      lines.push({ model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 });
-      // Attach item-level comment from customItems
+      const line = { model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 };
       const it = quoteWideState.customItems?.[l.sku || l.catalogNumber];
-      if (it?.comment) lines.push({ commentOnly: true, comment: it.comment });
+      if (it?.comment) line.comment = it.comment;
+      lines.push(line);
     }
   });
-  // Remove old standalone lineComments block (now per-system)
-  return lines.filter(l => l.model || l.commentOnly);
+  return lines.filter(l => l.model);
 }function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
 }
