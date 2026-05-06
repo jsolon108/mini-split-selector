@@ -1851,14 +1851,15 @@ function swapForSub(originalCat, subCat, subDesc) {
   Object.values(quoteWideState.customItems || {}).forEach(it => {
     if (it && (matches(it.catalogNumber) || matches(it.orderNumber))) { it.catalogNumber = subCat; it.description = subDesc || subCat; swapped = true; }
   });
-  // Common addons — keyed by sku but mfg_num is the catalog number sent to Eclipse
+  // Common addons — keyed by sku, sent to Eclipse by mfg_num
   if (COMMON_ADDONS) {
     COMMON_ADDONS.forEach(a => {
-      if ((quoteWideState.common[a.sku] || 0) > 0 && matches(a.mfg_num || a.sku)) {
-        // Swap the mfg_num by updating the sku mapping
-        const qty = quoteWideState.common[a.sku];
+      const qty = quoteWideState.common[a.sku] || 0;
+      if (qty > 0 && (matches(a.mfg_num) || matches(a.sku))) {
         delete quoteWideState.common[a.sku];
-        quoteWideState.common[subCat] = qty;
+        // Store sub under its own key so it gets sent correctly
+        quoteWideState.customItems = quoteWideState.customItems || {};
+        quoteWideState.customItems[subCat] = { catalogNumber: subCat, orderNumber: subCat, description: subDesc || subCat, qty };
         swapped = true;
       }
     });
