@@ -512,26 +512,7 @@ export default async function handler(req, res) {
     }
   }
 
-  if (action === 'getOrderRaw') {
-    try {
-      const { orderId } = req.body;
-      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}`, {
-        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-      });
-      const data = await r.json();
-      const order = data.results?.[0] || data;
-      const lineComments = (order.lines || []).map((l, i) => ({
-        line: i,
-        desc: (l.productDecription || '').split('\n')[0].slice(0, 40),
-        comments: l.comments || []
-      }));
-      return res.status(200).json({ lineComments });
-    } catch(err) {
-      return res.status(500).json({ error: err.message });
-    }
-  }
-
-  // Search recent orders by customer
+// Search recent orders by customer
   // Look up a specific order by ID — used by dashboard to check quote conversion status
 if (action === 'getOrder') {
     try {
