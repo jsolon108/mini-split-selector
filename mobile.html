@@ -2523,6 +2523,18 @@ async function mSwapForSub(originalCat, subCat, subDesc) {
   Object.keys(quoteWideState.lineHide||{}).forEach(k => {
     if (matches(k)) { const qty = quoteWideState.lineHide[k]; delete quoteWideState.lineHide[k]; quoteWideState.lineHide[subCat] = qty; swapped = true; }
   });
+  // Common addons — keyed by sku, sent to Eclipse by mfg_num
+  if (COMMON_ADDONS) {
+    COMMON_ADDONS.forEach(a => {
+      const qty = quoteWideState.common[a.sku] || 0;
+      if (qty > 0 && (matches(a.mfg_num) || matches(a.sku))) {
+        delete quoteWideState.common[a.sku];
+        quoteWideState.customItems = quoteWideState.customItems || {};
+        quoteWideState.customItems[subCat] = { catalogNumber: subCat, orderNumber: subCat, description: subDesc || subCat, qty };
+        swapped = true;
+      }
+    });
+  }
   if (!swapped) { alert(`Could not find ${originalCat} to replace.`); return; }
   quotePricing = {};
   renderQuoteTab();
