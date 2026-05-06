@@ -773,7 +773,6 @@ let eclipseSession = { token: null, username: null, password: null };
 
 // ---- UNITARY (hidden behind ?unitary=1 URL flag) ----
 const UNITARY_ENABLED = new URLSearchParams(window.location.search).has('unitary');
-const PREVIEW_ENABLED = new URLSearchParams(window.location.search).has('preview');
 let UNITARY_CATALOG = []; // populated from Supabase in fetchData()
 let UNITARY_MATCHUPS = {}; // outdoor_model -> array of matchups (lazy-loaded)
 let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> total count
@@ -1463,14 +1462,10 @@ function renderQuote() {
         ${totalRow}
         <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
         ${accordion}
-        ${q.comment ? `<div style="margin-top:6px;padding:5px 8px;background:#f8f9fa;border-left:3px solid #c5c5c5;border-radius:4px;font-size:12px;color:#555;font-style:italic;display:flex;align-items:center;gap:8px">
-          <span style="color:#aaa">💬</span><span style="flex:1">${escHtml(q.comment)}</span>
-          <button onclick="setSystemComment(${qi},'')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:12px;padding:0">✕</button>
-        </div>` : ''}
+
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
-        <button onclick="promptSystemComment(${qi})" title="Add line comment" style="background:none;border:1px solid #ddd;color:#888;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px;white-space:nowrap">💬</button>
       </div>
     </div>`;
   }).join('') + ciSummary + caSummary + sdSummary;
@@ -1751,9 +1746,7 @@ function renderCustomItemsSummary() {
         </span>
         ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
         <button onclick="setCustomItemQty('${escAttr(it.key)}', 0)" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
-        <button onclick="promptCustomItemComment('${escAttr(it.key)}')" title="Add line comment" style="background:none;border:1px solid #ddd;color:#888;cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px">💬</button>
       </div>
-      ${it.comment ? `<div style="margin-top:4px;padding:4px 8px;background:#f8f9fa;border-left:3px solid #c5c5c5;border-radius:4px;font-size:11px;color:#555;font-style:italic">${escHtml(it.comment)}</div>` : ''}
       ${ledgerNote}
     </div>`;
   }).join('');
@@ -3189,7 +3182,7 @@ function openEclipseModal() {
   document.getElementById('modal-submit').disabled = false;
   document.getElementById('modal-preview-panel').style.display = 'none';
   // Show preview button only for ?preview=1 users
-  document.getElementById('modal-preview-btn').style.display = PREVIEW_ENABLED ? '' : 'none';
+  document.getElementById('modal-preview-btn').style.display = '';
   // Default branch to user's home branch
   const homeBranch = localStorage.getItem('eclipseHomeBranch');
   if (homeBranch) document.getElementById('modal-branch').value = homeBranch;
@@ -3348,14 +3341,12 @@ function buildDesktopOrderLines() {
       q.zones.forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
     }
     (q.addons || []).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
-    if (q.comment && lines.length > start) lines[lines.length - 1].comment = q.comment;
   });
   wideLines.forEach(l => {
     const model = l.catalogNumber || l.cat || l.model || l.sku;
     if (model) {
       const line = { model: formatCatNumLocal(model), sku: l.sku || '', qty: l.qty || 1 };
       const it = quoteWideState.customItems?.[l.sku || l.catalogNumber];
-      if (it?.comment) line.comment = it.comment;
       lines.push(line);
     }
   });
