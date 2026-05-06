@@ -3210,7 +3210,9 @@ function swapAddonForSub(qi, ai, subCat, subDesc) {
   addon.catalogNumber = subCat;
   addon.description = subDesc || subCat;
   addon.subSuggestion = null;
+  quotePricing = {};
   renderQuote();
+  getPricing();
 }
 
 function setAddonQty(qi, ai, val) {
@@ -3878,6 +3880,12 @@ async function getPricing() {
     console.log('Debug:', data.debug);
     console.log('Pricing raw:', data.rawPricing, 'Inv raw:', data.rawInv);
     renderQuote();
+    // After pricing loads, check all currently-checked addons for OOS and suggest subs
+    quote.forEach((q, qi) => {
+      (q.addons || []).forEach((a, ai) => {
+        if (a.checked && !a.subSuggestion) checkAddonSub(qi, ai);
+      });
+    });
     // Kick off future ledger lookup for any out-of-stock items (don't await — let it
     // fill in inline notes when the data comes back).
     fetchFutureLedgerForOOS();
