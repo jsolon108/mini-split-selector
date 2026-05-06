@@ -700,8 +700,8 @@ select:focus,input:focus{outline:none;border-color:#999}
     </div>
     <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
-    <label style="margin-top:10px">Order Comment <span style="color:#aaa;font-weight:400">(optional)</span></label>
-    <textarea id="modal-order-comment" placeholder="e.g. Please call before delivery" style="width:100%;height:64px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:4px"></textarea>
+    <label style="margin-top:10px">Internal Notes <span style="color:#aaa;font-weight:400">(optional — visible to staff only, not printed)</span></label>
+    <textarea id="modal-order-comment" placeholder="e.g. Call before delivery, hold at branch" style="width:100%;height:64px;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;resize:vertical;margin-bottom:4px"></textarea>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeEclipseModal()">Cancel</button>
       <button class="btn-submit" id="modal-preview-btn" onclick="doDesktopPreview()" style="display:none;background:#6366f1">Preview Order</button>
@@ -3265,7 +3265,6 @@ async function doDesktopPreview() {
         branch: document.getElementById('modal-branch').value,
         customerPO: document.getElementById('modal-po').value.trim(),
         orderBy: document.getElementById('modal-ordered-by')?.value || '',
-        internalNotes: (document.getElementById('modal-order-comment')?.value || '').trim(),
         lines
       })
     });
