@@ -556,7 +556,8 @@ export default async function handler(req, res) {
               const subDetail = await subr.json();
               const subCat = subDetail.catalogNumber;
               if (!subCat) return;
-              const pp = new URLSearchParams({ CatalogNumber: subCat, BillTo: customerId || '', Branch: branch || 'FARM' });
+              const pp = new URLSearchParams({ CatalogNumber: subCat, Quantity: '1', Branch: branch || 'FARM' });
+              if (customerId) pp.append('CustomerId', customerId);
               const pr = await eclipseFetch(
                 `${ECLIPSE_BASE}/ProductInventoryPricingMassInquiry?${pp}`,
                 { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } }
