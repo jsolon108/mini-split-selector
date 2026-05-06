@@ -2561,5 +2561,66 @@ updateGetPricingBtn();
   }
 })();
 </script>
+
+<!-- Feedback Button + Sheet -->
+<button id="m-feedback-fab" onclick="openMFeedback()" title="Send feedback"
+  style="position:fixed;bottom:24px;right:20px;width:44px;height:44px;border-radius:50%;background:var(--blue);color:#fff;border:none;font-size:20px;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.25);z-index:9000;display:flex;align-items:center;justify-content:center">
+  💬
+</button>
+<div class="overlay" id="m-feedback-overlay" onclick="if(event.target===this)closeMFeedback()">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Send Feedback</div>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Category</label>
+    <select id="m-feedback-category" class="branch-select" style="margin-bottom:12px">
+      <option value="Bug">🐛 Bug / Something broken</option>
+      <option value="Feature">✨ Feature request</option>
+      <option value="Data">📦 Product / data issue</option>
+      <option value="General">💬 General feedback</option>
+    </select>
+    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Message <span style="color:var(--red)">*</span></label>
+    <textarea id="m-feedback-message" placeholder="Describe the issue or idea..." class="sheet-input" style="height:90px;resize:vertical;margin-bottom:12px"></textarea>
+    <div id="m-feedback-status" style="font-size:13px;min-height:18px;margin-bottom:10px"></div>
+    <button class="sheet-btn primary" onclick="submitMFeedback()" id="m-feedback-btn">Send Feedback</button>
+    <button class="sheet-btn secondary" onclick="closeMFeedback()" style="margin-top:8px">Cancel</button>
+  </div>
+</div>
+<script>
+function openMFeedback() {
+  document.getElementById('m-feedback-message').value = '';
+  document.getElementById('m-feedback-status').textContent = '';
+  document.getElementById('m-feedback-btn').textContent = 'Send Feedback';
+  document.getElementById('m-feedback-btn').disabled = false;
+  openOverlay('m-feedback-overlay');
+}
+function closeMFeedback() { closeOverlay('m-feedback-overlay'); }
+async function submitMFeedback() {
+  const message = document.getElementById('m-feedback-message').value.trim();
+  const category = document.getElementById('m-feedback-category').value;
+  const statusEl = document.getElementById('m-feedback-status');
+  const btn = document.getElementById('m-feedback-btn');
+  if (!message) { statusEl.textContent = 'Please enter a message.'; statusEl.style.color = 'var(--red)'; return; }
+  btn.textContent = 'Sending…'; btn.disabled = true; statusEl.textContent = '';
+  try {
+    const res = await fetch('/api/feedback', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        category, message,
+        username: eclipseSession?.username || localStorage.getItem('eclipseUsername') || 'unknown',
+        page: 'mobile',
+        device: 'mobile'
+      })
+    });
+    if (!res.ok) throw new Error();
+    statusEl.textContent = '✓ Sent — thank you!'; statusEl.style.color = 'var(--green)';
+    btn.textContent = 'Done';
+    setTimeout(() => closeMFeedback(), 1500);
+  } catch(e) {
+    statusEl.textContent = 'Failed. Please try again.'; statusEl.style.color = 'var(--red)';
+    btn.textContent = 'Send Feedback'; btn.disabled = false;
+  }
+}
+</script>
+
 </body>
 </html>
