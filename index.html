@@ -3322,7 +3322,7 @@ async function doDesktopPreview() {
     const oosLines = lines.filter(l => {
       if (!l.model) return false;
       const branchQty = lookupInvFull(l.model, l.sku);
-      return branchQty === 0;
+      return branchQty === 0 || branchQty === null; // check subs if OOS or no availability data
     });
     if (oosLines.length && custId) {
       const oosEl = document.getElementById('modal-preview-subs');
