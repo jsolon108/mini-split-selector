@@ -243,6 +243,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
         <div style="display:flex;align-items:center;gap:10px">
           <div style="font-size:11px;color:var(--text-dim)" id="push-count">—</div>
           <button onclick="downloadPushesCSV()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-mid);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font)">↓ CSV</button>
+          <button onclick="checkOrderStatuses()" id="check-status-btn" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-mid);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font)">⟳ Check Status</button>
         </div>
       </div>
       <div class="panel-body" style="max-height:420px;overflow-y:auto" id="push-table-wrap"><div class="loading">Loading…</div></div>
@@ -482,11 +483,12 @@ function renderPushTable(pushes) {
       <td style="color:var(--text-dim)">${d.systems||0} systems</td>
       <td style="color:var(--text-dim)">${d.branch||e.user_branch||'—'}</td>
       <td><span class="device-badge ${e.device||'desktop'}">${e.device||'desktop'}</span></td>
+      <td id="status-${(d.orderId||'').replace(/[^a-z0-9]/gi,'_')}" style="color:var(--text-dim);font-size:11px">—</td>
     </tr>`;
   }).join('');
   document.getElementById('push-table-wrap').innerHTML = `
     <table class="user-table">
-      <thead><tr><th>Time</th><th>User</th><th>Customer</th><th>Order #</th><th>Systems</th><th>Branch</th><th>Device</th></tr></thead>
+      <thead><tr><th>Time</th><th>User</th><th>Customer</th><th>Order #</th><th>Systems</th><th>Branch</th><th>Device</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
 }
@@ -500,6 +502,79 @@ function timeAgo(ts) {
 }
 
 
+
+// Eclipse credentials for dashboard status lookups — stored when user logs in via the main app
+// Dashboard reads them from localStorage
+let dashEclipseSession = null;
+
+function getDashSession() {
+  if (dashEclipseSession) return dashEclipseSession;
+  const token = localStorage.getItem('eclipseToken');
+  const username = localStorage.getItem('eclipseUsername');
+  const password = localStorage.getItem('eclipsePassword');
+  if (token && username) {
+    dashEclipseSession = { token, username, password };
+    return dashEclipseSession;
+  }
+  return null;
+}
+
+const STATUS_LABELS = {
+  'Bid': { label: 'Quote', color: 'var(--blue)' },
+  'ShipWhenAvailable': { label: 'Order — Ship Avail', color: 'var(--green)' },
+  'ShipWhenComplete': { label: 'Order — Ship Complete', color: 'var(--green)' },
+  'CallWhenAvailable': { label: 'Order — Call Avail', color: 'var(--green)' },
+  'CallWhenComplete': { label: 'Order — Call Complete', color: 'var(--green)' },
+  'Invoiced': { label: 'Invoiced', color: '#10b981' },
+  'Cancelled': { label: 'Cancelled', color: 'var(--text-dim)' },
+  'Not Found': { label: 'Not Found', color: 'var(--text-dim)' },
+  'Error': { label: 'Error', color: '#ef4444' },
+};
+
+async function checkOrderStatuses() {
+  const session = getDashSession();
+  if (!session?.token) {
+    alert('Eclipse session not found. Open the quote builder app and sign in first, then come back to the dashboard.');
+    return;
+  }
+  const pushes = filterEvents(allEvents).filter(e => e.action === 'eclipse_push' && e.detail?.orderId);
+  if (!pushes.length) { alert('No quotes to check.'); return; }
+
+  const btn = document.getElementById('check-status-btn');
+  btn.textContent = `Checking ${pushes.length}…`;
+  btn.disabled = true;
+
+  // Fan out parallel requests, batched to avoid hammering Eclipse
+  const BATCH = 5;
+  for (let i = 0; i < pushes.length; i += BATCH) {
+    const batch = pushes.slice(i, i + BATCH);
+    await Promise.all(batch.map(async e => {
+      const orderId = e.detail.orderId;
+      const elId = 'status-' + orderId.replace(/[^a-z0-9]/gi, '_');
+      const el = document.getElementById(elId);
+      if (el) el.textContent = '…';
+      try {
+        const res = await fetch('/api/eclipse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'getOrder', sessionToken: session.token, orderId })
+        });
+        const data = await res.json();
+        if (el) {
+          const cfg = STATUS_LABELS[data.status] || { label: data.status || '?', color: 'var(--text-mid)' };
+          const isOrder = cfg.label.startsWith('Order') || data.status === 'Invoiced';
+          el.innerHTML = `<span style="color:${cfg.color};font-weight:${isOrder?'600':'400'}">${isOrder?'✓ ':''}${cfg.label}</span>`;
+        }
+      } catch(err) {
+        if (el) el.textContent = 'Error';
+      }
+    }));
+    btn.textContent = `Checking… ${Math.min(i + BATCH, pushes.length)}/${pushes.length}`;
+  }
+
+  btn.textContent = '✓ Done';
+  setTimeout(() => { btn.textContent = '⟳ Check Status'; btn.disabled = false; }, 3000);
+}
 function downloadCSV(filename, rows) {
   const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
