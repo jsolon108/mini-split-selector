@@ -3241,8 +3241,11 @@ function buildDesktopOrderLines() {
     }
     (q.addons||[]).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
   });
-  wideLines.forEach(l => lines.push({ model: l.cat || l.model, qty: l.qty || 1 }));
-  return lines;
+  wideLines.forEach(l => {
+    const model = l.catalogNumber || l.cat || l.model || l.sku;
+    if (model) lines.push({ model: formatCatNumLocal(model), qty: l.qty || 1 });
+  });
+  return lines.filter(l => l.model); // strip any lines with no catalog number
 }function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
 }
