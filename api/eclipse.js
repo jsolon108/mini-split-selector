@@ -35,8 +35,29 @@ async function createSession(username, password) {
   return data.sessionToken;
 }
 
-function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
-  return {
+function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes) {
+  const lineItems = [];
+  lines.forEach(l => {
+    if (l.commentOnly) {
+      // Pure comment line — no product
+      lineItems.push({ lineItemComment: { comments: l.comment || '' } });
+    } else {
+      lineItems.push({
+        lineItemProduct: {
+          catalogNumber: formatCatalogNumber(l.model),
+          quantity: l.qty,
+          um: 'EA',
+          umQuantity: 1,
+          productDescription: l.description || ''
+        }
+      });
+      // Attach line comment immediately after the product if present
+      if (l.comment) {
+        lineItems.push({ lineItemComment: { comments: l.comment } });
+      }
+    }
+  });
+  const payload = {
     priceBranch: branch,
     shipBranch: branch,
     glBranch: branch,
@@ -46,16 +67,10 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     customerReleaseNumber: 'API',
     orderBy: orderBy || '',
     orderType: '',
-    lines: lines.map(l => ({
-      lineItemProduct: {
-        catalogNumber: formatCatalogNumber(l.model),
-        quantity: l.qty,
-        um: 'EA',
-        umQuantity: 1,
-        productDescription: l.description || ''
-      }
-    }))
+    lines: lineItems
   };
+  if (internalNotes) payload.internalNotes = internalNotes;
+  return payload;
 }
 
 async function postOrder(token, payload) {
@@ -153,8 +168,8 @@ export default async function handler(req, res) {
   // Create order
   if (action === 'salesOrderPreview') {
     try {
-      const { branch, customerAccount, customerPO, orderBy, lines } = req.body;
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
+      const { branch, customerAccount, customerPO, orderBy, lines, internalNotes } = req.body;
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes);
       payload.orderStatus = 'Bid';
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
         method: 'POST',
