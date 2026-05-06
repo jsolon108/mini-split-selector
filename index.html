@@ -1413,10 +1413,29 @@ function renderQuote() {
           const lineTotal = price?.price ? (price.price * qty) : null;
           const reqBadge = a.required ? '<span class="addon-required-badge">Required</span>' : '';
           const overridden = a.qtyOverride != null && a.qtyOverride !== a.qtyNeeded;
-          return `<div class="addon-row${a.required?' addon-row-required':''}">
+          const invData = quotePricing?.inventory?.[a.catalogNumber] || null;
+          const addonBranchQty = invData?.userQty ?? null;
+          const addonOOS = addonBranchQty === 0;
+          const availDot = addonBranchQty === null ? '' : addonBranchQty > 0
+            ? `<span style="color:#0f6e56;font-size:10px;margin-left:4px">● ${addonBranchQty}</span>`
+            : `<span style="color:#c0392b;font-size:10px;margin-left:4px">⚠ 0</span>`;
+          const subSuggHtml = a.subSuggestion?.length && a.checked ? a.subSuggestion.map(s =>
+            `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="color:#0f6e56;font-weight:600">↳ Sub available:</span>
+              <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
+              <span style="color:#555;flex:1">${s.description}</span>
+              <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
+              <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
+              <button onclick="swapAddonForSub(${qi},${ai},'${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}')"
+                style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">
+                Use this
+              </button>
+            </div>`
+          ).join('') : '';
+          return `<div class="addon-row${a.required?' addon-row-required':''}${addonOOS?' ':''}" style="${addonOOS && a.checked?'background:#fff8f8;border-radius:4px;':''}">
             <input type="checkbox" ${a.checked?'checked':''} onchange="toggleAddon(${qi},${ai})"/>
             <div class="addon-row-body">
-              <div class="addon-row-desc">${a.description} ${reqBadge}</div>
+              <div class="addon-row-desc">${a.description} ${reqBadge}${availDot}</div>
               <div class="addon-row-model">${a.catalogNumber}</div>
             </div>
             <span class="addon-row-qty">
@@ -1424,7 +1443,7 @@ function renderQuote() {
               ${overridden?`<span class="addon-row-qty-suggested">suggested ${a.qtyNeeded}</span>`:''}
             </span>
             <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
-          </div>`;
+          </div>${subSuggHtml}`;
         }).join('');
         return `<div class="addon-category ${isOpen?'addon-category-open':''}">
           <div class="addon-category-label" onclick="toggleAddonCategory(${qi}, ${JSON.stringify(cat).replace(/"/g, '&quot;')})">
@@ -3147,7 +3166,53 @@ function toggleAddon(qi, ai) {
   const addon = quote[qi].addons[ai];
   addon.checked = !addon.checked;
   renderQuote();
+  // When checking an addon, check availability and suggest sub if OOS
+  if (addon.checked && !addon.subSuggestion) {
+    checkAddonSub(qi, ai);
+  }
 }
+
+async function checkAddonSub(qi, ai) {
+  const addon = quote[qi]?.addons?.[ai];
+  if (!addon || !eclipseSession.token) return;
+  const inv = quotePricing?.inventory;
+  if (!inv) return;
+  const cat = addon.catalogNumber;
+  const invData = inv[cat] || inv[cat?.replace(/^BMS500-/,'')] || null;
+  const branchQty = invData?.userQty ?? null;
+  if (branchQty === null || branchQty > 0) return; // available or unknown — no sub needed
+  // OOS — fetch substitutes
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'getSubstitutes',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        catalogNumbers: [cat],
+        branch: localStorage.getItem('eclipseHomeBranch') || 'FARM',
+        customerId: selectedCustomer?.id || qSelectedCustomer?.id
+      })
+    });
+    const data = await res.json();
+    const subs = (data.substitutes || {})[cat];
+    if (subs?.length) {
+      quote[qi].addons[ai].subSuggestion = subs;
+      renderQuote();
+    }
+  } catch(e) { /* silent */ }
+}
+
+function swapAddonForSub(qi, ai, subCat, subDesc) {
+  const addon = quote[qi]?.addons?.[ai];
+  if (!addon) return;
+  addon.catalogNumber = subCat;
+  addon.description = subDesc || subCat;
+  addon.subSuggestion = null;
+  renderQuote();
+}
+
 function setAddonQty(qi, ai, val) {
   const a = quote[qi].addons[ai];
   const v = Math.max(0, Math.floor(val || 0));
