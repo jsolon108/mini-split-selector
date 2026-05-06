@@ -3460,7 +3460,7 @@ async function pushToEclipse() {
     if (data.success) {
       statusEl.style.color = '#0f6e56';
       statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
-      logEvent('eclipse_push', { orderId: data.orderId, customer: qSelectedCustomer?.name, systems: quote.length });
+      logEvent('eclipse_push', { orderId: data.orderId, customer: selectedCustomer?.name || qSelectedCustomer?.name, systems: quote.length });
       document.getElementById('modal-close-btn').style.display = 'block';
     } else if (res.status === 401) {
       statusEl.style.color = '#E24B4A';
