@@ -517,6 +517,27 @@ export default async function handler(req, res) {
 
   // Search recent orders by customer
   // Look up a specific order by ID — used by dashboard to check quote conversion status
+  if (action === 'getOrderRaw') {
+    try {
+      const { orderId } = req.body;
+      const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      const text = await r.text();
+      const data = JSON.parse(text);
+      // Extract just the line comments
+      const order = data.results?.[0] || data;
+      const lineComments = (order.lines || []).map((l, i) => ({
+        line: i,
+        catalogNumber: l.lineItemProduct?.catalogNumber || l.catalogNumber,
+        comments: l.comments || []
+      }));
+      return res.status(200).json({ lineComments, rawFirstLine: order.lines?.[0] });
+    } catch(err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   if (action === 'getOrder') {
     try {
       const { orderId } = req.body;
