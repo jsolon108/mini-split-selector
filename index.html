@@ -699,9 +699,16 @@ select:focus,input:focus{outline:none;border-color:#999}
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
     <div class="modal-btns">
       <button class="btn-cancel" onclick="closeEclipseModal()">Cancel</button>
+      <button class="btn-submit" id="modal-preview-btn" onclick="doDesktopPreview()" style="display:none;background:#6366f1">Preview Order</button>
       <button class="btn-submit" id="modal-submit" onclick="pushToEclipse()">Create Quote</button>
     </div>
     <div class="modal-status" id="modal-status"></div>
+    <!-- Preview panel — only shown when ?preview=1 and user clicks Preview -->
+    <div id="modal-preview-panel" style="display:none;margin-top:14px;border:1px solid #e8e8e8;border-radius:8px;overflow:hidden">
+      <div style="padding:8px 12px;background:#f8f9fa;border-bottom:1px solid #e8e8e8;font-size:11px;font-weight:700;color:#555;text-transform:uppercase;letter-spacing:.05em">Order Preview</div>
+      <div id="modal-preview-body" style="max-height:280px;overflow-y:auto"></div>
+      <div id="modal-preview-total" style="padding:10px 12px;border-top:1px solid #e8e8e8;background:#f8f9fa"></div>
+    </div>
     <button id="modal-close-btn" onclick="closeEclipseModal()" style="display:none;width:100%;margin-top:10px;padding:9px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:13px;cursor:pointer;font-family:inherit">Close Window</button>
   </div>
 </div>
@@ -764,6 +771,7 @@ let eclipseSession = { token: null, username: null, password: null };
 
 // ---- UNITARY (hidden behind ?unitary=1 URL flag) ----
 const UNITARY_ENABLED = new URLSearchParams(window.location.search).has('unitary');
+const PREVIEW_ENABLED = new URLSearchParams(window.location.search).has('preview');
 let UNITARY_CATALOG = []; // populated from Supabase in fetchData()
 let UNITARY_MATCHUPS = {}; // outdoor_model -> array of matchups (lazy-loaded)
 let UNITARY_MATCHUPS_COUNT = {}; // outdoor_model -> total count
@@ -3127,11 +3135,89 @@ function openEclipseModal() {
   document.getElementById('modal-status').textContent = '';
   document.getElementById('modal-close-btn').style.display = 'none';
   document.getElementById('modal-submit').disabled = false;
+  document.getElementById('modal-preview-panel').style.display = 'none';
+  // Show preview button only for ?preview=1 users
+  document.getElementById('modal-preview-btn').style.display = PREVIEW_ENABLED ? '' : 'none';
   // Default branch to user's home branch
   const homeBranch = localStorage.getItem('eclipseHomeBranch');
   if (homeBranch) document.getElementById('modal-branch').value = homeBranch;
   document.getElementById('eclipse-modal').classList.add('open');
 }
+
+async function doDesktopPreview() {
+  const btn = document.getElementById('modal-preview-btn');
+  const statusEl = document.getElementById('modal-status');
+  const panel = document.getElementById('modal-preview-panel');
+  btn.textContent = 'Loading…'; btn.disabled = true; statusEl.textContent = '';
+  try {
+    const lines = buildDesktopOrderLines();
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'salesOrderPreview',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        customerAccount: selectedCustomer?.id,
+        branch: document.getElementById('modal-branch').value,
+        customerPO: document.getElementById('modal-po').value.trim(),
+        orderBy: document.getElementById('modal-ordered-by')?.value || '',
+        lines
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Preview failed');
+    console.log('[Preview response]', data); // log full response for debugging
+    const previewLines = (data.lines || []);
+    if (!previewLines.length) {
+      statusEl.textContent = `⚠ Preview returned no lines. Check console for full response.`;
+      panel.style.display = 'block';
+      document.getElementById('modal-preview-body').innerHTML = '<div style="padding:12px;color:#888;font-size:12px">No line details — see browser console for raw response.</div>';
+      document.getElementById('modal-preview-total').innerHTML = '';
+    } else {
+      const rowsHtml = previewLines.map(l => {
+        const price = l.unitPrice != null ? '$' + l.unitPrice.toFixed(2) : '—';
+        const ext = l.extended != null ? '$' + l.extended.toFixed(2) : '—';
+        const dot = l.branchQty > 0 ? '🟢' : l.branchQty === 0 ? '🔴' : '⚪';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
+          <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${l.catalogNumber||''}</span>
+          <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.description||''}</span>
+          <span style="flex-shrink:0;color:#666">×${l.qty}</span>
+          <span style="flex-shrink:0">${dot}</span>
+          <span style="flex-shrink:0;font-weight:600;min-width:60px;text-align:right">${ext}</span>
+        </div>`;
+      }).join('');
+      document.getElementById('modal-preview-body').innerHTML = rowsHtml;
+      document.getElementById('modal-preview-total').innerHTML = `
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Subtotal</span><span>${data.subtotal != null ? '$'+data.subtotal.toFixed(2) : '—'}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Tax</span><span>${data.tax != null ? '$'+data.tax.toFixed(2) : '—'}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#185FA5;border-top:1px solid #e8e8e8;padding-top:6px;margin-top:4px"><span>Total</span><span>${data.total != null ? '$'+data.total.toFixed(2) : '—'}</span></div>`;
+      panel.style.display = 'block';
+    }
+  } catch(e) {
+    statusEl.textContent = '⚠ Preview error: ' + e.message;
+  } finally {
+    btn.textContent = 'Preview Order'; btn.disabled = false;
+  }
+}
+
+function buildDesktopOrderLines() {
+  const lines = [];
+  const wideLines = getQuoteWideLines ? getQuoteWideLines() : [];
+  quote.forEach(q => {
+    if (q.qtype === 'sz') {
+      lines.push({ model: formatCatNumLocal(q.ou), qty: q.qty });
+      lines.push({ model: formatCatNumLocal(q.iu), qty: q.qty });
+    } else {
+      lines.push({ model: formatCatNumLocal(q.ou), qty: 1 });
+      (q.zones||[]).forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
+    }
+    (q.addons||[]).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
+  });
+  wideLines.forEach(l => lines.push({ model: l.cat || l.model, qty: l.qty || 1 }));
+  return lines;
+}
+
 
 function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
