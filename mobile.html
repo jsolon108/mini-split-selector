@@ -788,33 +788,47 @@ input[type=number] { -moz-appearance: textfield; }
     <div class="sheet-handle"></div>
     <div class="sheet-title">Create Quote in Eclipse</div>
     <div style="font-size:13px;color:var(--gray-600);margin-bottom:12px">Customer: <strong id="eclipse-customer-name">—</strong></div>
-    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Branch</label>
-    <select class="branch-select" id="eclipse-branch">
-      <option value="BALD">BALD — Baldwin</option>
-      <option value="BKLN">BKLN — Brooklyn</option>
-      <option value="BOH">BOH — Bohemia</option>
-      <option value="FARM" selected>FARM — Farmingdale</option>
-      <option value="NHP">NHP — New Hyde Park</option>
-      <option value="MANH">MANH — Manhattan</option>
-      <option value="STAM">STAM — Stamford</option>
-      <option value="MILF">MILF — Milford</option>
-      <option value="HART">HART — Hartford</option>
-      <option value="CPCT">CPCT — CP Connecticut</option>
-      <option value="CPNY">CPNY — CP New York</option>
-      <option value="REDH">REDH — Red Hook</option>
-      <option value="WHNY">WHNY — White Plains</option>
-    </select>
-    <div id="eclipse-ordered-by-row" style="display:none">
-      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Ordered By <span style="color:var(--red)">*</span></label>
-      <select class="branch-select" id="eclipse-ordered-by" style="margin-bottom:12px">
-        <option value="">— select contact —</option>
+
+    <!-- Step 1: form -->
+    <div id="eclipse-form-step">
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Branch</label>
+      <select class="branch-select" id="eclipse-branch">
+        <option value="BALD">BALD — Baldwin</option>
+        <option value="BKLN">BKLN — Brooklyn</option>
+        <option value="BOH">BOH — Bohemia</option>
+        <option value="FARM" selected>FARM — Farmingdale</option>
+        <option value="NHP">NHP — New Hyde Park</option>
+        <option value="MANH">MANH — Manhattan</option>
+        <option value="STAM">STAM — Stamford</option>
+        <option value="MILF">MILF — Milford</option>
+        <option value="HART">HART — Hartford</option>
+        <option value="CPCT">CPCT — CP Connecticut</option>
+        <option value="CPNY">CPNY — CP New York</option>
+        <option value="REDH">REDH — Red Hook</option>
+        <option value="WHNY">WHNY — White Plains</option>
       </select>
+      <div id="eclipse-ordered-by-row" style="display:none">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Ordered By <span style="color:var(--red)">*</span></label>
+        <select class="branch-select" id="eclipse-ordered-by" style="margin-bottom:12px">
+          <option value="">— select contact —</option>
+        </select>
+      </div>
+      <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">PO Number (optional)</label>
+      <input class="sheet-input" id="eclipse-po" type="text" placeholder="Customer PO"/>
+      <div id="eclipse-status" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:20px"></div>
+      <button class="sheet-btn primary" onclick="doPreviewOrder()" id="eclipse-preview-btn">Preview Order</button>
+      <button class="sheet-btn secondary" onclick="closeOverlay('eclipse-overlay')" style="margin-top:8px">Cancel</button>
     </div>
-    <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">PO Number (optional)</label>
-    <input class="sheet-input" id="eclipse-po" type="text" placeholder="Customer PO"/>
-    <div id="eclipse-status" style="font-size:13px;color:var(--gray-600);margin-bottom:10px;min-height:20px"></div>
-    <button class="sheet-btn primary" onclick="doPushToEclipse()" id="eclipse-submit-btn">Create Quote</button>
-    <button class="sheet-btn secondary" onclick="closeOverlay('eclipse-overlay')" style="margin-top:8px">Cancel</button>
+
+    <!-- Step 2: preview -->
+    <div id="eclipse-preview-step" style="display:none">
+      <div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">Order Preview</div>
+      <div id="eclipse-preview-body" style="border:1px solid var(--gray-200);border-radius:10px;overflow:hidden;margin-bottom:12px;max-height:320px;overflow-y:auto"></div>
+      <div id="eclipse-preview-total" style="margin-bottom:12px"></div>
+      <div id="eclipse-submit-status" style="font-size:13px;margin-bottom:10px;min-height:20px"></div>
+      <button class="sheet-btn primary" onclick="doPushToEclipse()" id="eclipse-submit-btn">✓ Confirm &amp; Create Quote</button>
+      <button class="sheet-btn secondary" onclick="showEclipseForm()" style="margin-top:8px">← Back</button>
+    </div>
   </div>
 </div>
 
@@ -2309,15 +2323,20 @@ async function showInvSheet(model, desc) {
 // ══════════════════════════════════════════════
 // ECLIPSE PUSH
 // ══════════════════════════════════════════════
+function showEclipseForm() {
+  document.getElementById('eclipse-form-step').style.display = '';
+  document.getElementById('eclipse-preview-step').style.display = 'none';
+  document.getElementById('eclipse-status').textContent = '';
+}
+
 function openEclipseSheet() {
   const hasItems = quote.length || Object.values(quoteWideState.customItems||{}).some(it=>it?.qty>0) || Object.keys(quoteWideState.common||{}).some(k=>(quoteWideState.common[k]||0)>0);
   if (!hasItems) { alert('Add a system or product first.'); return; }
   if (!qSelectedCustomer) { alert('Select a customer first.'); return; }
   document.getElementById('eclipse-customer-name').textContent = qSelectedCustomer.name;
   document.getElementById('eclipse-status').textContent = '';
-  document.getElementById('eclipse-submit-btn').disabled = false;
-  document.getElementById('eclipse-submit-btn').textContent = 'Create Quote';
-  // Populate Ordered By contacts if available
+  showEclipseForm();
+  // Populate contacts
   const obRow = document.getElementById('eclipse-ordered-by-row');
   const obSelect = document.getElementById('eclipse-ordered-by');
   const contacts = qSelectedCustomer.contacts || [];
@@ -2332,32 +2351,35 @@ function openEclipseSheet() {
   openOverlay('eclipse-overlay');
 }
 
-async function doPushToEclipse() {
-  const btn = document.getElementById('eclipse-submit-btn');
-  const status = document.getElementById('eclipse-status');
+function buildEclipseLines() {
+  const lines = [];
+  quote.forEach(q => {
+    if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
+    else { lines.push({model:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({model:fmtCat(z.model),qty:1});}); }
+    (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
+  });
+  (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
+  (LINE_HIDE_PRODUCTS||[]).forEach(p=>{const qty=quoteWideState.lineHide[p.order_num]||0; if(qty)lines.push({model:fmtCat(p.mfg_num||p.order_num),qty});});
+  Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
+  return lines;
+}
+
+async function doPreviewOrder() {
   const obRow = document.getElementById('eclipse-ordered-by-row');
   const orderBy = document.getElementById('eclipse-ordered-by').value;
-  // Validate ordered by if the field is shown
+  const statusEl = document.getElementById('eclipse-status');
   if (obRow.style.display !== 'none' && !orderBy) {
-    status.textContent = 'Please select an Ordered By contact.';
-    status.style.color = 'var(--red)';
+    statusEl.textContent = 'Please select an Ordered By contact.';
     return;
   }
-  btn.disabled = true; btn.textContent = 'Creating…'; status.textContent = '';
+  const btn = document.getElementById('eclipse-preview-btn');
+  btn.textContent = 'Loading preview…'; btn.disabled = true; statusEl.textContent = '';
   try {
-    const lines = [];
-    quote.forEach(q => {
-      if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
-      else { lines.push({model:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({model:fmtCat(z.model),qty:1});}); }
-      (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
-    });
-    (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
-    (LINE_HIDE_PRODUCTS||[]).forEach(p => { const qty=quoteWideState.lineHide[p.order_num]||0; if(qty) lines.push({model:fmtCat(p.mfg_num||p.order_num),qty}); });
-    Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
+    const lines = buildEclipseLines();
     const res = await fetch('/api/eclipse', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action:'order',
+        action: 'salesOrderPreview',
         sessionToken: eclipseSession.token,
         username: eclipseSession.username,
         password: eclipseSession.password,
@@ -2369,18 +2391,81 @@ async function doPushToEclipse() {
       })
     });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Preview failed');
+
+    // Render preview
+    const previewLines = (data.lines || []).map(l => {
+      const price = l.unitPrice != null ? fmt(l.unitPrice) : '—';
+      const ext = l.extended != null ? fmt(l.extended) : '—';
+      const avail = l.branchQty != null
+        ? `<span style="color:${l.branchQty>0?'var(--green)':'var(--red)'}">● ${l.branchQty} in stock</span>`
+        : '';
+      return `<div style="padding:8px 12px;border-bottom:1px solid var(--gray-100);font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+          <span style="font-family:var(--mono);color:var(--blue);flex-shrink:0">${esc(l.catalogNumber||'')}</span>
+          <span style="color:var(--gray-600);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.description||'')}</span>
+          <span style="white-space:nowrap;font-weight:600">× ${l.qty}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px">
+          <span style="font-size:11px">${avail}</span>
+          <span style="font-size:11px;color:var(--gray-600)">${price} ea · <strong>${ext}</strong></span>
+        </div>
+      </div>`;
+    }).join('');
+    document.getElementById('eclipse-preview-body').innerHTML = previewLines || '<div style="padding:12px;color:var(--gray-400);font-size:12px">No line details returned.</div>';
+    document.getElementById('eclipse-preview-total').innerHTML = `
+      <div style="background:var(--gray-50);border-radius:10px;padding:12px 14px">
+        ${data.subtotal != null ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--gray-600)">Subtotal</span><span>${fmt(data.subtotal)}</span></div>` : ''}
+        ${data.tax != null ? `<div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="color:var(--gray-600)">Tax</span><span>${fmt(data.tax)}</span></div>` : ''}
+        ${data.total != null ? `<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;border-top:1px solid var(--gray-200);padding-top:8px;margin-top:4px"><span>Total</span><span style="color:var(--blue)">${fmt(data.total)}</span></div>` : ''}
+      </div>`;
+    document.getElementById('eclipse-submit-status').textContent = '';
+    document.getElementById('eclipse-form-step').style.display = 'none';
+    document.getElementById('eclipse-preview-step').style.display = '';
+  } catch(e) {
+    statusEl.textContent = 'Preview error: ' + e.message;
+  } finally {
+    btn.textContent = 'Preview Order'; btn.disabled = false;
+  }
+}
+
+
+
+async function doPushToEclipse() {
+  const btn = document.getElementById('eclipse-submit-btn');
+  const status = document.getElementById('eclipse-submit-status');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  if (status) status.textContent = '';
+  try {
+    const lines = buildEclipseLines();
+    const res = await fetch('/api/eclipse', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        action:'order',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        customerAccount: qSelectedCustomer.id,
+        branch: document.getElementById('eclipse-branch').value,
+        customerPO: document.getElementById('eclipse-po').value.trim(),
+        orderBy: document.getElementById('eclipse-ordered-by').value || '',
+        lines
+      })
+    });
+    const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Push failed');
     const orderId = data.orderId||data.id||'—';
-    status.textContent = `✓ Quote #${orderId} created`;
-    status.style.color = 'var(--green)';
+    if (status) { status.textContent = `✓ Quote #${orderId} created`; status.style.color = 'var(--green)'; }
     btn.textContent = 'Done';
     btn.onclick = () => closeOverlay('eclipse-overlay');
     logEvent('eclipse_push', { orderId, customer: qSelectedCustomer?.name, systems: quote.length, branch: document.getElementById('eclipse-branch').value });
   } catch(e) {
-    status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)';
-    btn.textContent = 'Create Quote'; btn.disabled = false;
+    if (status) { status.textContent = 'Error: ' + e.message; status.style.color = 'var(--red)'; }
+    btn.textContent = '✓ Confirm & Create Quote'; btn.disabled = false;
   }
 }
+
+
 
 // ══════════════════════════════════════════════
 // MORE OPTIONS (copy/clear)
