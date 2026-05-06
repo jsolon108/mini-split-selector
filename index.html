@@ -3151,6 +3151,8 @@ async function doDesktopPreview() {
   btn.textContent = 'Loading…'; btn.disabled = true; statusEl.textContent = '';
   try {
     const lines = buildDesktopOrderLines();
+
+    // Hit Eclipse Preview for authoritative totals (subtotal/tax/total)
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3167,32 +3169,53 @@ async function doDesktopPreview() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Preview failed');
-    console.log('[Preview response]', data);
-    const previewLines = (data.lines || []);
-    if (!previewLines.length) {
-      statusEl.textContent = `⚠ Preview returned no lines. Check console for full response.`;
-      panel.style.display = 'block';
-      document.getElementById('modal-preview-body').innerHTML = '<div style="padding:12px;color:#888;font-size:12px">No line details — see browser console for raw response.</div>';
-      document.getElementById('modal-preview-total').innerHTML = '';
-    } else {
-      const rowsHtml = previewLines.map(l => {
-        const price = l.unitPrice != null ? '$' + l.unitPrice.toFixed(2) : '—';
-        const ext = l.extended != null ? '$' + l.extended.toFixed(2) : '—';
-        const dot = l.branchQty > 0 ? '🟢' : l.branchQty === 0 ? '🔴' : '⚪';
-        return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
-          <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${l.catalogNumber||''}</span>
-          <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.description||''}</span>
-          <span style="flex-shrink:0;color:#666">×${l.qty}</span>
-          <span style="flex-shrink:0">${dot}</span>
-          <span style="flex-shrink:0;font-weight:600;min-width:60px;text-align:right">${ext}</span>
-        </div>`;
-      }).join('');
-      document.getElementById('modal-preview-body').innerHTML = rowsHtml;
-      document.getElementById('modal-preview-total').innerHTML = `
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Subtotal</span><span>${data.subtotal != null ? '$'+data.subtotal.toFixed(2) : '—'}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Tax</span><span>${data.tax != null ? '$'+data.tax.toFixed(2) : '—'}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#185FA5;border-top:1px solid #e8e8e8;padding-top:6px;margin-top:4px"><span>Total</span><span>${data.total != null ? '$'+data.total.toFixed(2) : '—'}</span></div>`;
-      panel.style.display = 'block';
+
+    // Build line display from quotePricing — already fetched, instant, no extra API call
+    const pricing = quotePricing?.pricing || {};
+    const inventory = quotePricing?.inventory || {};
+    const userBranch2 = quotePricing?.userBranch || localStorage.getItem('eclipseHomeBranch') || 'FARM';
+
+    function lookupPrice(cat) {
+      if (!cat) return null;
+      const k = formatCatNumLocal(cat);
+      return pricing[cat] || pricing[k] || null;
+    }
+    function lookupInv(cat) {
+      if (!cat) return null;
+      const k = formatCatNumLocal(cat);
+      const inv = inventory[cat] || inventory[k] || null;
+      return inv ? inv.userQty : null;
+    }
+
+    const rowsHtml = lines.map(l => {
+      const cat = l.model || '';
+      const p = lookupPrice(cat);
+      const unitPrice = p?.price ?? null;
+      const qty = l.qty || 1;
+      const extended = unitPrice != null ? unitPrice * qty : null;
+      const branchQty = lookupInv(cat);
+      const dot = branchQty > 0 ? '🟢' : branchQty === 0 ? '🔴' : '⚪';
+      // Get description from pricing response
+      const desc = p?.description || p?.productDescription || cat;
+      const descClean = typeof desc === 'string' ? desc.split('\n')[0] : cat;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #f0f0f0;font-size:12px">
+        <span style="font-family:monospace;color:#185FA5;flex-shrink:0;min-width:100px">${cat}</span>
+        <span style="flex:1;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${descClean}">${descClean}</span>
+        <span style="flex-shrink:0;color:#666">×${qty}</span>
+        <span style="flex-shrink:0">${dot}</span>
+        <span style="flex-shrink:0;font-weight:600;min-width:60px;text-align:right">${extended != null ? '$'+extended.toFixed(2) : '—'}</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('modal-preview-body').innerHTML = rowsHtml || '<div style="padding:12px;color:#888;font-size:12px">No lines.</div>';
+    document.getElementById('modal-preview-total').innerHTML = `
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Subtotal</span><span>${data.subtotal != null ? '$'+data.subtotal.toFixed(2) : '—'}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:#666;margin-bottom:3px"><span>Tax</span><span>${data.tax != null ? '$'+data.tax.toFixed(2) : '—'}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:700;color:#185FA5;border-top:1px solid #e8e8e8;padding-top:6px;margin-top:4px"><span>Total</span><span>${data.total != null ? '$'+data.total.toFixed(2) : '—'}</span></div>`;
+    panel.style.display = 'block';
+
+    if (!data.subtotal && !data.total) {
+      statusEl.textContent = '⚠ Run Get Pricing first to see line item prices.';
     }
   } catch(e) {
     statusEl.textContent = '⚠ Preview error: ' + e.message;
@@ -3216,10 +3239,7 @@ function buildDesktopOrderLines() {
   });
   wideLines.forEach(l => lines.push({ model: l.cat || l.model, qty: l.qty || 1 }));
   return lines;
-}
-
-
-function closeEclipseModal() {
+}function closeEclipseModal() {
   document.getElementById('eclipse-modal').classList.remove('open');
 }
 
