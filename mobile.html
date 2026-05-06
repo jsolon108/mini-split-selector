@@ -2505,17 +2505,23 @@ async function doPreviewOrder(skipValidation = false) {
 async function mSwapForSub(originalCat, subCat, subDesc) {
   if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
   let swapped = false;
+  const matches = v => v && (
+    v === originalCat ||
+    fmtCat(v) === originalCat ||
+    v === fmtCat(originalCat) ||
+    fmtCat(v) === fmtCat(originalCat)
+  );
   quote.forEach(q => {
-    if (q.ou && fmtCat(q.ou) === originalCat) { q.ou = subCat; swapped = true; }
-    if (q.iu && fmtCat(q.iu) === originalCat) { q.iu = subCat; swapped = true; }
-    (q.zones||[]).forEach(z => { if (z.model && fmtCat(z.model) === originalCat) { z.model = subCat; swapped = true; } });
-    (q.addons||[]).forEach(a => { if (a.catalogNumber === originalCat) { a.catalogNumber = subCat; a.description = subDesc||subCat; swapped = true; } });
+    if (matches(q.ou)) { q.ou = subCat; swapped = true; }
+    if (matches(q.iu)) { q.iu = subCat; swapped = true; }
+    (q.zones||[]).forEach(z => { if (matches(z.model)) { z.model = subCat; swapped = true; } });
+    (q.addons||[]).forEach(a => { if (matches(a.catalogNumber)) { a.catalogNumber = subCat; a.description = subDesc||subCat; swapped = true; } });
   });
   Object.values(quoteWideState.customItems||{}).forEach(it => {
-    if (it && fmtCat(it.catalogNumber) === originalCat) { it.catalogNumber = subCat; it.description = subDesc||subCat; swapped = true; }
+    if (it && (matches(it.catalogNumber) || matches(it.orderNumber))) { it.catalogNumber = subCat; it.description = subDesc||subCat; swapped = true; }
   });
   Object.keys(quoteWideState.lineHide||{}).forEach(k => {
-    if (k === originalCat) { const qty = quoteWideState.lineHide[k]; delete quoteWideState.lineHide[k]; quoteWideState.lineHide[subCat] = qty; swapped = true; }
+    if (matches(k)) { const qty = quoteWideState.lineHide[k]; delete quoteWideState.lineHide[k]; quoteWideState.lineHide[subCat] = qty; swapped = true; }
   });
   if (!swapped) { alert(`Could not find ${originalCat} to replace.`); return; }
   quotePricing = {};
