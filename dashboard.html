@@ -158,6 +158,11 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
 
 /* ── Dot online ── */
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+/* Scrollable panels */
+.panel-body::-webkit-scrollbar { width: 4px; }
+.panel-body::-webkit-scrollbar-track { background: transparent; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.panel-body::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 </style>
 </head>
 <body>
@@ -220,14 +225,14 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
             <button onclick="downloadUsersCSV()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-mid);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font)">↓ CSV</button>
           </div>
         </div>
-        <div class="panel-body" id="user-table-wrap"><div class="loading">Loading…</div></div>
+        <div class="panel-body" style="max-height:420px;overflow-y:auto" id="user-table-wrap"><div class="loading">Loading…</div></div>
       </div>
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">Recent Activity</div>
           <div style="font-size:11px;color:var(--text-dim)" id="recent-count">—</div>
         </div>
-        <div class="panel-body" style="padding:0 20px" id="activity-feed"><div class="loading" style="padding:24px">Loading…</div></div>
+        <div class="panel-body" style="padding:0 20px;max-height:420px;overflow-y:auto" id="activity-feed"><div class="loading" style="padding:24px">Loading…</div></div>
       </div>
     </div>
 
@@ -240,7 +245,7 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
           <button onclick="downloadPushesCSV()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-mid);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font)">↓ CSV</button>
         </div>
       </div>
-      <div class="panel-body" id="push-table-wrap"><div class="loading">Loading…</div></div>
+      <div class="panel-body" style="max-height:420px;overflow-y:auto" id="push-table-wrap"><div class="loading">Loading…</div></div>
     </div>
   </div>
 </div>
@@ -441,7 +446,7 @@ function renderActivityFeed(events) {
     add_system:     { bg: 'var(--yellow-dim)', icon: '➕' },
     product_search: { bg: 'var(--purple-dim)', icon: '🔍' },
   };
-  const recent = events.slice(0, 25);
+  const recent = events.slice(0, 10);
   document.getElementById('recent-count').textContent = `${recent.length} of ${events.length}`;
   const html = recent.map(e => {
     const ic = icons[e.action] || { bg: 'var(--surface2)', icon: '•' };
@@ -466,7 +471,7 @@ function renderActivityFeed(events) {
 function renderPushTable(pushes) {
   document.getElementById('push-count').textContent = `${pushes.length} total`;
   if (!pushes.length) { document.getElementById('push-table-wrap').innerHTML = '<div class="empty"><div class="icon">📤</div><div class="msg">No Eclipse quotes yet.</div></div>'; return; }
-  const rows = pushes.slice(0, 50).map(e => {
+  const rows = pushes.map(e => {
     const d = e.detail || {};
     const ts = new Date(e.created_at).toLocaleString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
     return `<tr>
