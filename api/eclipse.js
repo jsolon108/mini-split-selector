@@ -171,8 +171,10 @@ export default async function handler(req, res) {
   // Create order
   if (action === 'salesOrderPreview') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes);
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       payload.orderStatus = 'Bid';
+      if (internalNotes) payload.internalNotes = internalNotes;
+      console.log('[Preview] payload lines count:', payload.lines?.length, JSON.stringify(payload.lines?.slice(0,3)));
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': sessionToken },
@@ -180,7 +182,10 @@ export default async function handler(req, res) {
       });
       if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
       const text = await r.text();
-      if (!r.ok) return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
+      if (!r.ok) {
+        console.log('[Preview] Eclipse error:', r.status, text.slice(0, 500));
+        return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
+      }
       const data = JSON.parse(text);
       const order = data.results?.[0] || data;
       const gen = order.generations?.[0] || {};
