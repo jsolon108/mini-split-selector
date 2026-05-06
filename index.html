@@ -3256,6 +3256,8 @@ async function doDesktopPreview() {
     // Build line display from quotePricing — already fetched, instant, no extra API call
     const pricing = quotePricing?.pricing || {};
     const inventory = quotePricing?.inventory || {};
+    console.log('[Preview] inventory keys sample:', Object.keys(inventory).slice(0, 10));
+    console.log('[Preview] line models/skus:', lines.map(l => ({ model: l.model, sku: l.sku })));
     const userBranch2 = quotePricing?.userBranch || localStorage.getItem('eclipseHomeBranch') || 'FARM';
 
     function lookupPrice(cat) {
