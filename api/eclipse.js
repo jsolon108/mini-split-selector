@@ -46,9 +46,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
         umQuantity: 1,
         productDescription: l.description || ''
       },
-      ...(l.comment ? {
-        comments: [{ comment: l.comment, commentTypeId: 'G', lineId: null }]
-      } : {})
+
     }));
   return {
     priceBranch: branch,
@@ -255,7 +253,6 @@ export default async function handler(req, res) {
   if (action === 'order') {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
-      console.log('[order] built payload lines:', JSON.stringify(payload.lines?.map(l => ({ cat: l.lineItemProduct?.catalogNumber, comments: l.comments }))));
 
       
       async function postNotes(token, orderId) {
@@ -515,30 +512,28 @@ export default async function handler(req, res) {
     }
   }
 
-  // Search recent orders by customer
-  // Look up a specific order by ID — used by dashboard to check quote conversion status
   if (action === 'getOrderRaw') {
     try {
       const { orderId } = req.body;
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
-      const text = await r.text();
-      const data = JSON.parse(text);
-      // Extract just the line comments
+      const data = await r.json();
       const order = data.results?.[0] || data;
       const lineComments = (order.lines || []).map((l, i) => ({
         line: i,
-        catalogNumber: l.lineItemProduct?.catalogNumber || l.catalogNumber,
+        desc: (l.productDecription || '').split('\n')[0].slice(0, 40),
         comments: l.comments || []
       }));
-      return res.status(200).json({ lineComments, rawFirstLine: order.lines?.[0] });
+      return res.status(200).json({ lineComments });
     } catch(err) {
       return res.status(500).json({ error: err.message });
     }
   }
 
-  if (action === 'getOrder') {
+  // Search recent orders by customer
+  // Look up a specific order by ID — used by dashboard to check quote conversion status
+if (action === 'getOrder') {
     try {
       const { orderId } = req.body;
       if (!orderId) return res.status(400).json({ error: 'orderId required' });
