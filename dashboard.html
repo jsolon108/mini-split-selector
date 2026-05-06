@@ -235,7 +235,10 @@ html, body { height: 100%; background: var(--bg); color: var(--text); font-famil
     <div class="panel" style="margin-top:16px">
       <div class="panel-header">
         <div class="panel-title">Eclipse Quotes Created</div>
-        <div style="font-size:11px;color:var(--text-dim)" id="push-count">—</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:11px;color:var(--text-dim)" id="push-count">—</div>
+          <button onclick="downloadPushesCSV()" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--text-mid);font-size:11px;font-weight:500;cursor:pointer;font-family:var(--font)">↓ CSV</button>
+        </div>
       </div>
       <div class="panel-body" id="push-table-wrap"><div class="loading">Loading…</div></div>
     </div>
