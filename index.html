@@ -1828,13 +1828,18 @@ function swapForSub(originalCat, subCat, subDesc) {
   if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
 
   let swapped = false;
-  // Flexible match — handles catalog numbers, order numbers, and BMS500- prefixed variants
   const matches = v => v && (
     v === originalCat ||
     formatCatNumLocal(v) === originalCat ||
     v === formatCatNumLocal(originalCat) ||
     formatCatNumLocal(v) === formatCatNumLocal(originalCat)
   );
+
+  console.log('[Swap] Looking for:', originalCat);
+  console.log('[Swap] quote addons:', quote.flatMap((q,qi) => (q.addons||[]).map((a,ai) => `[${qi}][${ai}] ${a.catalogNumber}`)));
+  console.log('[Swap] customItems:', Object.values(quoteWideState.customItems||{}).map(it => it?.catalogNumber));
+  console.log('[Swap] common keys:', Object.keys(quoteWideState.common||{}));
+  console.log('[Swap] lineHide keys:', Object.keys(quoteWideState.lineHide||{}));
 
   quote.forEach(q => {
     if (matches(q.ou)) { q.ou = subCat; swapped = true; }
@@ -1846,6 +1851,18 @@ function swapForSub(originalCat, subCat, subDesc) {
   Object.values(quoteWideState.customItems || {}).forEach(it => {
     if (it && (matches(it.catalogNumber) || matches(it.orderNumber))) { it.catalogNumber = subCat; it.description = subDesc || subCat; swapped = true; }
   });
+  // Common addons — keyed by sku but mfg_num is the catalog number sent to Eclipse
+  if (COMMON_ADDONS) {
+    COMMON_ADDONS.forEach(a => {
+      if ((quoteWideState.common[a.sku] || 0) > 0 && matches(a.mfg_num || a.sku)) {
+        // Swap the mfg_num by updating the sku mapping
+        const qty = quoteWideState.common[a.sku];
+        delete quoteWideState.common[a.sku];
+        quoteWideState.common[subCat] = qty;
+        swapped = true;
+      }
+    });
+  }
   Object.keys(quoteWideState.lineHide || {}).forEach(k => {
     if (matches(k)) { const qty = quoteWideState.lineHide[k]; delete quoteWideState.lineHide[k]; quoteWideState.lineHide[subCat] = qty; swapped = true; }
   });
