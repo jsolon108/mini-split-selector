@@ -263,7 +263,22 @@ export default async function handler(req, res) {
 
   if (action === 'order') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, internalNotes);
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
+      
+      async function postNotes(token, orderId) {
+        if (!internalNotes || !orderId) return;
+        try {
+          await eclipseFetch(
+            `${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}/InternalNotes?generationId=1`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': token },
+              body: JSON.stringify({ internalNotes })
+            }
+          );
+        } catch(e) { console.log('[InternalNotes] failed:', e.message); }
+      }
+
       let { status, text } = await postOrder(sessionToken, payload);
       if (status === 419) {
         let newToken;
@@ -276,7 +291,9 @@ export default async function handler(req, res) {
         status = retry.status;
         text = retry.text;
         if (status === 200 || status === 201) {
-          return res.status(200).json({ success: true, orderId: extractOrderId(text), newToken });
+          const orderId = extractOrderId(text);
+          await postNotes(newToken, orderId);
+          return res.status(200).json({ success: true, orderId, newToken });
         }
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
@@ -284,16 +301,7 @@ export default async function handler(req, res) {
         return res.status(status).json({ error: `Order failed: ${status}`, detail: text });
       }
       const orderId = extractOrderId(text);
-      // Append internal notes if provided
-      if (internalNotes && orderId) {
-        try {
-          await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/${encodeURIComponent(orderId)}/InternalNotes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': sessionToken },
-            body: JSON.stringify({ internalNotes })
-          });
-        } catch(e) { /* non-fatal */ }
-      }
+      await postNotes(sessionToken, orderId);
       return res.status(200).json({ success: true, orderId });
     } catch (err) {
       return res.status(500).json({ error: err.message });
