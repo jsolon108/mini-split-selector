@@ -165,16 +165,26 @@ export default async function handler(req, res) {
       const text = await r.text();
       if (!r.ok) return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
       const data = JSON.parse(text);
+      // Log full raw structure so we can identify the correct paths
+      console.log('[Preview] raw keys:', Object.keys(data));
+      console.log('[Preview] raw data:', JSON.stringify(data).slice(0, 2000));
       const gen = data.generations?.[0] || data;
-      const lines2 = (data.lines || gen.lines || []).map(l => ({
-        catalogNumber: l.lineItemProduct?.catalogNumber || l.catalogNumber,
-        description: (l.lineItemProduct?.productDescription || l.productDescription || '').split('\n')[0],
-        qty: l.lineItemProduct?.quantity || l.quantity || 1,
-        unitPrice: l.lineItemProduct?.unitPrice ?? l.unitPrice ?? null,
-        extended: l.lineItemProduct?.unitPrice != null ? l.lineItemProduct.unitPrice * (l.lineItemProduct.quantity || 1) : null,
-        availability: l.lineItemProduct?.availability || l.availability || null,
-        branchQty: l.lineItemProduct?.branchQty ?? l.branchQty ?? null,
-      }));
+      console.log('[Preview] gen keys:', Object.keys(gen));
+      // Try every known path Eclipse uses for lines
+      const rawLines = data.lines || gen.lines || data.results?.[0]?.lines || gen.results?.[0]?.lines || [];
+      console.log('[Preview] rawLines count:', rawLines.length);
+      if (rawLines.length) console.log('[Preview] first line keys:', Object.keys(rawLines[0]));
+      const lines2 = rawLines.map(l => {
+        const prod = l.lineItemProduct || l.product || l;
+        return {
+          catalogNumber: prod.catalogNumber || l.catalogNumber,
+          description: (prod.productDescription || prod.description || l.productDescription || l.description || '').split('\n')[0],
+          qty: prod.quantity || l.orderQty || l.quantity || 1,
+          unitPrice: prod.unitPrice ?? l.unitPrice ?? null,
+          extended: prod.unitPrice != null ? prod.unitPrice * (prod.quantity || 1) : null,
+          branchQty: prod.branchQty ?? l.branchQty ?? null,
+        };
+      });
       return res.status(200).json({
         lines: lines2,
         subtotal: gen.salesTotal?.value ?? null,
@@ -182,6 +192,7 @@ export default async function handler(req, res) {
         total: (gen.salesTotal?.value ?? 0) + (gen.taxTotal?.value ?? 0) || null,
         branch: gen.shipBranch || branch,
         customer: gen.shipToName || gen.billToName || customerAccount,
+        _raw: data, // include raw for debugging — remove once working
       });
     } catch(err) {
       return res.status(500).json({ error: err.message });
