@@ -2360,7 +2360,7 @@ function buildEclipseLines() {
   });
   (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
   (LINE_HIDE_PRODUCTS||[]).forEach(p=>{const qty=quoteWideState.lineHide[p.order_num]||0; if(qty)lines.push({model:fmtCat(p.mfg_num||p.order_num),qty});});
-  Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),qty:it.qty});});
+  Object.values(quoteWideState.customItems||{}).forEach(it=>{if(it?.qty)lines.push({model:fmtCat(it.catalogNumber),sku:it.orderNumber||'',qty:it.qty});});
   return lines;
 }
 
@@ -2399,25 +2399,26 @@ async function doPreviewOrder() {
     const pricing = quotePricing?.pricing || {};
     const inventory = quotePricing?.inventory || {};
 
-    function mLookup(cat) {
-      if (!cat) return null;
-      return pricing[cat] || pricing[fmtCat(cat)] || null;
+    function mLookup(cat, sku) {
+      if (!cat && !sku) return null;
+      return pricing[cat] || pricing[fmtCat(cat)] || pricing[sku] || pricing[fmtCat(sku||'')] || null;
     }
-    function iLookup(cat) {
-      if (!cat) return null;
-      const inv = inventory[cat] || inventory[fmtCat(cat)] || null;
+    function iLookup(cat, sku) {
+      if (!cat && !sku) return null;
+      const inv = inventory[cat] || inventory[fmtCat(cat)] || inventory[sku] || inventory[fmtCat(sku||'')] || null;
       return inv ? inv.userQty : null;
     }
 
     const previewLines = lines.map(l => {
       const cat = l.model || '';
-      const p = mLookup(cat);
+      const sku = l.sku || '';
+      const p = mLookup(cat, sku);
       const unitPrice = p?.price ?? null;
       const qty = l.qty || 1;
       const extended = unitPrice != null ? unitPrice * qty : null;
-      const branchQty = iLookup(cat);
+      const branchQty = iLookup(cat, sku);
       const avail = branchQty != null
-        ? `<span style="color:${branchQty>0?'var(--green)':'var(--red)'};font-weight:600;font-size:11px">${branchQty} on hand</span>`
+        ? `<span style="color:${branchQty>0?'var(--green)':'var(--red)'};font-weight:600;font-size:11px">${branchQty} available</span>`
         : '';
       return `<div style="padding:8px 12px;border-bottom:1px solid var(--gray-100);font-size:12px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
