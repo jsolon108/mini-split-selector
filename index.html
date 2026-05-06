@@ -3446,32 +3446,7 @@ async function pushToEclipse() {
   statusEl.textContent = 'Creating order in Eclipse...';
   statusEl.style.color = '#666';
 
-  const lines = [];
-  quote.forEach(q => {
-    if (q.qtype === 'unitary') {
-      lines.push({ model: q.model, qty: q.qty, description: `${q.brand} ${q.category}${q.tonnage?` ${q.tonnage}`:''}` });
-    } else if (q.qtype === 'sz') {
-      lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
-      lines.push({ model: q.iu, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K IDU` });
-    } else {
-      lines.push({ model: q.ou, qty: q.qty, description: `${q.brand} ${q.series} ${q.cap}K ODU` });
-      const iduGroups = {};
-      q.zones.forEach(z => {
-        if (!iduGroups[z.model]) iduGroups[z.model] = { model: z.model, qty: 0, description: `${z.cap}K ${z.type} IDU` };
-        iduGroups[z.model].qty += 1;
-      });
-      Object.values(iduGroups).forEach(g => lines.push(g));
-    }
-    // Add checked addons as separate lines (qty = effective qty × system qty)
-    (q.addons || []).filter(a => a.checked).forEach(a => {
-      lines.push({ model: a.catalogNumber, qty: addonQty(a) * q.qty, description: a.description });
-    });
-  });
-  // Quote-wide add-ons — applied once, not multiplied by any system qty
-  // Eclipse needs the manufacturer part number (catalogNumber), not the Johnstone order #
-  getQuoteWideLines().forEach(l => {
-    lines.push({ model: l.catalogNumber, qty: l.qty, description: l.description });
-  });
+  const lines = buildDesktopOrderLines();
 
   try {
     const res = await fetch('/api/eclipse', {
