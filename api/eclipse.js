@@ -37,16 +37,18 @@ async function createSession(username, password) {
 
 function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
   const lineItems = lines
-    .filter(l => l.model && !l.commentOnly) // skip comment-only lines — comments are inline on product
+    .filter(l => l.model)
     .map(l => ({
       lineItemProduct: {
         catalogNumber: formatCatalogNumber(l.model),
         quantity: l.qty,
         um: 'EA',
         umQuantity: 1,
-        productDescription: l.description || '',
-        ...(l.comment ? { comments: l.comment } : {})
-      }
+        productDescription: l.description || ''
+      },
+      ...(l.comment ? {
+        comments: [{ comment: l.comment, commentTypeId: null, lineId: null }]
+      } : {})
     }));
   return {
     priceBranch: branch,
@@ -160,7 +162,6 @@ export default async function handler(req, res) {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       payload.orderStatus = 'Bid';
       if (internalNotes) payload.internalNotes = internalNotes;
-      console.log('[Preview] payload lines count:', payload.lines?.length, JSON.stringify(payload.lines?.slice(0,3)));
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'sessionToken': sessionToken },
@@ -169,7 +170,6 @@ export default async function handler(req, res) {
       if (r.status === 401) return res.status(401).json({ error: 'Eclipse session expired — please sign in again.' });
       const text = await r.text();
       if (!r.ok) {
-        console.log('[Preview] Eclipse error:', r.status, text.slice(0, 500));
         return res.status(r.status).json({ error: `Preview failed: ${r.status}`, detail: text });
       }
       const data = JSON.parse(text);
@@ -254,7 +254,6 @@ export default async function handler(req, res) {
 
   if (action === 'order') {
     try {
-      console.log('[order] lines:', JSON.stringify(lines?.map(l => ({ model: l.model, comment: l.comment, commentOnly: l.commentOnly }))));
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
       
       async function postNotes(token, orderId) {
