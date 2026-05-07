@@ -1971,7 +1971,7 @@ async function ppFetchInventory(userBranch) {
     ppLastResults = ppLastResults.map(r => {
       const s = inv[r.catalogNumber];
       if (!s) return r;
-      return { ...r, userQty: s.userQty, totalQty: s.total, stockTier: s.stockTier };
+      return { ...r, userQty: s.userQty, totalQty: s.total, stockTier: s.stockTier, branches: s.branches || [] };
     });
     // Inject stock badges directly into DOM — no full re-render needed
     ppLastResults.forEach((r, i) => {
@@ -2110,18 +2110,19 @@ function ppRenderResults(userBranch) {
     if (r.stockTier >= 1 && r.productId) {
       const led = ppFutureLedger[String(r.productId)];
       if (led && led.totalIncoming > 0) {
-        const parts = led.byBranch.map(b => {
-          const isHome = b.branch === userBranch;
-          const soonest = b.etas.find(e => e.date);
+        const homeLed = led.byBranch.find(b => b.branch === userBranch);
+        const ledParts = [];
+        if (homeLed) {
+          const soonest = homeLed.etas.find(e => e.date);
           const overdue = soonest && isLedgerDateOverdue(soonest.date);
-          const etaStr = soonest
-            ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
-            : '';
-          return `<span style="${isHome ? 'font-weight:600' : ''}">${b.qty}@${b.branch}${etaStr}${isHome ? '' : ' ⇄'}</span>`;
-        });
-        const otherOnly = !led.byBranch.some(b => b.branch === userBranch);
-        const transferNote = otherOnly ? ` <span style="color:#a86b00">(transfer available)</span>` : '';
-        ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#555">📦 ${led.totalIncoming} on order: ${parts.join(', ')}${transferNote}</div>`;
+          const etaStr = soonest ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>` : '';
+          ledParts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
+        }
+        // Transfer: only show branches with current available stock
+        (r.branches || []).filter(b => b.code !== userBranch && b.qty > 0)
+          .forEach(b => ledParts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`));
+        const ledLabel = homeLed ? '📦 on order:' : '📦 available to transfer:';
+        ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#555">${ledLabel} ${ledParts.join(', ')}</div>`;
       } else if (led) {
         // We fetched but nothing on order
         ledgerNote = `<div style="margin-top:3px;font-size:11px;color:#aaa">No incoming POs found</div>`;
@@ -2456,14 +2457,13 @@ function toggleQWSection(which) {
 }
 async function checkWideItemSub(key, catalogNumber) {
   if (!eclipseSession.token || !catalogNumber) return;
+  if ((quoteWideState.wideSubs || {})[key]) return; // already fetched
   const inv = quotePricing?.inventory;
   if (!inv) return;
-  const invData = inv[catalogNumber] || inv[formatCatNumLocal(catalogNumber)] || null;
+  const invData = inv[catalogNumber] || inv[formatCatNumLocal(catalogNumber)] || inv[key] || null;
   const branchQty = invData?.userQty ?? null;
-  const totalQty = invData?.totalQty ?? null;
-  if (branchQty === null || branchQty > 0) return;
-  if (totalQty > 0) return;
-  // OOS right now — suggest sub regardless of on-order status
+  if (branchQty === null || branchQty > 0) return; // available or unknown — no sub needed
+  // OOS at home branch — suggest sub regardless of other branch stock or on-order
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3840,28 +3840,34 @@ function renderLedgerNote(outKey) {
   const led = quoteFutureLedger[outKey];
   if (!led || !led.totalIncoming) return '';
   const userBranch = quotePricing.userBranch || 'FARM';
+  const inv = quotePricing?.inventory?.[outKey] || null;
+  const branchStock = inv?.branches || []; // per-branch current availability
 
-  const parts = led.byBranch.map(b => {
-    const isHome = b.branch === userBranch;
-    const soonest = b.etas.find(e => e.date);
-    const overdue = isHome && soonest && isLedgerDateOverdue(soonest.date);
-    // Only show ETA date for home branch — transfer branches just show qty@branch ⇄
-    const etaStr = isHome && soonest
+  const parts = [];
+
+  // Home branch: show on-order qty + ETA
+  const homeLed = led.byBranch.find(b => b.branch === userBranch);
+  if (homeLed) {
+    const soonest = homeLed.etas.find(e => e.date);
+    const overdue = soonest && isLedgerDateOverdue(soonest.date);
+    const etaStr = soonest
       ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
       : '';
-    const transferIcon = !isHome ? ' ⇄' : '';
-    const branchStyle = isHome ? 'font-weight:600' : '';
-    return `<span style="${branchStyle}">${b.qty}@${b.branch}${etaStr}${transferIcon}</span>`;
-  });
+    parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
+  }
 
-  const homeBranchHasStock = led.byBranch.some(b => b.branch === userBranch);
-  const otherBranchOnly = !homeBranchHasStock && led.byBranch.length > 0;
-  const transferNote = otherBranchOnly
-    ? ` <span style="color:var(--yellow,#a86b00);font-size:10px">(transfer available)</span>`
-    : '';
+  // Transfer branches: only show if they have stock available RIGHT NOW
+  branchStock
+    .filter(b => b.code !== userBranch && b.qty > 0)
+    .forEach(b => {
+      parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`);
+    });
 
+  if (!parts.length) return '';
+
+  const label = homeLed ? '📦 on order:' : '📦 on order, available to transfer:';
   return `<div style="margin-top:3px;padding:3px 0 3px 44px;font-size:11px;color:#555;line-height:1.5">
-    📦 ${led.totalIncoming} on order: ${parts.join(', ')}${transferNote}
+    ${label} ${parts.join(', ')}
   </div>`;
 }
 
