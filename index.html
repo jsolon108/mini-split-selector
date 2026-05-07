@@ -2291,15 +2291,35 @@ function renderCommonAddonsSection() {
           const checked = qty > 0;
           const price = getPrice(a.sku);
           const lineTotal = price?.price ? (price.price * Math.max(qty, 1)) : null;
-          return `<div class="qw-row">
+          const cat2 = a.mfg_num || a.sku;
+          const invData = checked ? (quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[a.sku] || null) : null;
+          const bq = invData?.userQty ?? null;
+          const totalQty = invData?.totalQty ?? null;
+          const availDot = !checked || bq === null ? ''
+            : bq > 0 ? `<span style="color:#0f6e56;font-size:11px;white-space:nowrap">● ${bq}</span>`
+            : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
+          const ledgerNote = checked && bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(a.sku) : '';
+          const wideSub = (quoteWideState.wideSubs || {})[a.sku];
+          const subHtml = checked && wideSub?.length ? wideSub.map(s =>
+            `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
+              <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
+              <span style="color:#555;flex:1">${s.description}</span>
+              <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
+              <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
+              <button onclick="swapWideItemForSub('${escAttr(a.sku)}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','common')"
+                style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Use this</button>
+            </div>`
+          ).join('') : '';
+          return `<div class="qw-row" style="${bq === 0 && checked ? 'background:#fff8f8;border-radius:4px;' : ''}">
             <input type="checkbox" ${checked?'checked':''} onchange="toggleCommonAddon('${escAttr(a.sku)}')"/>
             <div class="qw-row-body">
-              <div class="qw-row-desc">${escHtml(a.description)}</div>
+              <div class="qw-row-desc">${escHtml(a.description)} ${availDot}</div>
               <div class="qw-row-model">${escHtml(a.sku)}</div>
             </div>
             <span class="qw-row-qty"><input type="number" min="0" value="${qty || a.default_qty || 1}" onchange="setCommonAddonQty('${escAttr(a.sku)}', +this.value)"/></span>
             <span class="qw-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="qw-row-price-missing">—</span>`}</span>
-          </div>`;
+          </div>${ledgerNote}${subHtml}`;
         }).join('');
         return `<div style="margin-top:8px">
           <div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">${escHtml(cat)}</div>
@@ -2361,17 +2381,38 @@ function renderLineHideSection() {
       const items = byFig[fig];
       const rows = items.map(p => {
         const qty = quoteWideState.lineHide[p.order_num] || 0;
+        const checked = qty > 0;
         const price = getPrice(p.order_num);
         const lineTotal = price?.price && qty > 0 ? (price.price * qty) : null;
-        return `<div class="qw-row">
-          <input type="checkbox" ${qty>0?'checked':''} onchange="toggleLineHide('${escAttr(p.order_num)}')"/>
+        const cat2 = p.mfg_num || p.order_num;
+        const invData = checked ? (quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[p.order_num] || null) : null;
+        const bq = invData?.userQty ?? null;
+        const totalQty = invData?.totalQty ?? null;
+        const availDot = !checked || bq === null ? ''
+          : bq > 0 ? `<span style="color:#0f6e56;font-size:11px;white-space:nowrap">● ${bq}</span>`
+          : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
+        const ledgerNote = checked && bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(p.order_num) : '';
+        const wideSub = (quoteWideState.wideSubs || {})[p.order_num];
+        const subHtml = checked && wideSub?.length ? wideSub.map(s =>
+          `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
+            <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
+            <span style="color:#555;flex:1">${s.description}</span>
+            <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
+            <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
+            <button onclick="swapWideItemForSub('${escAttr(p.order_num)}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','lineHide')"
+              style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Use this</button>
+          </div>`
+        ).join('') : '';
+        return `<div class="qw-row" style="${bq === 0 && checked ? 'background:#fff8f8;border-radius:4px;' : ''}">
+          <input type="checkbox" ${checked?'checked':''} onchange="toggleLineHide('${escAttr(p.order_num)}')"/>
           <div class="qw-row-body">
-            <div class="qw-row-desc">${escHtml(p.description)} <span style="color:#999;font-weight:400;font-size:11px">${escHtml(p.size_str || '')}</span></div>
+            <div class="qw-row-desc">${escHtml(p.description)} <span style="color:#999;font-weight:400;font-size:11px">${escHtml(p.size_str || '')}</span> ${availDot}</div>
             <div class="qw-row-model">${escHtml(p.order_num)} · ${escHtml(p.mfg_num)}</div>
           </div>
           <span class="qw-row-qty"><input type="number" min="0" value="${qty || 1}" onchange="setLineHideQty('${escAttr(p.order_num)}', +this.value)"/></span>
           <span class="qw-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="qw-row-price-missing">—</span>`}</span>
-        </div>`;
+        </div>${ledgerNote}${subHtml}`;
       }).join('');
       return `<div class="lh-fig-group">
         <div class="lh-fig-label">${items[0].description} (Fig ${fig})</div>
@@ -2404,13 +2445,70 @@ function toggleQWSection(which) {
   quoteWideState[key] = !quoteWideState[key];
   renderQuoteWideSections();
 }
+async function checkWideItemSub(key, catalogNumber) {
+  if (!eclipseSession.token || !catalogNumber) return;
+  const inv = quotePricing?.inventory;
+  if (!inv) return;
+  const invData = inv[catalogNumber] || inv[formatCatNumLocal(catalogNumber)] || null;
+  const branchQty = invData?.userQty ?? null;
+  const totalQty = invData?.totalQty ?? null;
+  if (branchQty === null || branchQty > 0) return;
+  if (totalQty > 0) return;
+  const ledger = quoteFutureLedger?.[catalogNumber];
+  if (ledger?.totalIncoming > 0) return;
+  // Truly OOS — fetch substitutes
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'getSubstitutes',
+        sessionToken: eclipseSession.token,
+        username: eclipseSession.username,
+        password: eclipseSession.password,
+        catalogNumbers: [catalogNumber],
+        branch: localStorage.getItem('eclipseHomeBranch') || 'FARM',
+        customerId: selectedCustomer?.id || qSelectedCustomer?.id
+      })
+    });
+    const data = await res.json();
+    const subs = (data.substitutes || {})[catalogNumber];
+    if (subs?.length) {
+      quoteWideState.wideSubs = quoteWideState.wideSubs || {};
+      quoteWideState.wideSubs[key] = subs;
+      renderQuoteWideSections();
+    }
+  } catch(e) { /* silent */ }
+}
+
+function swapWideItemForSub(key, subCat, subDesc, type) {
+  // type: 'common' or 'lineHide'
+  if (type === 'common') {
+    const qty = quoteWideState.common[key] || 1;
+    delete quoteWideState.common[key];
+    quoteWideState.customItems = quoteWideState.customItems || {};
+    quoteWideState.customItems[subCat] = { catalogNumber: subCat, orderNumber: subCat, description: subDesc || subCat, qty };
+  } else {
+    const qty = quoteWideState.lineHide[key] || 1;
+    delete quoteWideState.lineHide[key];
+    quoteWideState.lineHide[subCat] = qty;
+  }
+  delete (quoteWideState.wideSubs || {})[key];
+  quotePricing = {};
+  renderQuote();
+  getPricing();
+}
+
 function toggleCommonAddon(sku) {
   const cur = quoteWideState.common[sku] || 0;
   if (cur > 0) {
     delete quoteWideState.common[sku];
+    delete (quoteWideState.wideSubs || {})[sku];
   } else {
     const a = (COMMON_ADDONS || []).find(x => x.sku === sku);
     quoteWideState.common[sku] = (a?.default_qty) || 1;
+    // Check availability and suggest sub if OOS
+    const cat = a?.mfg_num || sku;
+    checkWideItemSub(sku, cat);
   }
   renderQuote();
 }
@@ -2431,8 +2529,16 @@ function setLineHideSize(size) {
 }
 function toggleLineHide(orderNum) {
   const cur = quoteWideState.lineHide[orderNum] || 0;
-  if (cur > 0) delete quoteWideState.lineHide[orderNum];
-  else quoteWideState.lineHide[orderNum] = 1;
+  if (cur > 0) {
+    delete quoteWideState.lineHide[orderNum];
+    delete (quoteWideState.wideSubs || {})[orderNum];
+  } else {
+    quoteWideState.lineHide[orderNum] = 1;
+    // Find the mfg_num for this order number
+    const p = (LINE_HIDE_PRODUCTS || []).find(x => x.order_num === orderNum);
+    const cat = p?.mfg_num || orderNum;
+    checkWideItemSub(orderNum, cat);
+  }
   renderQuote();
 }
 function setLineHideQty(orderNum, val) {
@@ -3916,6 +4022,16 @@ async function getPricing() {
       (q.addons || []).forEach((a, ai) => {
         if (a.checked && !a.subSuggestion) checkAddonSub(qi, ai);
       });
+    });
+    // Check common addons and line hide items too
+    (COMMON_ADDONS || []).forEach(a => {
+      if ((quoteWideState.common[a.sku] || 0) > 0) checkWideItemSub(a.sku, a.mfg_num || a.sku);
+    });
+    Object.keys(quoteWideState.lineHide || {}).forEach(orderNum => {
+      if (quoteWideState.lineHide[orderNum] > 0) {
+        const p = (LINE_HIDE_PRODUCTS || []).find(x => x.order_num === orderNum);
+        checkWideItemSub(orderNum, p?.mfg_num || orderNum);
+      }
     });
     // Kick off future ledger lookup for any out-of-stock items (don't await — let it
     // fill in inline notes when the data comes back).
