@@ -1331,11 +1331,17 @@ function renderQuote() {
       const price = getPrice(a.catalogNumber);
       const qty = addonQty(a);
       const lineTotal = price?.price ? (price.price * qty) : null;
+      const invData = quotePricing?.inventory?.[a.catalogNumber] || null;
+      const bq = invData?.userQty ?? null;
+      const availDot = bq === null ? '' : bq > 0
+        ? `<span style="color:#0f6e56;font-size:11px;white-space:nowrap">● ${bq}</span>`
+        : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0</span>`;
       return `<div class="q-model-row addon-line">
         <span class="q-model-label">+ Addon</span>
         <span>${a.catalogNumber}</span>
         <span style="color:#888;font-size:13px;flex:1;overflow:hidden;white-space:normal;line-height:1.4">${a.description}</span>
         <span style="color:#888;font-size:13px">×${qty}</span>
+        ${availDot}
         ${lineTotal!=null?`<span class="q-price"><span class="pricing-badge">$${lineTotal.toFixed(2)}</span></span>`:''}
       </div>`;
     }).join('');
