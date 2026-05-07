@@ -1952,10 +1952,16 @@ function renderAddonsTab() {
   if (!COMMON_ADDONS) { el.innerHTML = '<div class="loading-state">Loading…</div>'; return; }
   const groups = {};
   COMMON_ADDONS.forEach(a => { const g = catGroup(a); if (!groups[g]) groups[g]=[]; groups[g].push(a); });
-  el.innerHTML = Object.entries(groups).map(([g, items]) =>
-    `<div class="card" style="margin-bottom:10px"><div class="wide-body">
-      <div class="wide-cat">${esc(g)}</div>
-      ${items.map(a => {
+  el.innerHTML = Object.entries(groups).map(([g, items]) => {
+    const expanded = !!commonAddonExpanded[g];
+    const selectedCount = items.filter(a => (quoteWideState.common[a.sku]||0) > 0).length;
+    const badge = selectedCount > 0 ? `<span style="background:var(--blue);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;margin-left:6px">${selectedCount}</span>` : '';
+    return `<div class="card" style="margin-bottom:8px">
+      <button onclick="commonAddonExpanded['${g}']=!commonAddonExpanded['${g}'];renderAddonsTab()" style="width:100%;display:flex;align-items:center;gap:8px;padding:11px 14px;background:none;border:none;cursor:pointer;font-family:var(--font);text-align:left">
+        <span style="font-size:13px;font-weight:600;color:var(--gray-800);flex:1">${esc(g)}${badge}</span>
+        <span style="color:var(--gray-400);font-size:13px;transition:transform .2s;display:inline-block;transform:rotate(${expanded?'90':'0'}deg)">›</span>
+      </button>
+      ${expanded ? `<div class="wide-body" style="padding-top:0">${items.map(a => {
         const qty = quoteWideState.common[a.sku] || 0;
         const checked = qty > 0;
         const p = getPrice(a.sku);
@@ -1990,9 +1996,9 @@ function renderAddonsTab() {
           </div>
           ${ledNote}${subHtml}
         </div>`;
-      }).join('')}
-    </div></div>`
-  ).join('');
+      }).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 function toggleAddon(sku, checked) {
@@ -2141,6 +2147,7 @@ function renderOrderCards(orders, el) {
 // ══════════════════════════════════════════════
 // ─── Future ledger & substitute suggestion ────────────────────────────────────
 let quoteFutureLedger = {};
+let commonAddonExpanded = {}; // category → boolean
 
 async function fetchFutureLedgerForOOS() {
   const inv = quotePricing.inventory || {};
