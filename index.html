@@ -639,16 +639,25 @@ select:focus,input:focus{outline:none;border-color:#999}
 
   <div class="panel" id="panel-quote">
     <div class="quote-customer-bar">
-      <div style="position:relative;flex:1;min-width:200px">
-        <input type="text" id="q-customer-search" placeholder="Search customer for pricing..." oninput="qCustomerSearchInput()" autocomplete="off"/>
-        <div id="q-customer-results" class="customer-dropdown" style="display:none"></div>
+      <div style="flex:1"></div>
+      <div style="display:flex;align-items:center;gap:8px;position:relative">
+        <div style="position:relative">
+          <input type="text" id="q-customer-search" placeholder="Search customer..." oninput="qCustomerSearchInput()" autocomplete="off" style="width:220px"/>
+          <div id="q-customer-results" class="customer-dropdown" style="display:none"></div>
+        </div>
+        <div id="q-customer-selected" style="display:none" class="customer-selected-pill">
+          <span id="q-customer-name"></span>
+          <span id="q-customer-id" style="color:#888"></span>
+          <button onclick="clearQCustomer()" style="margin-left:auto;background:none;border:none;color:#aaa;cursor:pointer;font-size:13px">✕</button>
+        </div>
+        <div style="position:relative">
+          <button class="get-pricing-btn" id="get-pricing-btn" onclick="handleGetPricingClick()">Get Price &amp; Availability</button>
+          <div id="pricing-no-customer-msg" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#1a1a2e;color:#fff;font-size:12px;padding:8px 12px;border-radius:6px;white-space:nowrap;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,.2)">
+            <span style="color:#f59e0b">⚠</span> Please select a customer first
+            <div style="position:absolute;top:-5px;right:16px;width:10px;height:10px;background:#1a1a2e;transform:rotate(45deg)"></div>
+          </div>
+        </div>
       </div>
-      <div id="q-customer-selected" style="display:none;flex:1" class="customer-selected-pill">
-        <span id="q-customer-name"></span>
-        <span id="q-customer-id" style="color:#888"></span>
-        <button onclick="clearQCustomer()" style="margin-left:auto;background:none;border:none;color:#aaa;cursor:pointer;font-size:13px">✕</button>
-      </div>
-      <button class="get-pricing-btn" id="get-pricing-btn" onclick="getPricing()" disabled>Get Pricing</button>
     </div>
     <div style="margin-bottom:10px">
       <button onclick="openProductPicker()" style="width:100%;height:36px;background:#fff;border:1px dashed #c5c5c5;color:#185FA5;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer">+ Add product</button>
@@ -3917,7 +3926,6 @@ function qSelectCustomer(c) {
   document.getElementById('q-customer-selected').style.display = 'flex';
   document.getElementById('q-customer-name').textContent = c.name;
   document.getElementById('q-customer-id').textContent = '#' + c.id;
-  document.getElementById('get-pricing-btn').disabled = false;
   // Also pre-fill the modal customer
   selectedCustomer = c;
   document.getElementById('modal-customer-search').style.display = 'none';
@@ -3938,8 +3946,22 @@ function clearQCustomer() {
   document.getElementById('q-customer-search').value = '';
   document.getElementById('q-customer-search').style.display = '';
   document.getElementById('q-customer-selected').style.display = 'none';
-  document.getElementById('get-pricing-btn').disabled = true;
   renderQuote();
+}
+
+function handleGetPricingClick() {
+  if (!qSelectedCustomer) {
+    // Show inline tooltip instead of browser alert
+    const msg = document.getElementById('pricing-no-customer-msg');
+    if (msg) {
+      msg.style.display = 'block';
+      setTimeout(() => { msg.style.display = 'none'; }, 3000);
+    }
+    // Focus the search input
+    document.getElementById('q-customer-search')?.focus();
+    return;
+  }
+  getPricing();
 }
 
 async function getPricing() {
