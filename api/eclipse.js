@@ -410,7 +410,8 @@ export default async function handler(req, res) {
         };
         // Extract inventory from stockInfo / totalWarehouseQty
         const stock = item.stockInfo || [];
-        if (outKey === 'QSMS1201' || outKey === 'LS14381250DMSF') console.log('[PricingInv]', outKey, 'stockInfo count:', stock.length, 'sample:', JSON.stringify(stock[0]), 'totalWH:', item.totalWarehouseQty);
+        invMap[outKey] = {
+          userQty: stock.find(s => (s.warehouse || '').startsWith(userBranch))?.warehouseQty ?? 0,
           farmQty: stock.find(s => (s.warehouse || '').startsWith(FARM))?.warehouseQty ?? 0,
           total: item.totalWarehouseQty ?? 0,
           productId: item.productId,
@@ -794,7 +795,6 @@ if (action === 'getOrder') {
           const branches = item.branchAvailableQuantity || [];
           const userQty = branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0;
           const total = item.totalWarehouseQty ?? 0;
-          if (catalogNumber === 'QSMS1201') console.log('[InvDebug] QSMS1201 branches:', JSON.stringify(branches.slice(0,5)));
           inventory[catalogNumber] = {
             userQty, total,
             stockTier: userQty > 0 ? 0 : total > 0 ? 1 : 2,
