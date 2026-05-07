@@ -2115,7 +2115,7 @@ function ppRenderResults(userBranch) {
         if (homeLed) {
           const soonest = homeLed.etas.find(e => e.date);
           const overdue = soonest && isLedgerDateOverdue(soonest.date);
-          const etaStr = soonest ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>` : '';
+          const etaStr = soonest ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠ (Overdue)' : ''}</span>` : '';
           ledParts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
         }
         // Transfer: only show branches with current available stock
@@ -3862,7 +3862,7 @@ function renderLedgerNote(outKey) {
     const soonest = homeLed.etas.find(e => e.date);
     const overdue = soonest && isLedgerDateOverdue(soonest.date);
     const etaStr = soonest
-      ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
+      ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠ (Overdue)' : ''}</span>`
       : '';
     parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
   }
