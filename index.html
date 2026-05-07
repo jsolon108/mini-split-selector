@@ -3840,9 +3840,14 @@ function renderLedgerNote(outKey) {
   const led = quoteFutureLedger[outKey];
   if (!led || !led.totalIncoming) return '';
   const userBranch = quotePricing.userBranch || 'FARM';
-  const inv = quotePricing?.inventory?.[outKey] || null;
+  // outKey is usually a catalog/order number — find matching inventory entry
+  const invAll = quotePricing?.inventory || {};
+  let inv = invAll[outKey] || null;
+  // If not found directly, search by productId (quoteFutureLedger is keyed by productId internally)
+  if (!inv) {
+    inv = Object.values(invAll).find(v => String(v?.productId) === String(outKey)) || null;
+  }
   const allBranches = inv?.branches || [];
-  // Show only other branches with current available stock (exclude home)
   const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
 
   const parts = [];
