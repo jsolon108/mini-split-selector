@@ -3849,6 +3849,7 @@ function renderLedgerNote(outKey) {
   }
   const allBranches = inv?.branches || [];
   const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
+  console.log('[Ledger]', outKey, 'inv:', !!inv, 'allBranches:', allBranches, 'branchStock:', branchStock);
 
   const parts = [];
 
