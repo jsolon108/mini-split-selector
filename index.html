@@ -3850,7 +3850,8 @@ function renderLedgerNote(outKey) {
   }
   const allBranches = inv?.branches || [];
   const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
-  console.log('[Ledger]', outKey, 'inv:', !!inv, 'allBranches:', allBranches, 'branchStock:', branchStock);
+  // Fallback: if no per-branch data but totalQty > 0, show generic transfer note
+  const showTransferNote = branchStock.length === 0 && (inv?.total ?? 0) > (inv?.userQty ?? 0);
 
   const parts = [];
 
@@ -3865,12 +3866,9 @@ function renderLedgerNote(outKey) {
     parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
   }
 
-  // Transfer branches: only show if they have stock available RIGHT NOW (exclude home branch)
-  branchStock
-    .filter(b => b.code !== userBranch && b.qty > 0)
-    .forEach(b => {
-      parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`);
-    });
+  // Transfer branches: show per-branch if available, or generic note if totalQty > userQty
+  branchStock.forEach(b => parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`));
+  if (showTransferNote) parts.push(`<span style="color:#0f6e56">available at other branches ⇄</span>`);
 
   if (!parts.length) return '';
 
