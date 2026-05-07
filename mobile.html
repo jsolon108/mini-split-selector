@@ -1541,16 +1541,36 @@ function renderQuoteTab() {
             const rows = items.map(a => {
               const ap = getPrice(a.catalogNumber);
               const qty = a.qtyOverride ?? a.qtyNeeded;
-              const dot = stockDot(a.catalogNumber);
-              return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--gray-100)">
-                <input type="checkbox" ${a.checked?'checked':''} ${a.required?'disabled':''} onchange="${a.required?'':'toggleAddonItem('+qi+','+a.ai+')'}"
-                  style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:${a.required?'not-allowed':'pointer'}" title="${a.required?'Required add-on':''}"/>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:58px">${esc(a.catalogNumber)}</span>
-                <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;line-height:1.3">${esc(a.description||'')}${a.required?' <span style="font-size:9px;font-weight:700;color:var(--red);background:#fef2f2;padding:1px 4px;border-radius:3px;margin-left:3px">REQ</span>':''}</span>
-                <div class="avail-dot ${dot}" style="flex-shrink:0"></div>
-                <input type="number" value="${qty}" min="0" onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
-                  style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
-                <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;min-width:44px;text-align:right">${ap ? fmt(ap.price) : '—'}</span>
+              const invData = quotePricing?.inventory?.[a.catalogNumber] || null;
+              const bq = invData?.userQty ?? null;
+              const availDot = bq === null ? '' : bq > 0
+                ? `<span style="color:#0f6e56;font-size:10px">● ${bq}</span>`
+                : `<span style="color:#c0392b;font-size:10px">⚠ 0</span>`;
+              const ledNote = bq === 0 ? renderLedgerNote(a.catalogNumber) : '';
+              const subHtml = a.subSuggestion?.length ? a.subSuggestion.map(s =>
+                `<div style="margin:3px 0;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
+                    <span style="font-family:var(--mono);color:var(--blue);font-size:10px">${s.catalogNumber}</span>
+                    <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
+                    <span style="font-weight:600">${s.unitPrice != null ? fmt(s.unitPrice) : '—'}</span>
+                    <button onclick="swapAddonSub(${qi},${a.ai},'${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}')"
+                      style="padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Use this</button>
+                  </div>
+                  <div style="color:var(--gray-600);font-size:10px;margin-top:2px">${esc(s.description||'')}</div>
+                </div>`
+              ).join('') : '';
+              return `<div style="padding:6px 0;border-bottom:1px dashed var(--gray-100);${bq===0?'background:#fff8f8;border-radius:4px;':''}">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <input type="checkbox" ${a.checked?'checked':''} ${a.required?'disabled':''} onchange="${a.required?'':'toggleAddonItem('+qi+','+a.ai+')'}"
+                    style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:${a.required?'not-allowed':'pointer'}"/>
+                  <span style="font-family:var(--mono);font-size:10px;color:var(--blue);flex-shrink:0;min-width:58px">${esc(a.catalogNumber)}</span>
+                  <span style="font-size:11px;color:var(--gray-600);flex:1;min-width:0;line-height:1.3">${esc(a.description||'')}${a.required?' <span style="font-size:9px;font-weight:700;color:var(--red);background:#fef2f2;padding:1px 4px;border-radius:3px;margin-left:3px">REQ</span>':''} ${availDot}</span>
+                  <input type="number" value="${qty}" min="0" onchange="setAddonQtyMobile(${qi},${a.ai},+this.value)"
+                    style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font)"/>
+                  <span style="font-size:11px;font-weight:600;color:var(--gray-900);white-space:nowrap;min-width:44px;text-align:right">${ap ? fmt(ap.price) : '—'}</span>
+                </div>
+                ${ledNote}${subHtml}
               </div>`;
             }).join('');
             return `<div style="font-size:9px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.06em;padding:8px 0 2px">${esc(cat)}</div>${rows}`;
@@ -1789,6 +1809,7 @@ function toggleAddonItem(qi, ai) {
   if (!addon || addon.required) return;
   addon.checked = !addon.checked;
   renderQuoteTab();
+  if (addon.checked && !addon.subSuggestion) checkAddonSub(qi, ai);
 }
 
 function setAddonQtyMobile(qi, ai, val) {
@@ -1936,14 +1957,38 @@ function renderAddonsTab() {
       <div class="wide-cat">${esc(g)}</div>
       ${items.map(a => {
         const qty = quoteWideState.common[a.sku] || 0;
+        const checked = qty > 0;
         const p = getPrice(a.sku);
-        return `<div class="wide-row" style="align-items:center">
-          <input type="checkbox" ${qty>0?'checked':''} onchange="toggleAddon('${a.sku.replace(/'/g,"\\'")}',this.checked)"
-            style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)"/>
-          <span class="wide-model" style="min-width:65px">${esc(a.sku)}</span>
-          <span class="wide-desc">${esc(a.description||'')}</span>
-          <div class="avail-dot ${stockDot(a.sku)}"></div>
-          <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+        const cat2 = a.mfg_num || a.sku;
+        const invData = quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[a.sku] || null;
+        const bq = invData?.userQty ?? null;
+        const availDot = bq === null ? '' : bq > 0
+          ? `<span style="color:#0f6e56;font-size:10px">● ${bq}</span>`
+          : `<span style="color:#c0392b;font-size:10px">⚠ 0</span>`;
+        const ledNote = bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(a.sku) : '';
+        const wideSub = (quoteWideState.wideSubs||{})[a.sku];
+        const subHtml = wideSub?.length ? wideSub.map(s =>
+          `<div style="margin:3px 0;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
+              <span style="font-family:var(--mono);color:var(--blue);font-size:10px">${s.catalogNumber}</span>
+              <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
+              <span style="font-weight:600">${s.unitPrice != null ? fmt(s.unitPrice) : '—'}</span>
+              <button onclick="swapWideItemSub('${a.sku.replace(/'/g,"\\'")}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','common')"
+                style="padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Use this</button>
+            </div>
+            <div style="color:var(--gray-600);font-size:10px;margin-top:2px">${esc(s.description||'')}</div>
+          </div>`
+        ).join('') : '';
+        return `<div class="wide-row" style="flex-direction:column;align-items:stretch;${bq===0?'background:#fff8f8;border-radius:4px;':''}" >
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" ${checked?'checked':''} onchange="toggleAddon('${a.sku.replace(/'/g,"\\'")}',this.checked)"
+              style="width:16px;height:16px;flex-shrink:0;accent-color:var(--blue)"/>
+            <span class="wide-model" style="min-width:65px">${esc(a.sku)}</span>
+            <span class="wide-desc">${esc(a.description||'')} ${availDot}</span>
+            <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+          </div>
+          ${ledNote}${subHtml}
         </div>`;
       }).join('')}
     </div></div>`
@@ -1954,8 +1999,11 @@ function toggleAddon(sku, checked) {
   if (checked) {
     const a = (COMMON_ADDONS||[]).find(x => x.sku === sku);
     quoteWideState.common[sku] = a?.default_qty || 1;
+    const cat = a?.mfg_num || sku;
+    checkWideItemSub(sku, cat);
   } else {
     delete quoteWideState.common[sku];
+    delete (quoteWideState.wideSubs||{})[sku];
   }
   renderQuoteTab();
   updateGetPricingBtn();
@@ -2091,6 +2139,127 @@ function renderOrderCards(orders, el) {
 // ══════════════════════════════════════════════
 // GET PRICING
 // ══════════════════════════════════════════════
+// ─── Future ledger & substitute suggestion ────────────────────────────────────
+let quoteFutureLedger = {};
+
+async function fetchFutureLedgerForOOS() {
+  const inv = quotePricing.inventory || {};
+  const targets = [];
+  for (const outKey of Object.keys(inv)) {
+    const v = inv[outKey];
+    if (!v) continue;
+    if ((v.total || 0) === 0 && v.productId) targets.push({ outKey, productId: +v.productId });
+  }
+  if (!targets.length) { quoteFutureLedger = {}; return; }
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'futureLedger', sessionToken: eclipseSession.token, productIds: [...new Set(targets.map(t => t.productId))], branches: ALL_BRANCHES, homeBranch: quotePricing.userBranch || 'FARM' })
+    });
+    const data = await res.json();
+    const ledgerByOutKey = {};
+    for (const t of targets) { const led = data.ledgers?.[t.productId]; if (led) ledgerByOutKey[t.outKey] = led; }
+    quoteFutureLedger = ledgerByOutKey;
+    renderQuoteTab();
+  } catch(err) { console.error('Future ledger error:', err); }
+}
+
+function renderLedgerNote(outKey) {
+  const led = quoteFutureLedger[outKey];
+  if (!led || !led.totalIncoming) return '';
+  const userBranch = quotePricing.userBranch || 'FARM';
+  const invAll = quotePricing?.inventory || {};
+  let inv = invAll[outKey] || null;
+  if (!inv) inv = Object.values(invAll).find(v => String(v?.productId) === String(outKey)) || null;
+  const allBranches = inv?.branches || [];
+  const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
+  const showTransferNote = branchStock.length === 0 && (inv?.userQty ?? 1) === 0;
+  const parts = [];
+  const homeLed = led.byBranch.find(b => b.branch === userBranch);
+  if (homeLed) {
+    const soonest = homeLed.etas.find(e => e.date);
+    const overdue = soonest && isLedgerDateOverdue(soonest.date);
+    const etaStr = soonest ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠ (Overdue)' : ''}</span>` : '';
+    parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
+  }
+  branchStock.forEach(b => parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`));
+  if (showTransferNote) parts.push(`<span style="color:#0f6e56">available at other branches ⇄</span>`);
+  if (!parts.length) return '';
+  const label = homeLed ? '📦 on order:' : '📦 on order, available to transfer:';
+  return `<div style="margin-top:4px;padding:4px 0 4px 8px;font-size:11px;color:#555">${label} ${parts.join(', ')}</div>`;
+}
+
+function formatLedgerDate(d) {
+  if (!d) return '';
+  try { const dt = new Date(d); if (isNaN(dt.getTime())) return String(d); return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return String(d); }
+}
+
+function isLedgerDateOverdue(d) {
+  if (!d) return false;
+  try { const dt = new Date(d); if (isNaN(dt.getTime())) return false; const today = new Date(); today.setHours(0,0,0,0); dt.setHours(0,0,0,0); return dt < today; } catch { return false; }
+}
+
+async function checkAddonSub(qi, ai) {
+  const addon = quote[qi]?.addons?.[ai];
+  if (!addon || !eclipseSession.token) return;
+  const inv = quotePricing?.inventory;
+  if (!inv) return;
+  const cat = addon.catalogNumber;
+  const invData = inv[cat] || inv[cat?.replace(/^BMS500-/,'')] || null;
+  const branchQty = invData?.userQty ?? null;
+  if (branchQty === null || branchQty > 0) return;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getSubstitutes', sessionToken: eclipseSession.token, username: eclipseSession.username, password: eclipseSession.password, catalogNumbers: [cat], branch: localStorage.getItem('eclipseHomeBranch') || 'FARM', customerId: qSelectedCustomer?.id })
+    });
+    const data = await res.json();
+    const subs = (data.substitutes || {})[cat];
+    if (subs?.length) { quote[qi].addons[ai].subSuggestion = subs; renderQuoteTab(); }
+  } catch(e) { /* silent */ }
+}
+
+function swapAddonSub(qi, ai, subCat, subDesc) {
+  const addon = quote[qi]?.addons?.[ai];
+  if (!addon) return;
+  addon.catalogNumber = subCat; addon.description = subDesc || subCat; addon.subSuggestion = null;
+  quotePricing = {}; renderQuoteTab(); getPricing();
+}
+
+async function checkWideItemSub(key, catalogNumber) {
+  if (!eclipseSession.token || !catalogNumber) return;
+  if ((quoteWideState.wideSubs || {})[key]) return;
+  const inv = quotePricing?.inventory;
+  if (!inv) return;
+  const invData = inv[catalogNumber] || inv[fmtCat(catalogNumber)] || inv[key] || null;
+  const branchQty = invData?.userQty ?? null;
+  if (branchQty === null || branchQty > 0) return;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getSubstitutes', sessionToken: eclipseSession.token, username: eclipseSession.username, password: eclipseSession.password, catalogNumbers: [catalogNumber], branch: localStorage.getItem('eclipseHomeBranch') || 'FARM', customerId: qSelectedCustomer?.id })
+    });
+    const data = await res.json();
+    const subs = (data.substitutes || {})[catalogNumber];
+    if (subs?.length) { quoteWideState.wideSubs = quoteWideState.wideSubs || {}; quoteWideState.wideSubs[key] = subs; renderQuoteTab(); }
+  } catch(e) { /* silent */ }
+}
+
+function swapWideItemSub(key, subCat, subDesc, type) {
+  if (type === 'common') {
+    const qty = quoteWideState.common[key] || 1;
+    delete quoteWideState.common[key];
+    quoteWideState.customItems = quoteWideState.customItems || {};
+    quoteWideState.customItems[subCat] = { catalogNumber: subCat, orderNumber: subCat, description: subDesc || subCat, qty };
+  } else {
+    const qty = quoteWideState.lineHide[key] || 1;
+    delete quoteWideState.lineHide[key];
+    quoteWideState.lineHide[subCat] = qty;
+  }
+  delete (quoteWideState.wideSubs || {})[key];
+  quotePricing = {}; renderQuoteTab(); getPricing();
+}
+
 async function getPricing() {
   if (!qSelectedCustomer || !eclipseSession.token) return;
   const btn = document.getElementById('get-pricing-btn');
@@ -2115,6 +2284,15 @@ async function getPricing() {
     const data = await res.json();
     quotePricing = { pricing: data.pricing||{}, inventory: data.inventory||{}, userBranch: data.userBranch };
     renderQuoteTab(); renderSZTab(); renderMZMatchingOUs(); renderAddonsTab();
+    // Check all addons for OOS and suggest subs
+    quote.forEach((q, qi) => { (q.addons||[]).forEach((a, ai) => { if (!a.subSuggestion) checkAddonSub(qi, ai); }); });
+    // Check common addons and line hide for OOS
+    (COMMON_ADDONS||[]).forEach(a => checkWideItemSub(a.sku, a.mfg_num || a.sku));
+    Object.keys(quoteWideState.lineHide||{}).forEach(orderNum => {
+      const p = (LINE_HIDE_PRODUCTS||[]).find(x => x.order_num === orderNum);
+      checkWideItemSub(orderNum, p?.mfg_num || orderNum);
+    });
+    fetchFutureLedgerForOOS();
   } catch(e) { alert('Pricing error: ' + e.message); }
   btn.textContent = 'Refresh Pricing'; btn.disabled = false;
 }
