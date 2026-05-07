@@ -901,16 +901,12 @@ if (action === 'getOrder') {
         if (!ledgers[pid]) ledgers[pid] = { totalIncoming: 0, byBranch: [] };
 
         const d = r.data;
-        // Quick summary totals from the stock object
-        const onPO = parseFloat(d.stock?.onPO || 0);
-        const onTransfer = parseFloat(d.stock?.onTransfer || 0);
-        const branchTotal = onPO + onTransfer;
-        if (branchTotal <= 0) continue;
 
-        // Parse individual rows for ETAs
+        // Parse individual rows for ETAs — exclude Tagged (type 'O') entries
+        // Tagged means committed to a customer order, not available as incoming stock
         const rows = d.data || [];
-        const etas = rows
-          .filter(row => (row.in || 0) > 0) // only incoming rows
+        const stockRows = rows.filter(row => (row.in || 0) > 0 && row.type !== 'O');
+        const etas = stockRows
           .map(row => ({
             date: row.date || null,
             qty: row.in,
@@ -919,14 +915,18 @@ if (action === 'getOrder') {
             vendor: row.customerVendor || ''
           }))
           .sort((a, b) => {
-            // Sort by date ascending so soonest ETA comes first
             if (!a.date) return 1;
             if (!b.date) return -1;
             return new Date(a.date) - new Date(b.date);
           });
+        // Use stock row total instead of onPO which includes Tagged
+        const stockTotal = stockRows.reduce((s, r) => s + (r.in || 0), 0);
+        const transferTotal = parseFloat(d.stock?.onTransfer || 0);
+        const branchTotalFiltered = stockTotal + transferTotal;
+        if (branchTotalFiltered <= 0) continue;
 
-        ledgers[pid].totalIncoming += branchTotal;
-        ledgers[pid].byBranch.push({ branch: br, qty: branchTotal, onPO, onTransfer, etas });
+        ledgers[pid].totalIncoming += branchTotalFiltered;
+        ledgers[pid].byBranch.push({ branch: br, qty: branchTotalFiltered, onPO: stockTotal, onTransfer: transferTotal, etas });
       }
 
       // Sort each product's branches: home branch first, then by qty desc
