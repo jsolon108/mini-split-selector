@@ -2454,10 +2454,7 @@ async function checkWideItemSub(key, catalogNumber) {
   const totalQty = invData?.totalQty ?? null;
   if (branchQty === null || branchQty > 0) return;
   if (totalQty > 0) return;
-  const ledger = quoteFutureLedger?.[catalogNumber];
-  // Only skip sub if there's truly non-tagged incoming stock
-  if (ledger?.totalIncoming > 0 && ledger?.byBranch?.some(b => b.qty > 0)) return;
-  // Truly OOS — fetch substitutes
+  // OOS right now — suggest sub regardless of on-order status
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3316,10 +3313,7 @@ async function checkAddonSub(qi, ai) {
   const totalQty = invData?.totalQty ?? null;
   if (branchQty === null || branchQty > 0) return; // available or unknown
   if (totalQty > 0) return; // other branches have stock — no sub needed
-  // Check future ledger — if on order, no sub needed
-  const ledger = quoteFutureLedger?.[cat];
-  if (ledger?.totalIncoming > 0) return;
-  // Truly OOS everywhere and nothing on order — fetch substitutes
+  // OOS right now — suggest sub regardless of on-order status
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3841,8 +3835,9 @@ function renderLedgerNote(outKey) {
   const parts = led.byBranch.map(b => {
     const isHome = b.branch === userBranch;
     const soonest = b.etas.find(e => e.date);
-    const overdue = soonest && isLedgerDateOverdue(soonest.date);
-    const etaStr = soonest
+    const overdue = isHome && soonest && isLedgerDateOverdue(soonest.date);
+    // Only show ETA date for home branch — transfer branches just show qty@branch ⇄
+    const etaStr = isHome && soonest
       ? ` <span style="${overdue ? 'color:#E24B4A;font-weight:600' : ''}">${formatLedgerDate(soonest.date)}${overdue ? ' ⚠' : ''}</span>`
       : '';
     const transferIcon = !isHome ? ' ⇄' : '';
