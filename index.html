@@ -3850,8 +3850,9 @@ function renderLedgerNote(outKey) {
   }
   const allBranches = inv?.branches || [];
   const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
-  // Fallback: if no per-branch data but system-wide stock exists, show generic transfer note
-  const showTransferNote = branchStock.length === 0 && (inv?.totalQty ?? inv?.total ?? 0) > (inv?.userQty ?? 0);
+  // Show transfer note if home branch is 0 — other branches likely have stock
+  // (the ledger entry confirms this is a stocked item network-wide)
+  const showTransferNote = branchStock.length === 0 && (inv?.userQty ?? 1) === 0;
 
   const parts = [];
 
