@@ -1440,7 +1440,7 @@ function renderQuote() {
             : addonBranchQty > 0
               ? `<span style="color:#0f6e56;font-size:10px;margin-left:4px">● ${addonBranchQty}</span>`
               : `<span style="color:#c0392b;font-size:10px;margin-left:4px">⚠ 0</span>${addonOtherBranch}`;
-          const subSuggHtml = a.subSuggestion?.length && a.checked ? a.subSuggestion.map(s =>
+          const subSuggHtml = a.subSuggestion?.length ? a.subSuggestion.map(s =>
             `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="color:#0f6e56;font-weight:600">↳ Sub available:</span>
               <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
@@ -2309,7 +2309,7 @@ function renderCommonAddonsSection() {
             : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
           const ledgerNote = bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(a.sku) : '';
           const wideSub = (quoteWideState.wideSubs || {})[a.sku];
-          const subHtml = checked && wideSub?.length ? wideSub.map(s =>
+          const subHtml = wideSub?.length ? wideSub.map(s =>
             `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
               <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
@@ -2402,7 +2402,7 @@ function renderLineHideSection() {
           : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
         const ledgerNote = bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(p.order_num) : '';
         const wideSub = (quoteWideState.wideSubs || {})[p.order_num];
-        const subHtml = checked && wideSub?.length ? wideSub.map(s =>
+        const subHtml = wideSub?.length ? wideSub.map(s =>
           `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span style="color:#0f6e56;font-weight:600">↳ Sub:</span>
             <span style="font-family:monospace;color:#185FA5">${s.catalogNumber}</span>
@@ -3306,7 +3306,7 @@ function toggleAddon(qi, ai) {
   addon.checked = !addon.checked;
   renderQuote();
   // When checking an addon, check availability and suggest sub if OOS
-  if (addon.checked && !addon.subSuggestion) {
+  if (!addon.subSuggestion) {
     checkAddonSub(qi, ai);
   }
 }
@@ -4035,22 +4035,21 @@ async function getPricing() {
     console.log('Debug:', data.debug);
     console.log('Pricing raw:', data.rawPricing, 'Inv raw:', data.rawInv);
     renderQuote();
-    // After pricing loads, check all currently-checked addons for OOS and suggest subs
+    // After pricing loads, check ALL addons for OOS and suggest subs
     quote.forEach((q, qi) => {
       (q.addons || []).forEach((a, ai) => {
-        if (a.checked && !a.subSuggestion) checkAddonSub(qi, ai);
+        if (!a.subSuggestion) checkAddonSub(qi, ai);
       });
     });
-    // Check common addons and line hide items too
+    // Check ALL common addons and line hide items for OOS (regardless of checked state)
     (COMMON_ADDONS || []).forEach(a => {
-      if ((quoteWideState.common[a.sku] || 0) > 0) checkWideItemSub(a.sku, a.mfg_num || a.sku);
+      checkWideItemSub(a.sku, a.mfg_num || a.sku);
     });
-    Object.keys(quoteWideState.lineHide || {}).forEach(orderNum => {
-      if (quoteWideState.lineHide[orderNum] > 0) {
-        const p = (LINE_HIDE_PRODUCTS || []).find(x => x.order_num === orderNum);
-        checkWideItemSub(orderNum, p?.mfg_num || orderNum);
-      }
-    });
+    if (LINE_HIDE_PRODUCTS && quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
+      LINE_HIDE_PRODUCTS
+        .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize)
+        .forEach(p => checkWideItemSub(p.order_num, p.mfg_num || p.order_num));
+    }
     // Kick off future ledger lookup for any out-of-stock items (don't await — let it
     // fill in inline notes when the data comes back).
     fetchFutureLedgerForOOS();
