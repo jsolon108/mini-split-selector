@@ -410,8 +410,7 @@ export default async function handler(req, res) {
         };
         // Extract inventory from stockInfo / totalWarehouseQty
         const stock = item.stockInfo || [];
-        invMap[outKey] = {
-          userQty: stock.find(s => (s.warehouse || '').startsWith(userBranch))?.warehouseQty ?? 0,
+        if (outKey === 'QSMS1201' || outKey === 'LS14381250DMSF') console.log('[PricingInv]', outKey, 'stockInfo count:', stock.length, 'sample:', JSON.stringify(stock[0]), 'totalWH:', item.totalWarehouseQty);
           farmQty: stock.find(s => (s.warehouse || '').startsWith(FARM))?.warehouseQty ?? 0,
           total: item.totalWarehouseQty ?? 0,
           productId: item.productId,
