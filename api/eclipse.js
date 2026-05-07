@@ -795,6 +795,7 @@ if (action === 'getOrder') {
           const branches = item.branchAvailableQuantity || [];
           const userQty = branches.find(b => b.warehouse?.startsWith(branch))?.warehouseQty ?? 0;
           const total = item.totalWarehouseQty ?? 0;
+          if (catalogNumber === 'QSMS1201') console.log('[InvDebug] QSMS1201 branches:', JSON.stringify(branches.slice(0,5)));
           inventory[catalogNumber] = {
             userQty, total,
             stockTier: userQty > 0 ? 0 : total > 0 ? 1 : 2,
