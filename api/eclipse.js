@@ -905,9 +905,7 @@ if (action === 'getOrder') {
         // Parse individual rows for ETAs — exclude Tagged (type 'O') entries
         // Tagged means committed to a customer order, not available as incoming stock
         const rows = d.data || [];
-        const allTypes = [...new Set(rows.filter(r => (r.in||0) > 0).map(r => r.type))];
-        console.log(`[Ledger] ${br} pid=${pid} row types:`, allTypes, 'counts:', rows.filter(r=>(r.in||0)>0).map(r=>({type:r.type,in:r.in,date:r.date})));
-        const stockRows = rows.filter(row => (row.in || 0) > 0 && row.type !== 'O');
+        const stockRows = rows.filter(row => (row.in || 0) > 0 && row.type !== 'Tagged');
         const etas = stockRows
           .map(row => ({
             date: row.date || null,
