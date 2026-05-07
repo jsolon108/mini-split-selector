@@ -1415,10 +1415,16 @@ function renderQuote() {
           const overridden = a.qtyOverride != null && a.qtyOverride !== a.qtyNeeded;
           const invData = quotePricing?.inventory?.[a.catalogNumber] || null;
           const addonBranchQty = invData?.userQty ?? null;
+          const addonTotalQty = invData?.totalQty ?? null;
           const addonOOS = addonBranchQty === 0;
-          const availDot = addonBranchQty === null ? '' : addonBranchQty > 0
-            ? `<span style="color:#0f6e56;font-size:10px;margin-left:4px">● ${addonBranchQty}</span>`
-            : `<span style="color:#c0392b;font-size:10px;margin-left:4px">⚠ 0</span>`;
+          const addonLedgerNote = addonOOS ? renderLedgerNote(a.catalogNumber) : '';
+          const addonOtherBranch = addonOOS && addonTotalQty > 0
+            ? `<span style="color:#a86b00;font-size:10px;margin-left:4px">● ${addonTotalQty} at other branch</span>`
+            : '';
+          const availDot = addonBranchQty === null ? ''
+            : addonBranchQty > 0
+              ? `<span style="color:#0f6e56;font-size:10px;margin-left:4px">● ${addonBranchQty}</span>`
+              : `<span style="color:#c0392b;font-size:10px;margin-left:4px">⚠ 0</span>${addonOtherBranch}`;
           const subSuggHtml = a.subSuggestion?.length && a.checked ? a.subSuggestion.map(s =>
             `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <span style="color:#0f6e56;font-weight:600">↳ Sub available:</span>
@@ -1443,7 +1449,7 @@ function renderQuote() {
               ${overridden?`<span class="addon-row-qty-suggested">suggested ${a.qtyNeeded}</span>`:''}
             </span>
             <span class="addon-row-price">${lineTotal!=null?`$${lineTotal.toFixed(2)}`:`<span class="addon-row-price-missing">—</span>`}</span>
-          </div>${subSuggHtml}`;
+          </div>${addonLedgerNote}${subSuggHtml}`;
         }).join('');
         return `<div class="addon-category ${isOpen?'addon-category-open':''}">
           <div class="addon-category-label" onclick="toggleAddonCategory(${qi}, ${JSON.stringify(cat).replace(/"/g, '&quot;')})">
@@ -3194,8 +3200,13 @@ async function checkAddonSub(qi, ai) {
   const cat = addon.catalogNumber;
   const invData = inv[cat] || inv[cat?.replace(/^BMS500-/,'')] || null;
   const branchQty = invData?.userQty ?? null;
-  if (branchQty === null || branchQty > 0) return; // available or unknown — no sub needed
-  // OOS — fetch substitutes
+  const totalQty = invData?.totalQty ?? null;
+  if (branchQty === null || branchQty > 0) return; // available or unknown
+  if (totalQty > 0) return; // other branches have stock — no sub needed
+  // Check future ledger — if on order, no sub needed
+  const ledger = quoteFutureLedger?.[cat];
+  if (ledger?.totalIncoming > 0) return;
+  // Truly OOS everywhere and nothing on order — fetch substitutes
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
