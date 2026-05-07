@@ -415,7 +415,8 @@ export default async function handler(req, res) {
           farmQty: stock.find(s => (s.warehouse || '').startsWith(FARM))?.warehouseQty ?? 0,
           total: item.totalWarehouseQty ?? 0,
           productId: item.productId,
-          ambiguous: candidatesForCat.length > 1
+          ambiguous: candidatesForCat.length > 1,
+          branches: stock.map(s => ({ code: (s.warehouse || '').split(' ')[0], qty: s.warehouseQty || 0 })).filter(b => b.qty > 0)
         };
       }
 
@@ -796,7 +797,8 @@ if (action === 'getOrder') {
           const total = item.totalWarehouseQty ?? 0;
           inventory[catalogNumber] = {
             userQty, total,
-            stockTier: userQty > 0 ? 0 : total > 0 ? 1 : 2
+            stockTier: userQty > 0 ? 0 : total > 0 ? 1 : 2,
+            branches: branches.map(b => ({ code: (b.warehouse || '').split(' ')[0], qty: b.warehouseQty || 0 })).filter(b => b.qty > 0 && !b.code.startsWith(branch))
           };
         } catch(e) { /* skip */ }
       }));
