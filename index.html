@@ -3841,7 +3841,9 @@ function renderLedgerNote(outKey) {
   if (!led || !led.totalIncoming) return '';
   const userBranch = quotePricing.userBranch || 'FARM';
   const inv = quotePricing?.inventory?.[outKey] || null;
-  const branchStock = inv?.branches || []; // per-branch current availability
+  const allBranches = inv?.branches || [];
+  // Show only other branches with current available stock (exclude home)
+  const branchStock = allBranches.filter(b => b.code && b.code !== userBranch && b.qty > 0);
 
   const parts = [];
 
@@ -3856,7 +3858,7 @@ function renderLedgerNote(outKey) {
     parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
   }
 
-  // Transfer branches: only show if they have stock available RIGHT NOW
+  // Transfer branches: only show if they have stock available RIGHT NOW (exclude home branch)
   branchStock
     .filter(b => b.code !== userBranch && b.qty > 0)
     .forEach(b => {
