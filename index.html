@@ -2292,13 +2292,13 @@ function renderCommonAddonsSection() {
           const price = getPrice(a.sku);
           const lineTotal = price?.price ? (price.price * Math.max(qty, 1)) : null;
           const cat2 = a.mfg_num || a.sku;
-          const invData = checked ? (quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[a.sku] || null) : null;
+          const invData = quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[a.sku] || null;
           const bq = invData?.userQty ?? null;
           const totalQty = invData?.totalQty ?? null;
           const availDot = !checked || bq === null ? ''
             : bq > 0 ? `<span style="color:#0f6e56;font-size:11px;white-space:nowrap">● ${bq}</span>`
             : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
-          const ledgerNote = checked && bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(a.sku) : '';
+          const ledgerNote = bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(a.sku) : '';
           const wideSub = (quoteWideState.wideSubs || {})[a.sku];
           const subHtml = checked && wideSub?.length ? wideSub.map(s =>
             `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2385,13 +2385,13 @@ function renderLineHideSection() {
         const price = getPrice(p.order_num);
         const lineTotal = price?.price && qty > 0 ? (price.price * qty) : null;
         const cat2 = p.mfg_num || p.order_num;
-        const invData = checked ? (quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[p.order_num] || null) : null;
+        const invData = quotePricing?.inventory?.[cat2] || quotePricing?.inventory?.[p.order_num] || null;
         const bq = invData?.userQty ?? null;
         const totalQty = invData?.totalQty ?? null;
         const availDot = !checked || bq === null ? ''
           : bq > 0 ? `<span style="color:#0f6e56;font-size:11px;white-space:nowrap">● ${bq}</span>`
           : `<span style="color:#c0392b;font-size:11px;white-space:nowrap">⚠ 0${totalQty > 0 ? ` · ${totalQty} at other branch` : ''}</span>`;
-        const ledgerNote = checked && bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(p.order_num) : '';
+        const ledgerNote = bq === 0 ? renderLedgerNote(cat2) || renderLedgerNote(p.order_num) : '';
         const wideSub = (quoteWideState.wideSubs || {})[p.order_num];
         const subHtml = checked && wideSub?.length ? wideSub.map(s =>
           `<div style="margin:3px 0 3px 22px;padding:5px 8px;background:#f0fdf4;border-radius:4px;border-left:3px solid #0f6e56;font-size:11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -2455,7 +2455,8 @@ async function checkWideItemSub(key, catalogNumber) {
   if (branchQty === null || branchQty > 0) return;
   if (totalQty > 0) return;
   const ledger = quoteFutureLedger?.[catalogNumber];
-  if (ledger?.totalIncoming > 0) return;
+  // Only skip sub if there's truly non-tagged incoming stock
+  if (ledger?.totalIncoming > 0 && ledger?.byBranch?.some(b => b.qty > 0)) return;
   // Truly OOS — fetch substitutes
   try {
     const res = await fetch('/api/eclipse', {
