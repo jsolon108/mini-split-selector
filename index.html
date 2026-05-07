@@ -3828,6 +3828,7 @@ async function fetchFutureLedgerForOOS() {
       if (led) ledgerByOutKey[t.outKey] = led;
     }
     quoteFutureLedger = ledgerByOutKey;
+    console.log('[FutureLedger] keys:', Object.keys(ledgerByOutKey), 'targets:', targets.map(t => t.outKey));
     renderQuote(); // re-render so the inline notes appear
   } catch(err) {
     console.error('Future ledger error:', err);
