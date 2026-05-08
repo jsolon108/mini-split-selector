@@ -3235,22 +3235,29 @@ async function injectDefaultAddons(q, addons) {
       continue;
     }
 
-    // Size-specific: match per zone, regardless of whether Eclipse returned other items in this category
+    // Size-specific: match per zone, regardless of whether Eclipse returned other items in this category.
+    // But skip if Eclipse already returned this exact part number.
     for (const z of zones) {
       if (d.size_type === 'both') {
         if (!z.liq || !z.gas) continue;
         if (normSize(d.liq_size) === normSize(z.liq) && normSize(d.gas_size) === normSize(z.gas)) {
-          addons.push(makeDefaultAddon(d, z.label));
+          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
+            addons.push(makeDefaultAddon(d, z.label));
+          }
         }
       } else if (d.size_type === 'liq') {
         if (!z.liq) continue;
         if (normSize(d.liq_size) === normSize(z.liq)) {
-          addons.push(makeDefaultAddon(d, z.label));
+          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
+            addons.push(makeDefaultAddon(d, z.label));
+          }
         }
       } else if (d.size_type === 'gas') {
         if (!z.gas) continue;
         if (normSize(d.gas_size) === normSize(z.gas)) {
-          addons.push(makeDefaultAddon(d, z.label));
+          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
+            addons.push(makeDefaultAddon(d, z.label));
+          }
         }
       }
     }
