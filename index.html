@@ -5501,9 +5501,9 @@ async function addDefaultAddon() {
   if (!category || !description || !mfg_num) { msg.textContent = 'Category, description, and Mfg # required.'; msg.style.color = 'red'; return; }
   try {
     const res = await fetch(`${SB_URL}/rest/v1/default_addons`, {
-      method: 'POST', headers: { ...H, 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
-    });
+  method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+  body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
+});
     if (!res.ok) throw new Error(await res.text());
     msg.textContent = '✓ Added'; msg.style.color = 'green';
     DEFAULT_ADDONS = null; await loadDefaultAddons(); renderDefaultAddonsTable();
