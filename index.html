@@ -5490,7 +5490,7 @@ async function addDefaultAddon() {
   if (!category || !description || !mfg_num) { msg.textContent = 'Category, description, and Mfg # required.'; msg.style.color = 'red'; return; }
   try {
     const res = await fetch(`${SB_URL}/rest/v1/default_addons`, {
-      method: 'POST', headers: { ...H, 'Prefer': 'return=minimal' },
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
     });
     if (!res.ok) throw new Error(await res.text());
@@ -5510,9 +5510,18 @@ async function renderDefaultAddonsTable() {
   const wrap = document.getElementById('da-table-wrap');
   if (!wrap) return;
   const items = await loadDefaultAddons();
-  const cats = [...new Set((items||[]).map(i => i.category))].sort();
-  const dl = document.getElementById('da-category-list');
-  if (dl) dl.innerHTML = cats.map(c => `<option value="${escHtml(c)}">`).join('');
+
+  // Populate category dropdown from existing addon rules categories
+  const select = document.getElementById('da-category');
+  if (select) {
+    // Get unique categories from ADDON_RULES + existing default addons
+    const ruleCats = [...new Set((ADDON_RULES||[]).map(r => r.category).filter(Boolean))].sort();
+    const existingCats = [...new Set((items||[]).map(i => i.category))];
+    const allCats = [...new Set([...ruleCats, ...existingCats])].sort();
+    const current = select.value;
+    select.innerHTML = '<option value="">Select category…</option>' +
+      allCats.map(c => `<option value="${escHtml(c)}" ${c===current?'selected':''}>${escHtml(c)}</option>`).join('');
+  }
   if (!items?.length) { wrap.innerHTML = '<div style="padding:16px;color:#888;font-size:13px">No default add-ons configured.</div>'; return; }
   const sizeLabel = t => ({ both: 'Liq+Gas', liq: 'Liq only', gas: 'Gas only' }[t] || 'All systems');
   wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -5753,9 +5762,9 @@ async function renderDefaultAddonsTable() {
           <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 0.8fr 0.8fr 0.8fr 0.5fr auto;gap:8px;align-items:end">
             <div>
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Category</label>
-              <input id="da-category" list="da-category-list" placeholder="e.g. Linesets & Wiring"
-                style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
-              <datalist id="da-category-list"></datalist>
+              <select id="da-category" style="width:100%;height:32px;padding:0 4px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
+                <option value="">Select category…</option>
+              </select>
             </div>
             <div>
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Description</label>
