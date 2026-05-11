@@ -3380,8 +3380,9 @@ async function loadAddonsForQuoteItem(qi) {
 
     // Inject fallback addons for categories that Eclipse returned nothing for
     await injectDefaultAddons(q, addons);
-
-    q.addons = addons;
+    // Dedup by catalog number — keep first (required items sorted first already)
+    const seen = new Set();
+    q.addons = addons.filter(a => { if (seen.has(a.catalogNumber)) return false; seen.add(a.catalogNumber); return true; });
     q.addonsLoading = false;
     q.addonsError = null;
 
@@ -3750,10 +3751,8 @@ function buildDesktopOrderLines() {
       Object.entries(iduQtys).forEach(([cat, qty]) => lines.push({ model: cat, qty }));
     }
     // Addons: deduplicate by catalog number, combining quantities
-    const checkedAddons = (q.addons || []).filter(a=>a.checked);
-    console.log('[OrderLines] checked addons:', checkedAddons.map(a => JSON.stringify({cat: a.catalogNumber, isDefault: a.isDefault, category: a.category})));
     const addonMap = {};
-    checkedAddons.forEach(a => {
+    (q.addons || []).filter(a=>a.checked).forEach(a => {
       const cat = a.catalogNumber;
       const qty = a.qtyOverride ?? a.qtyNeeded ?? 1;
       if (addonMap[cat]) addonMap[cat].qty += qty;
