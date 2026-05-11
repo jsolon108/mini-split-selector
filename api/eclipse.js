@@ -252,8 +252,6 @@ export default async function handler(req, res) {
   if (action === 'order') {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
-      console.log('[Order] lines received:', JSON.stringify(lines.map(l => l.model)));
-      console.log('[Order] payload catalogs:', JSON.stringify(payload.lines.map(l => l.lineItemProduct?.catalogNumber)));
 
       
       async function postNotes(token, orderId) {
