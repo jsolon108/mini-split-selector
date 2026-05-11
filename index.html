@@ -3750,8 +3750,10 @@ function buildDesktopOrderLines() {
       Object.entries(iduQtys).forEach(([cat, qty]) => lines.push({ model: cat, qty }));
     }
     // Addons: deduplicate by catalog number, combining quantities
+    const checkedAddons = (q.addons || []).filter(a=>a.checked);
+    console.log('[OrderLines] checked addons:', checkedAddons.map(a => JSON.stringify({cat: a.catalogNumber, isDefault: a.isDefault, category: a.category})));
     const addonMap = {};
-    (q.addons || []).filter(a=>a.checked).forEach(a => {
+    checkedAddons.forEach(a => {
       const cat = a.catalogNumber;
       const qty = a.qtyOverride ?? a.qtyNeeded ?? 1;
       if (addonMap[cat]) addonMap[cat].qty += qty;
