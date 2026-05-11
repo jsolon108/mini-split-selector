@@ -1048,6 +1048,7 @@ async function loadCatalogs() {
     const arRows = await arR.json();
     ADDON_RULES = Array.isArray(arRows) ? arRows : [];
     LINE_HIDE_PRODUCTS = await lhR.json();
+    loadDefaultAddons(); // preload fallback addons
     // Build equipment exclusion set — all known ODU/IDU models across SZ and MZ
     equipmentCatalogs = new Set();
     SZ.forEach(s => { if (s.ou) equipmentCatalogs.add(fmtCat(s.ou)); if (s.iu) equipmentCatalogs.add(fmtCat(s.iu)); });
@@ -1725,6 +1726,60 @@ function categorizeAddon(desc, sku) {
   return DEFAULT_ADDON_CATEGORY;
 }
 
+let DEFAULT_ADDONS = null;
+async function loadDefaultAddons(force=false) {
+  if (DEFAULT_ADDONS && !force) return DEFAULT_ADDONS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/default_addons?order=sort_order.asc,description.asc`, { headers: H });
+    DEFAULT_ADDONS = await res.json();
+  } catch(e) { DEFAULT_ADDONS = []; }
+  return DEFAULT_ADDONS;
+}
+
+function normSize(s) {
+  if (!s) return '';
+  return s.replace(/["\u201C\u201D]/g, '').replace(/\s*(inch|in\.?)\s*/gi, '').trim().toLowerCase();
+}
+
+function makeDefaultAddon(d, zoneLabel) {
+  return {
+    productId: `default-${d.id}`, catalogNumber: d.mfg_num,
+    description: d.description + (zoneLabel ? ` (${zoneLabel})` : ''),
+    qtyNeeded: d.default_qty || 1, qtyOverride: null, required: false,
+    tagAlongType: '', category: d.category, checked: false, isDefault: true
+  };
+}
+
+async function injectDefaultAddons(q, addons) {
+  const defaults = await loadDefaultAddons();
+  if (!defaults?.length) return;
+  const existingCats = new Set(addons.map(a => a.category));
+  const zones = [];
+  if (q.qtype === 'sz') {
+    const liq = q.liq || q.liq_pipe || null;
+    const gas = q.gas || q.gas_pipe || null;
+    if (liq || gas) zones.push({ liq, gas, label: '' });
+  } else if (q.qtype === 'mz') {
+    (q.zones || []).forEach(z => zones.push({ liq: z.liq || z.liq_pipe, gas: z.gas || z.gas_pipe, label: `Zone ${z.z}` }));
+  }
+  for (const d of defaults) {
+    const cat = d.category;
+    if (existingCats.has(cat)) continue;
+    if (!d.size_type) {
+      if (!addons.some(a => a.catalogNumber === d.mfg_num)) addons.push(makeDefaultAddon(d, ''));
+    } else if (d.size_type === 'both') {
+      for (const z of zones) {
+        if (!z.liq || !z.gas) continue;
+        if (normSize(d.liq_size) === normSize(z.liq) && normSize(d.gas_size) === normSize(z.gas)) addons.push(makeDefaultAddon(d, z.label));
+      }
+    } else if (d.size_type === 'liq') {
+      for (const z of zones) { if (z.liq && normSize(d.liq_size) === normSize(z.liq)) addons.push(makeDefaultAddon(d, z.label)); }
+    } else if (d.size_type === 'gas') {
+      for (const z of zones) { if (z.gas && normSize(d.gas_size) === normSize(z.gas)) addons.push(makeDefaultAddon(d, z.label)); }
+    }
+  }
+}
+
 async function loadAddonsForQuoteItem(qi) {
   const q = quote[qi];
   if (!q || !eclipseSession.token) return;
@@ -1789,6 +1844,7 @@ async function loadAddonsForQuoteItem(qi) {
       if (a.category !== b.category) return a.category.localeCompare(b.category);
       return (a.description || '').localeCompare(b.description || '');
     });
+    await injectDefaultAddons(q, addons);
     q.addons = addons;
     q.addonsLoading = false;
     renderQuoteTab();
