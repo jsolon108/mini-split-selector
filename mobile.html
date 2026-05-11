@@ -2542,7 +2542,7 @@ function buildEclipseLines() {
   quote.forEach(q => {
     if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
     else { lines.push({model:fmtCat(q.ou),qty:1}); const iduQtys={}; (q.zones||[]).forEach(z=>{if(z.model){const c=fmtCat(z.model);iduQtys[c]=(iduQtys[c]||0)+1;}}); Object.entries(iduQtys).forEach(([c,qty])=>lines.push({model:c,qty})); }
-    (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
+    const addonMap={}; (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const c=fmtCat(a.catalogNumber),qty=a.qtyOverride??a.qtyNeeded??1; if(addonMap[c])addonMap[c].qty+=qty; else addonMap[c]={model:c,qty}; }); Object.values(addonMap).forEach(l=>lines.push(l));
   });
   (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
   (LINE_HIDE_PRODUCTS||[]).forEach(p=>{const qty=quoteWideState.lineHide[p.order_num]||0; if(qty)lines.push({model:fmtCat(p.mfg_num||p.order_num),qty});});
