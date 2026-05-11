@@ -3216,16 +3216,12 @@ async function injectDefaultAddons(q, addons) {
   // SZ: one IDU. MZ: multiple zones. Unitary: no line set needed.
   const zones = [];
   if (q.qtype === 'sz') {
-    if (q.liq || q.gas) zones.push({ liq: q.liq, gas: q.gas, label: '' });
-    else if (q.iu) {
-      // Try to get sizes from the IDU data stored on the zone
-      const liq = q.liq || null;
-      const gas = q.gas || null;
-      zones.push({ liq, gas, label: '' });
-    }
+    const liq = q.liq || q.liq_pipe || null;
+    const gas = q.gas || q.gas_pipe || null;
+    if (liq || gas) zones.push({ liq, gas, label: '' });
   } else if (q.qtype === 'mz') {
     (q.zones || []).forEach(z => {
-      zones.push({ liq: z.liq, gas: z.gas, label: `Zone ${z.z}` });
+      zones.push({ liq: z.liq || z.liq_pipe, gas: z.gas || z.gas_pipe, label: `Zone ${z.z}` });
     });
   }
 
