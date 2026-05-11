@@ -1631,6 +1631,7 @@ function renderQuoteTab() {
           <span class="wide-desc">${esc(a.description||'')}</span>
           <div class="avail-dot ${stockDot(a.sku)}"></div>
           <span class="wide-price">${p ? fmt(p.price) : '—'}</span>
+          <button onclick="toggleAddon('${esc(a.sku)}',false);renderQuoteTab()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;line-height:1">×</button>
         </div>`;
       });
     });
@@ -1639,7 +1640,7 @@ function renderQuoteTab() {
 
   // Custom items
   if (customItems.length) {
-    html += `<div class="card"><div class="wide-header"><span class="title">+ Items</span><span class="count">${customItems.length}</span></div><div class="wide-body">`;
+    html += `<div class="card"><div class="wide-header"><span class="title">+ Add-ons</span><span class="count">${customItems.length}</span></div><div class="wide-body">`;
     customItems.forEach(it => {
       const key = it.orderNumber || it.catalogNumber;
       const p = getPrice(key);
@@ -1652,6 +1653,7 @@ function renderQuoteTab() {
           onchange="setCustomItemQty('${esc(key)}',+this.value)"
           style="width:36px;text-align:center;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;padding:2px 0;font-family:var(--font);flex-shrink:0"/>
         <span class="wide-price">${p ? fmt(p.price * it.qty) : '—'}</span>
+        <button onclick="setCustomItemQty('${esc(key)}',0);renderQuoteTab()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;line-height:1">×</button>
       </div>`;
     });
     html += `</div></div>`;
