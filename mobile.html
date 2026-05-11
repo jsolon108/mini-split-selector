@@ -1149,7 +1149,7 @@ function szToggle(i) {
     const newSzIdx = quote.length;
     quote.push({ ...s, qty: 1, qtype: 'sz', addons: null });
     logEvent('add_system', { type: 'sz', brand: s.brand, series: s.series, cap: s.cap });
-    switchTab('quote');
+    showAddedToast();
     loadAddonsForQuoteItem(newSzIdx);
   }
   renderSZTab();
@@ -1424,7 +1424,7 @@ function mzAdd(oi) {
   renderMZMatchingOUs();
   renderQuoteTab();
   updateGetPricingBtn();
-  switchTab('quote');
+  showAddedToast();
   loadAddonsForQuoteItem(newMzIdx);
 }
 
@@ -2688,6 +2688,20 @@ async function doPreviewOrder(skipValidation = false) {
 }
 
 
+
+function showAddedToast() {
+  let toast = document.getElementById('added-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'added-toast';
+    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:600;z-index:9999;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = '✓ Added to quote';
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+}
 
 async function mSwapForSub(originalCat, subCat, subDesc) {
   if (!confirm(`Replace ${originalCat} with ${subCat}?`)) return;
