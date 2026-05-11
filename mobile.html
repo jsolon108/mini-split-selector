@@ -2541,7 +2541,7 @@ function buildEclipseLines() {
   const lines = [];
   quote.forEach(q => {
     if (q.qtype==='sz') { lines.push({model:fmtCat(q.ou),qty:q.qty}); lines.push({model:fmtCat(q.iu),qty:q.qty}); }
-    else { lines.push({model:fmtCat(q.ou),qty:1}); (q.zones||[]).forEach(z=>{if(z.model)lines.push({model:fmtCat(z.model),qty:1});}); }
+    else { lines.push({model:fmtCat(q.ou),qty:1}); const iduQtys={}; (q.zones||[]).forEach(z=>{if(z.model){const c=fmtCat(z.model);iduQtys[c]=(iduQtys[c]||0)+1;}}); Object.entries(iduQtys).forEach(([c,qty])=>lines.push({model:c,qty})); }
     (q.addons||[]).filter(a=>a.checked).forEach(a=>{ const qty=a.qtyOverride??a.qtyNeeded; lines.push({model:fmtCat(a.catalogNumber),qty}); });
   });
   (COMMON_ADDONS||[]).forEach(a=>{const qty=quoteWideState.common[a.sku]||0; if(qty)lines.push({model:fmtCat(a.mfg_num||a.sku),qty});});
