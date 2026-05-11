@@ -1845,7 +1845,8 @@ async function loadAddonsForQuoteItem(qi) {
       return (a.description || '').localeCompare(b.description || '');
     });
     await injectDefaultAddons(q, addons);
-    q.addons = addons;
+    const seen = new Set();
+    q.addons = addons.filter(a => { if (seen.has(a.catalogNumber)) return false; seen.add(a.catalogNumber); return true; });
     q.addonsLoading = false;
     renderQuoteTab();
     if (qSelectedCustomer) getPricing();
