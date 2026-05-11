@@ -3209,61 +3209,64 @@ async function injectDefaultAddons(q, addons) {
   const defaults = await loadDefaultAddons();
   if (!defaults?.length) return;
 
-  // Categories Eclipse already returned items for (used for non-size-specific defaults only)
+  // Find which categories already have Eclipse addons
   const existingCats = new Set(addons.map(a => a.category));
 
-  // Connection sizes per zone. SZ stores liq_pipe/gas_pipe on the quote item itself;
-  // MZ stores them per zone in q.zones[].
+  // Get connection sizes for this system
+  // SZ: one IDU. MZ: multiple zones. Unitary: no line set needed.
   const zones = [];
   if (q.qtype === 'sz') {
-    if (q.liq_pipe || q.gas_pipe) zones.push({ liq: q.liq_pipe, gas: q.gas_pipe, label: '' });
+    if (q.liq || q.gas) zones.push({ liq: q.liq, gas: q.gas, label: '' });
+    else if (q.iu) {
+      // Try to get sizes from the IDU data stored on the zone
+      const liq = q.liq || null;
+      const gas = q.gas || null;
+      zones.push({ liq, gas, label: '' });
+    }
   } else if (q.qtype === 'mz') {
     (q.zones || []).forEach(z => {
-      if (z.liq_pipe || z.gas_pipe) zones.push({ liq: z.liq_pipe, gas: z.gas_pipe, label: `Zone ${z.z}` });
+      zones.push({ liq: z.liq, gas: z.gas, label: `Zone ${z.z}` });
     });
   }
 
+  // For each default addon, check if it should be injected
   for (const d of defaults) {
-    const isSizeSpecific = d.size_type === 'both' || d.size_type === 'liq' || d.size_type === 'gas';
+    const cat = d.category;
+    // Skip if Eclipse already returned items for this category
+    if (existingCats.has(cat)) continue;
 
-    if (!isSizeSpecific) {
-      // Non-size-specific: only inject if category is empty in Eclipse
-      if (existingCats.has(d.category)) continue;
+    if (d.size_type === null || d.size_type === undefined) {
+      // Non-size-specific — inject once if category is missing
       if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
         addons.push(makeDefaultAddon(d, ''));
       }
-      continue;
-    }
-
-    // Size-specific: match per zone, regardless of whether Eclipse returned other items in this category.
-    // But skip if Eclipse already returned this exact part number.
-    for (const z of zones) {
-      if (d.size_type === 'both') {
+    } else if (d.size_type === 'both') {
+      // Line set — match liq+gas per zone
+      for (const z of zones) {
         if (!z.liq || !z.gas) continue;
         if (normSize(d.liq_size) === normSize(z.liq) && normSize(d.gas_size) === normSize(z.gas)) {
-          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
-            addons.push(makeDefaultAddon(d, z.label));
-          }
+          addons.push(makeDefaultAddon(d, z.label));
         }
-      } else if (d.size_type === 'liq') {
+      }
+    } else if (d.size_type === 'liq') {
+      // Duraguard liq tube — match liq size per zone
+      for (const z of zones) {
         if (!z.liq) continue;
         if (normSize(d.liq_size) === normSize(z.liq)) {
-          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
-            addons.push(makeDefaultAddon(d, z.label));
-          }
+          addons.push(makeDefaultAddon(d, z.label));
         }
-      } else if (d.size_type === 'gas') {
+      }
+    } else if (d.size_type === 'gas') {
+      // Duraguard gas tube — match gas size per zone
+      for (const z of zones) {
         if (!z.gas) continue;
         if (normSize(d.gas_size) === normSize(z.gas)) {
-          if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
-            addons.push(makeDefaultAddon(d, z.label));
-          }
+          addons.push(makeDefaultAddon(d, z.label));
         }
       }
     }
   }
 }
- 
 
 function normSize(s) {
   // Normalize size strings: "1/4\"" → "1/4", "1/4 inch" → "1/4", etc.
@@ -3741,7 +3744,14 @@ function buildDesktopOrderLines() {
       lines.push({ model: formatCatNumLocal(q.iu), qty: q.qty });
     } else {
       lines.push({ model: formatCatNumLocal(q.ou), qty: 1 });
-      q.zones.forEach(z => { if (z.model) lines.push({ model: formatCatNumLocal(z.model), qty: 1 }); });
+      // Combine identical IDU models into single lines with summed qty
+      const iduQtys = {};
+      q.zones.forEach(z => {
+        if (!z.model) return;
+        const cat = formatCatNumLocal(z.model);
+        iduQtys[cat] = (iduQtys[cat] || 0) + 1;
+      });
+      Object.entries(iduQtys).forEach(([cat, qty]) => lines.push({ model: cat, qty }));
     }
     (q.addons || []).filter(a=>a.checked).forEach(a => lines.push({ model: a.catalogNumber, qty: a.qtyOverride ?? a.qtyNeeded ?? 1 }));
   });
@@ -5471,16 +5481,8 @@ function chunkArray(arr, size) {
 
 function daUpdateSizeFields() {
   const t = document.getElementById('da-size-type').value;
-  const liqInput = document.getElementById('da-liq-size');
-  const gasInput = document.getElementById('da-gas-size');
-  const liqActive = (t === 'both' || t === 'liq');
-  const gasActive = (t === 'both' || t === 'gas');
-  document.getElementById('da-liq-wrap').style.opacity = liqActive ? '1' : '0.3';
-  document.getElementById('da-gas-wrap').style.opacity = gasActive ? '1' : '0.3';
-  liqInput.disabled = !liqActive;
-  gasInput.disabled = !gasActive;
-  if (!liqActive) liqInput.value = '';
-  if (!gasActive) gasInput.value = '';
+  document.getElementById('da-liq-wrap').style.opacity = (t === 'both' || t === 'liq') ? '1' : '0.3';
+  document.getElementById('da-gas-wrap').style.opacity = (t === 'both' || t === 'gas') ? '1' : '0.3';
 }
 
 async function addDefaultAddon() {
@@ -5489,33 +5491,18 @@ async function addDefaultAddon() {
   const description = document.getElementById('da-description').value.trim();
   const mfg_num = document.getElementById('da-mfg-num').value.trim().toUpperCase();
   const size_type = document.getElementById('da-size-type').value || null;
-  // Hard-null the unused size field based on size_type so stale form values can't leak in
-  let liq_size = null, gas_size = null;
-  if (size_type === 'both' || size_type === 'liq') {
-    liq_size = document.getElementById('da-liq-size').value.trim() || null;
-  }
-  if (size_type === 'both' || size_type === 'gas') {
-    gas_size = document.getElementById('da-gas-size').value.trim() || null;
-  }
+  const liq_size = document.getElementById('da-liq-size').value.trim() || null;
+  const gas_size = document.getElementById('da-gas-size').value.trim() || null;
   const default_qty = parseInt(document.getElementById('da-qty').value) || 1;
   if (!category || !description || !mfg_num) { msg.textContent = 'Category, description, and Mfg # required.'; msg.style.color = 'red'; return; }
   try {
     const res = await fetch(`${SB_URL}/rest/v1/default_addons`, {
-  method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-  body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
-});
+      method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
+    });
     if (!res.ok) throw new Error(await res.text());
     msg.textContent = '✓ Added'; msg.style.color = 'green';
     DEFAULT_ADDONS = null; await loadDefaultAddons(); renderDefaultAddonsTable();
-    // Clear the form so the next entry starts fresh
-    document.getElementById('da-category').value = '';
-    document.getElementById('da-description').value = '';
-    document.getElementById('da-mfg-num').value = '';
-    document.getElementById('da-size-type').value = '';
-    document.getElementById('da-liq-size').value = '';
-    document.getElementById('da-gas-size').value = '';
-    document.getElementById('da-qty').value = '1';
-    daUpdateSizeFields();
     setTimeout(() => msg.textContent = '', 2000);
   } catch(e) { msg.textContent = 'Error: ' + e.message; msg.style.color = 'red'; }
 }
