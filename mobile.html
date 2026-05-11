@@ -2359,6 +2359,12 @@ async function getPricing() {
     });
     (COMMON_ADDONS||[]).forEach(a => addPair(a.mfg_num || a.sku, a.sku));
     Object.values(quoteWideState.customItems||{}).forEach(it => { if (it?.catalogNumber) addPair(it.catalogNumber, it.orderNumber||null); });
+    // Line hide / slim duct
+    if (LINE_HIDE_PRODUCTS && quoteWideState.lineHideColor && quoteWideState.lineHideSize) {
+      LINE_HIDE_PRODUCTS
+        .filter(p => p.color === quoteWideState.lineHideColor && p.size_code === quoteWideState.lineHideSize)
+        .forEach(p => { if (p.mfg_num) addPair(p.mfg_num, p.order_num); });
+    }
     const seen = new Set();
     const uniquePairs = pairs.filter(p => { const k=(p.cat||'')+'|'+(p.order||''); if(seen.has(k))return false; seen.add(k); return true; });
     const res = await fetch('/api/eclipse', {
