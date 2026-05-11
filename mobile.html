@@ -1660,6 +1660,24 @@ function renderQuoteTab() {
     html += `</div></div>`;
   }
 
+  // Slim Duct selected items summary
+  const selectedLH = LINE_HIDE_PRODUCTS ? LINE_HIDE_PRODUCTS.filter(p => (quoteWideState.lineHide[p.order_num]||0) > 0) : [];
+  if (selectedLH.length) {
+    html += `<div class="card"><div class="wide-header"><span class="title">Slim Duct / Line Hide</span><span class="count">${selectedLH.length}</span></div><div class="wide-body">`;
+    selectedLH.forEach(p => {
+      const qty = quoteWideState.lineHide[p.order_num];
+      const pr = getPrice(p.mfg_num) || getPrice(p.order_num);
+      if (pr?.price) grandAddons += pr.price * qty;
+      html += `<div class="wide-row">
+        <span class="wide-model">${esc(p.order_num)}</span>
+        <span class="wide-desc">${esc(p.description||'')} <span style="color:var(--gray-400);font-size:10px">${esc(p.size_str||'')}</span></span>
+        <span class="wide-price">${pr ? fmt(pr.price * qty) : '—'}</span>
+        <button onclick="lhSetQty('${p.order_num.replace(/'/g,"\\'")  }',0);renderQuoteTab()" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 4px;line-height:1">×</button>
+      </div>`;
+    });
+    html += `</div></div>`;
+  }
+
   // Slim Duct section
   html += renderSlimDuctSection();
 
@@ -1892,7 +1910,7 @@ function lhTotal() {
     const qty = quoteWideState.lineHide[p.order_num] || 0;
     if (qty > 0) {
       count++;
-      const pr = getPrice(p.order_num);
+      const pr = getPrice(p.mfg_num) || getPrice(p.order_num);
       if (pr?.price) total += pr.price * qty;
     }
   }
@@ -1937,9 +1955,9 @@ function renderSlimDuctSection() {
         const items = byFig[fig];
         const rows = items.map(p => {
           const qty = quoteWideState.lineHide[p.order_num] || 0;
-          const pr = getPrice(p.order_num);
+          const pr = getPrice(p.mfg_num) || getPrice(p.order_num);
           const lineTotal = pr?.price && qty > 0 ? pr.price * qty : null;
-          const dot = stockDot(p.order_num);
+          const dot = stockDot(p.mfg_num) || stockDot(p.order_num);
           return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px dashed var(--gray-100)">
             <input type="checkbox" ${qty>0?'checked':''} onchange="lhToggle('${p.order_num.replace(/'/g,"\\'")}')"
               style="width:15px;height:15px;flex-shrink:0;accent-color:var(--blue);cursor:pointer"/>
