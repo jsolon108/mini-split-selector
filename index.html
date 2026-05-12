@@ -1570,11 +1570,49 @@ function addonSortKey(desc) {
   return words.slice(Math.max(0, words.length - 2)).join(' ').toLowerCase();
 }
 
-// Sort comparator: signature first, then full description for stable ordering
+// Parse a fraction like "1/4", "5/16", "3/8" into a number for comparison.
+// Returns null if no fraction found.
+function parseFraction(str) {
+  if (!str) return null;
+  const m = String(str).match(/(\d+)\s*\/\s*(\d+)/);
+  if (!m) return null;
+  const num = parseInt(m[1], 10), den = parseInt(m[2], 10);
+  return den > 0 ? num / den : null;
+}
+
+// For line sets: extract {liq, gas, length} from a description like
+// "40620150B3B6 1/4"x3/8" 15FT Mini-Split Line Set" so we can sort by
+// connection size (liq, gas) and then by length. Returns null if not a line set.
+function linesetSortFields(desc) {
+  if (!desc) return null;
+  const lower = desc.toLowerCase();
+  if (!lower.includes('line set') && !lower.includes('lineset')) return null;
+  // Match the two fractions joined by x/X/× (covers 1/4"x3/8", 5/16x1/4, etc.)
+  const sizeMatch = desc.match(/(\d+\s*\/\s*\d+)\s*"?\s*[x×X]\s*(\d+\s*\/\s*\d+)/);
+  const liq = sizeMatch ? parseFraction(sizeMatch[1]) : null;
+  const gas = sizeMatch ? parseFraction(sizeMatch[2]) : null;
+  // Length: number followed by FT/ft/'
+  const lenMatch = desc.match(/(\d+)\s*(?:FT|ft|')/);
+  const length = lenMatch ? parseInt(lenMatch[1], 10) : null;
+  return { liq, gas, length };
+}
+
+// Sort comparator: signature first, then full description for stable ordering.
+// Special case: when both items are line sets, sort by liq size, gas size, then length.
 function addonCompare(a, b) {
   const ka = addonSortKey(a.description || '');
   const kb = addonSortKey(b.description || '');
   if (ka !== kb) return ka.localeCompare(kb);
+  // Both share the same sort key — check for line set special-case
+  if (ka === 'line set') {
+    const fa = linesetSortFields(a.description || '');
+    const fb = linesetSortFields(b.description || '');
+    if (fa && fb) {
+      if (fa.liq != null && fb.liq != null && fa.liq !== fb.liq) return fa.liq - fb.liq;
+      if (fa.gas != null && fb.gas != null && fa.gas !== fb.gas) return fa.gas - fb.gas;
+      if (fa.length != null && fb.length != null && fa.length !== fb.length) return fa.length - fb.length;
+    }
+  }
   return (a.description || '').localeCompare(b.description || '');
 }
 
