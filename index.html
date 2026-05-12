@@ -5900,6 +5900,63 @@ async function renderDefaultAddonsTable() {
 
 
 
+<script>
+// ── Feedback modal ────────────────────────────────────────────────
+function openFeedbackModal() {
+  const overlay = document.getElementById('feedback-overlay');
+  if (!overlay) return;
+  // Reset form state every time the modal opens
+  const msg = document.getElementById('feedback-message');
+  const status = document.getElementById('feedback-status');
+  const cat = document.getElementById('feedback-category');
+  if (msg) msg.value = '';
+  if (status) { status.textContent = ''; status.style.color = ''; }
+  if (cat) cat.value = 'Bug';
+  overlay.classList.add('open');
+  setTimeout(() => msg?.focus(), 50);
+}
+
+function closeFeedbackModal() {
+  document.getElementById('feedback-overlay')?.classList.remove('open');
+}
+
+async function submitFeedback() {
+  const btn = document.getElementById('feedback-submit-btn');
+  const status = document.getElementById('feedback-status');
+  const message = document.getElementById('feedback-message')?.value.trim();
+  const category = document.getElementById('feedback-category')?.value || 'General';
+  if (!message) {
+    if (status) { status.textContent = 'Please enter a message before sending.'; status.style.color = '#c0392b'; }
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending...'; btn.style.opacity = '0.7'; }
+  if (status) { status.textContent = ''; status.style.color = ''; }
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/feedback`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        username: eclipseSession?.username || 'anonymous',
+        category,
+        message,
+        page: window.location.pathname + window.location.search,
+        device: 'desktop'
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Also log a usage event so it shows up in admin analytics
+    try { logEvent('feedback_submitted', { category }); } catch(e) {}
+    if (status) { status.textContent = '✓ Thanks — feedback sent.'; status.style.color = '#0f6e56'; }
+    setTimeout(() => closeFeedbackModal(), 1200);
+  } catch(e) {
+    console.error('Feedback submit failed', e);
+    if (status) { status.textContent = 'Could not send feedback. Please try again.'; status.style.color = '#c0392b'; }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Send Feedback'; btn.style.opacity = '1'; }
+  }
+}
+</script>
+
 <!-- Feedback Button + Modal -->
 <button id="feedback-fab" onclick="openFeedbackModal()" title="Send feedback"
   style="position:fixed;bottom:24px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#185FA5;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;gap:7px;font-family:inherit">
