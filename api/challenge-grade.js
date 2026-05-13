@@ -103,7 +103,11 @@ function classifyAccessory(line) {
   if (/CONDENSATE PUMP|MINI.?PUMP/.test(desc))             return { type: 'condensate_pump', sku, desc };
   if (/WI-?FI|WIFI/.test(desc))                            return { type: 'wifi', sku, desc };
   if (/WALL OUTLET|RECEPTACLE/.test(desc))                 return { type: 'wall_outlet', sku, desc };
-  if (/THERMOSTAT/.test(desc))                             return { type: 'thermostat', sku, desc };
+  // Wire (communication / thermostat): 14/4, 14-4, 16/4, 18/4, etc., plus "COMMUNICATION"
+  if (/\b1[468][-\/]4\b|COMMUNICATION/.test(desc))         return { type: 'wire', sku, desc };
+  // Thermostats & remotes: physical t-stats AND wired/wireless controllers (excluding WiFi adapters caught above)
+  if (/THERMOSTAT|\bT-?STAT\b|WIRED REMOTE|WIRELESS REMOTE|REMOTE CONTROL|WIRED CONTROLLER|WIRELESS CONTROLLER|REMOTE CONTROLLER/.test(desc))
+                                                            return { type: 'thermostat', sku, desc };
 
   return { type: 'unknown', sku, desc };
 }
