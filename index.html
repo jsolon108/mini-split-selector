@@ -3253,6 +3253,9 @@ async function injectDefaultAddons(q, addons) {
   // Find which categories already have Eclipse addons
   const existingCats = new Set(addons.map(a => a.category));
 
+  // OU capacity for this system (in K BTU). SZ uses q.cap; MZ uses q.cap (OU capacity).
+  const ouCapK = Number(q.cap) || 0;
+
   // Get connection sizes for this system
   // SZ: one IDU. MZ: multiple zones. Unitary: no line set needed.
   const zones = [];
@@ -3271,6 +3274,12 @@ async function injectDefaultAddons(q, addons) {
     const cat = d.category;
     // Skip if Eclipse already returned items for this category
     if (existingCats.has(cat)) continue;
+
+    // Capacity gating: skip if OU cap is outside this row's range
+    const minK = d.cap_min_kbtu;
+    const maxK = d.cap_max_kbtu;
+    if (minK != null && ouCapK < minK) continue;
+    if (maxK != null && ouCapK > maxK) continue;
 
     if (d.size_type === null || d.size_type === undefined) {
       // Non-size-specific — inject once if category is missing
@@ -5540,11 +5549,18 @@ async function addDefaultAddon() {
   const liq_size = document.getElementById('da-liq-size').value.trim() || null;
   const gas_size = document.getElementById('da-gas-size').value.trim() || null;
   const default_qty = parseInt(document.getElementById('da-qty').value) || 1;
+  const capMinRaw = document.getElementById('da-cap-min').value.trim();
+  const capMaxRaw = document.getElementById('da-cap-max').value.trim();
+  const cap_min_kbtu = capMinRaw ? parseInt(capMinRaw) : null;
+  const cap_max_kbtu = capMaxRaw ? parseInt(capMaxRaw) : null;
   if (!category || !description || !mfg_num) { msg.textContent = 'Category, description, and Mfg # required.'; msg.style.color = 'red'; return; }
+  if (cap_min_kbtu != null && cap_max_kbtu != null && cap_min_kbtu > cap_max_kbtu) {
+    msg.textContent = 'Cap min cannot be greater than cap max.'; msg.style.color = 'red'; return;
+  }
   try {
     const res = await fetch(`${SB_URL}/rest/v1/default_addons`, {
       method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size })
+      body: JSON.stringify({ category, description, mfg_num, sku: mfg_num, default_qty, size_type, liq_size, gas_size, cap_min_kbtu, cap_max_kbtu })
     });
     if (!res.ok) throw new Error(await res.text());
     msg.textContent = '✓ Added'; msg.style.color = 'green';
@@ -5577,6 +5593,13 @@ async function renderDefaultAddonsTable() {
   }
   if (!items?.length) { wrap.innerHTML = '<div style="padding:16px;color:#888;font-size:13px">No default add-ons configured.</div>'; return; }
   const sizeLabel = t => ({ both: 'Liq+Gas', liq: 'Liq only', gas: 'Gas only' }[t] || 'All systems');
+  const capLabel = d => {
+    const a = d.cap_min_kbtu, b = d.cap_max_kbtu;
+    if (a == null && b == null) return 'Any';
+    if (a != null && b != null) return `${a}–${b}K`;
+    if (a != null) return `≥${a}K`;
+    return `≤${b}K`;
+  };
   wrap.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:13px">
     <thead><tr style="background:#f5f5f5;border-bottom:1px solid #e0e0e0">
       <th style="padding:8px 12px;text-align:left">Category</th>
@@ -5585,6 +5608,7 @@ async function renderDefaultAddonsTable() {
       <th style="padding:8px 12px;text-align:left">Size match</th>
       <th style="padding:8px 12px;text-align:left">Liq</th>
       <th style="padding:8px 12px;text-align:left">Gas</th>
+      <th style="padding:8px 12px;text-align:left">OU cap</th>
       <th style="padding:8px 12px;text-align:left">Qty</th>
       <th style="padding:8px 12px"></th>
     </tr></thead>
@@ -5595,6 +5619,7 @@ async function renderDefaultAddonsTable() {
       <td style="padding:8px 12px">${sizeLabel(d.size_type)}</td>
       <td style="padding:8px 12px">${escHtml(d.liq_size||'—')}</td>
       <td style="padding:8px 12px">${escHtml(d.gas_size||'—')}</td>
+      <td style="padding:8px 12px">${capLabel(d)}</td>
       <td style="padding:8px 12px">${d.default_qty}</td>
       <td style="padding:8px 12px"><button onclick="deleteDefaultAddon(${d.id})"
         style="padding:2px 10px;border:1px solid #e44;border-radius:4px;background:#fff;color:#e44;font-size:12px;cursor:pointer">Delete</button></td>
@@ -5812,7 +5837,7 @@ async function renderDefaultAddonsTable() {
         </div>
         <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:14px">
           <div style="font-weight:600;font-size:13px;margin-bottom:10px">Add a default add-on</div>
-          <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 0.8fr 0.8fr 0.8fr 0.5fr auto;gap:8px;align-items:end">
+          <div style="display:grid;grid-template-columns:1.2fr 1fr 0.9fr 0.7fr 0.6fr 0.6fr 0.5fr 0.5fr 0.4fr auto;gap:8px;align-items:end">
             <div>
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Category</label>
               <select id="da-category" style="width:100%;height:32px;padding:0 4px;border:1px solid #ddd;border-radius:6px;font-size:13px;background:#fff">
@@ -5848,6 +5873,16 @@ async function renderDefaultAddonsTable() {
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Gas size</label>
               <input id="da-gas-size" placeholder='e.g. 3/8"'
                 style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px" title="Outdoor unit minimum capacity (K BTU). Leave blank for no lower limit.">Cap min (K)</label>
+              <input id="da-cap-min" type="number" min="0" placeholder="any"
+                style="width:100%;height:32px;padding:0 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px" title="Outdoor unit maximum capacity (K BTU). Leave blank for no upper limit.">Cap max (K)</label>
+              <input id="da-cap-max" type="number" min="0" placeholder="any"
+                style="width:100%;height:32px;padding:0 6px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
             </div>
             <div>
               <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Qty</label>
@@ -6196,6 +6231,7 @@ function buildGraderTestPayload() {
       for (const z of q.zones) {
         zones.push({
           z: z.z, brand: q.brand, ou: q.ou || q.outdoor,
+          ou_cap: q.cap, // multi-zone: q.cap = outdoor unit capacity
           iu: z.model || z.iu, model: z.model,
           cap: z.cap, type: z.type || z.indoor,
           systemType: 'multi'
@@ -6204,6 +6240,7 @@ function buildGraderTestPayload() {
     } else {
       zones.push({
         z: q.z, brand: q.brand, ou: q.ou || q.outdoor,
+        ou_cap: q.cap, // single-zone: cap is the system capacity
         iu: q.iu, model: q.model || q.iu,
         cap: q.cap, type: q.type || q.indoor,
         systemType: src.length > 1 ? 'multi' : 'single'
