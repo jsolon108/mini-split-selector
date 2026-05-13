@@ -6181,19 +6181,57 @@ async function loadGraderTestScenarios() {
 
 // Build the quote payload from the app's current state.
 // Mirrors the shape the grader expects.
+// Per-zone addons (the checked items in each system) come from q.addons[].
+// Quote-wide selections (common, line hide, customItems) come from quoteWideState.
 function buildGraderTestPayload() {
   const src = Array.isArray(quote) ? quote : [];
-  const isMulti = src.length > 1;
-  const zones = src.map(z => ({
-    z: z.z, brand: z.brand, ou: z.ou || z.outdoor, iu: z.iu,
-    model: z.model, cap: z.cap, type: z.type,
-    systemType: isMulti ? 'multi' : 'single'
-  }));
+  const isMulti = src.length > 1 || (src[0]?.zones && src[0].zones.length > 1);
+
+  // Collect zone summaries — for multi-zone systems, expand q.zones[]
+  const zones = [];
+  for (const q of src) {
+    if (Array.isArray(q.zones) && q.zones.length) {
+      for (const z of q.zones) {
+        zones.push({
+          z: z.z, brand: q.brand, ou: q.ou || q.outdoor,
+          iu: z.model || z.iu, model: z.model,
+          cap: z.cap, type: z.type,
+          systemType: 'multi'
+        });
+      }
+    } else {
+      zones.push({
+        z: q.z, brand: q.brand, ou: q.ou || q.outdoor,
+        iu: q.iu, model: q.model || q.iu,
+        cap: q.cap, type: q.type,
+        systemType: src.length > 1 ? 'multi' : 'single'
+      });
+    }
+  }
+
+  // Collect ALL per-zone addons that are checked, into a flat list.
+  // Grader consumes them as customItems entries (same shape as quote-wide custom items).
+  const zoneAddons = {};
+  let addonKey = 0;
+  for (const q of src) {
+    for (const a of (q.addons || [])) {
+      if (!a.checked) continue;
+      const k = `zaddon_${addonKey++}`;
+      const baseQty = (typeof addonQty === 'function') ? addonQty(a) : (a.qty || 1);
+      zoneAddons[k] = {
+        catalogNumber: a.catalogNumber,
+        orderNumber: a.catalogNumber,
+        description: a.description || '',
+        qty: baseQty * (q.qty || 1)
+      };
+    }
+  }
+
   return {
     zones,
     common: { ...(quoteWideState?.common || {}) },
     lineHide: { ...(quoteWideState?.lineHide || {}) },
-    customItems: { ...(quoteWideState?.customItems || {}) }
+    customItems: { ...(quoteWideState?.customItems || {}), ...zoneAddons }
   };
 }
 
