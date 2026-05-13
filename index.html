@@ -6183,9 +6183,11 @@ async function loadGraderTestScenarios() {
 // Mirrors the shape the grader expects.
 // Per-zone addons (the checked items in each system) come from q.addons[].
 // Quote-wide selections (common, line hide, customItems) come from quoteWideState.
+//
+// NOTE: single-zone quote items use field `indoor` (e.g. "Wall Mount") while
+// multi-zone inner zones use `type`. Grader expects `type` — we normalize here.
 function buildGraderTestPayload() {
   const src = Array.isArray(quote) ? quote : [];
-  const isMulti = src.length > 1 || (src[0]?.zones && src[0].zones.length > 1);
 
   // Collect zone summaries — for multi-zone systems, expand q.zones[]
   const zones = [];
@@ -6195,7 +6197,7 @@ function buildGraderTestPayload() {
         zones.push({
           z: z.z, brand: q.brand, ou: q.ou || q.outdoor,
           iu: z.model || z.iu, model: z.model,
-          cap: z.cap, type: z.type,
+          cap: z.cap, type: z.type || z.indoor,
           systemType: 'multi'
         });
       }
@@ -6203,7 +6205,7 @@ function buildGraderTestPayload() {
       zones.push({
         z: q.z, brand: q.brand, ou: q.ou || q.outdoor,
         iu: q.iu, model: q.model || q.iu,
-        cap: q.cap, type: q.type,
+        cap: q.cap, type: q.type || q.indoor,
         systemType: src.length > 1 ? 'multi' : 'single'
       });
     }
