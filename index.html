@@ -6100,5 +6100,177 @@ async function loadChallengePool() {
 }
 </script>
 
+<!-- ════════════════════════════════════════════════════════════════════
+     GRADER TEST PANEL — slice 2a (admin-only)
+     Lets admins pick a scenario, build a quote in the normal tool,
+     then hit "Test Grade" to see what the grader returns.
+══════════════════════════════════════════════════════════════════════ -->
+<button id="grader-test-fab" onclick="openGraderTest()" title="Grader test"
+  style="display:none;position:fixed;bottom:120px;right:24px;height:38px;padding:0 14px;border-radius:20px;background:#5a2a82;color:#fff;border:none;font-size:12px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;align-items:center;gap:6px;font-family:inherit">
+  🧪 Grader Test
+</button>
+
+<div class="modal-overlay" id="grader-test-overlay" onclick="if(event.target===this)closeGraderTest()" style="z-index:9001">
+  <div class="modal" style="max-width:720px;max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <div style="font-weight:700;font-size:17px">🧪 Grader Test</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">Admin-only · No attempts are saved</div>
+      </div>
+      <button onclick="closeGraderTest()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+    </div>
+
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:14px;font-size:12px;color:#555;line-height:1.5">
+      Pick a scenario, build the matching quote in the main tool, then hit <b>Test Grade</b>. You'll see what passes and what fails. Use this to spot grader bugs and add domain rules before going live.
+    </div>
+
+    <label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">Scenario</label>
+    <select id="grader-test-scenario" style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:10px">
+      <option value="">— pick a scenario —</option>
+    </select>
+
+    <div id="grader-test-scenario-detail" style="display:none;padding:10px;background:#fff7e6;border-left:3px solid #b06800;border-radius:0 6px 6px 0;font-size:12px;line-height:1.6;margin-bottom:14px"></div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="runGraderTest()" id="grader-test-run-btn" style="flex:1;height:38px;background:#5a2a82;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Test Grade Current Quote</button>
+      <button onclick="closeGraderTest()" style="height:38px;padding:0 14px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">Close</button>
+    </div>
+
+    <div id="grader-test-result" style="font-size:13px"></div>
+  </div>
+</div>
+
+<script>
+// ── Grader Test (admin) ───────────────────────────────────────────
+async function openGraderTest() {
+  if (!isAdmin()) return;
+  document.getElementById('grader-test-overlay')?.classList.add('open');
+  await loadGraderTestScenarios();
+  document.getElementById('grader-test-result').innerHTML = '';
+}
+function closeGraderTest() {
+  document.getElementById('grader-test-overlay')?.classList.remove('open');
+}
+
+async function loadGraderTestScenarios() {
+  const sel = document.getElementById('grader-test-scenario');
+  if (!sel || sel.dataset.loaded === '1') return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/challenge_scenarios?active=eq.true&select=id,name,customer_blurb,difficulty,spec&order=difficulty.asc,id.asc`, { headers: H });
+    const rows = await res.json();
+    sel.innerHTML = '<option value="">— pick a scenario —</option>' +
+      rows.map(r => `<option value="${r.id}" data-blurb="${escHtml(r.customer_blurb)}" data-spec='${escHtml(JSON.stringify(r.spec))}'>#${r.id} · ${escHtml(r.name)}</option>`).join('');
+    sel.dataset.loaded = '1';
+    sel.onchange = () => {
+      const opt = sel.options[sel.selectedIndex];
+      const detail = document.getElementById('grader-test-scenario-detail');
+      if (!opt.value) { detail.style.display = 'none'; return; }
+      const blurb = opt.dataset.blurb || '';
+      let specPretty = '';
+      try { specPretty = JSON.stringify(JSON.parse(opt.dataset.spec || '{}'), null, 2); } catch(e) {}
+      detail.style.display = '';
+      detail.innerHTML = `<b>${escHtml(blurb)}</b><pre style="margin:8px 0 0;font-size:11px;background:#fff;padding:8px;border-radius:4px;overflow-x:auto;white-space:pre-wrap">${escHtml(specPretty)}</pre>`;
+    };
+  } catch(e) {
+    console.error('Could not load scenarios for grader test', e);
+  }
+}
+
+// Build the quote payload from the app's current state.
+// Mirrors the shape the grader expects.
+function buildGraderTestPayload() {
+  const src = Array.isArray(quote) ? quote : [];
+  const isMulti = src.length > 1;
+  const zones = src.map(z => ({
+    z: z.z, brand: z.brand, ou: z.ou || z.outdoor, iu: z.iu,
+    model: z.model, cap: z.cap, type: z.type,
+    systemType: isMulti ? 'multi' : 'single'
+  }));
+  return {
+    zones,
+    common: { ...(quoteWideState?.common || {}) },
+    lineHide: { ...(quoteWideState?.lineHide || {}) },
+    customItems: { ...(quoteWideState?.customItems || {}) }
+  };
+}
+
+async function runGraderTest() {
+  const sel = document.getElementById('grader-test-scenario');
+  const scenarioId = sel?.value;
+  const out = document.getElementById('grader-test-result');
+  const btn = document.getElementById('grader-test-run-btn');
+  if (!scenarioId) { out.innerHTML = '<div style="color:#c0392b">Pick a scenario first.</div>'; return; }
+  if (!Array.isArray(quote) || !quote.length) {
+    out.innerHTML = '<div style="color:#c0392b;padding:10px;background:#fde8e8;border-radius:6px">No equipment selected on the current quote. Build a quote first, then come back here.</div>';
+    return;
+  }
+  btn.disabled = true; btn.textContent = 'Grading...';
+  out.innerHTML = '<div style="color:#888;padding:10px">Running grader…</div>';
+  try {
+    const payload = buildGraderTestPayload();
+    const res = await fetch('/api/challenge-grade', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario_id: Number(scenarioId), quote: payload })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    renderGraderTestResult(data, payload);
+  } catch(e) {
+    console.error('Grader test failed', e);
+    out.innerHTML = `<div style="color:#c0392b;padding:10px;background:#fde8e8;border-radius:6px">Grader error: ${escHtml(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Test Grade Current Quote';
+  }
+}
+
+function renderGraderTestResult(data, payload) {
+  const out = document.getElementById('grader-test-result');
+  const pass = !!data.passed;
+  const badge = pass
+    ? '<span style="background:#e8f5e9;color:#0f6e56;padding:4px 10px;border-radius:20px;font-weight:700;font-size:12px">✓ PASSED</span>'
+    : '<span style="background:#fde8e8;color:#a83232;padding:4px 10px;border-radius:20px;font-weight:700;font-size:12px">✗ FAILED</span>';
+  const reasons = (data.fail_reasons || []).map(r =>
+    `<li style="margin-bottom:4px">${escHtml(r)}</li>`
+  ).join('') || '<li style="color:#888">(none)</li>';
+
+  const classified = (data.diagnostics?.classified || []).map(c =>
+    `<tr><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-family:monospace;font-size:11px">${escHtml(c.sku)}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:11px">${escHtml((c.desc || '').slice(0, 60))}</td><td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:11px"><b>${escHtml(c.type)}</b>${c.qty>1?` ×${c.qty}`:''}${c.half?' <span style="color:#5a2a82">(½)</span>':''}${c.attrs?.size?` · size:${c.attrs.size}`:''}${c.attrs?.color?` · ${c.attrs.color}`:''}</td></tr>`
+  ).join('') || '<tr><td colspan="3" style="padding:8px;color:#888;text-align:center">(no accessory lines)</td></tr>';
+
+  out.innerHTML = `
+    <div style="padding:14px;background:${pass?'#f0faf5':'#fff7f7'};border:1px solid ${pass?'#c8e6d0':'#f0c8c8'};border-radius:8px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700;font-size:14px">${escHtml(data.scenario.name)}</div>
+        ${badge}
+      </div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Fail reasons</div>
+      <ul style="margin:0 0 0 18px;font-size:13px;color:#555">${reasons}</ul>
+    </div>
+    <details style="font-size:12px;background:#f8f9fa;border-radius:6px;padding:8px 12px">
+      <summary style="cursor:pointer;font-weight:600">Diagnostics — classified accessories (${(data.diagnostics?.classified || []).length})</summary>
+      <table style="width:100%;border-collapse:collapse;margin-top:8px">
+        <thead><tr style="background:#eef;font-size:11px"><th style="padding:4px 8px;text-align:left">SKU</th><th style="padding:4px 8px;text-align:left">Description</th><th style="padding:4px 8px;text-align:left">Classified as</th></tr></thead>
+        <tbody>${classified}</tbody>
+      </table>
+    </details>
+    <details style="font-size:12px;background:#f8f9fa;border-radius:6px;padding:8px 12px;margin-top:8px">
+      <summary style="cursor:pointer;font-weight:600">Raw payload sent to grader</summary>
+      <pre style="margin:8px 0 0;font-size:10px;background:#fff;padding:8px;border-radius:4px;overflow-x:auto">${escHtml(JSON.stringify(payload, null, 2))}</pre>
+    </details>
+  `;
+}
+
+// Show the Grader Test button only for admins. Hook into the existing refreshAdminUI flow.
+(function hookGraderTestVisibility() {
+  const origRefresh = window.refreshAdminUI;
+  window.refreshAdminUI = function() {
+    if (typeof origRefresh === 'function') origRefresh.apply(this, arguments);
+    const btn = document.getElementById('grader-test-fab');
+    if (btn) btn.style.display = isAdmin() ? 'flex' : 'none';
+  };
+})();
+</script>
+
 </body>
 </html>
