@@ -2874,6 +2874,9 @@ function refreshAdminUI() {
   if (importTab) importTab.style.display = isAdmin() ? '' : 'none';
   const alertsTab = document.querySelector('.tab[onclick*="switchTab(\'alerts\')"]');
   if (alertsTab) alertsTab.style.display = isAdmin() ? '' : 'none';
+  // Grader Test button — admin only
+  const graderBtn = document.getElementById('grader-test-fab');
+  if (graderBtn) graderBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
 
 function escHtml(x) {
@@ -6261,14 +6264,20 @@ function renderGraderTestResult(data, payload) {
   `;
 }
 
-// Show the Grader Test button only for admins. Hook into the existing refreshAdminUI flow.
-(function hookGraderTestVisibility() {
-  const origRefresh = window.refreshAdminUI;
-  window.refreshAdminUI = function() {
-    if (typeof origRefresh === 'function') origRefresh.apply(this, arguments);
-    const btn = document.getElementById('grader-test-fab');
-    if (btn) btn.style.display = isAdmin() ? 'flex' : 'none';
+// Show the Grader Test button on page load if user is already an admin
+// (refreshAdminUI may have run before this button existed in the DOM).
+(function nudgeGraderTestVisibility() {
+  const tryShow = () => {
+    if (typeof isAdmin === 'function' && typeof refreshAdminUI === 'function') {
+      refreshAdminUI();
+    }
   };
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryShow, 500);
+    setTimeout(tryShow, 2000); // catch late admin-list loads
+  } else {
+    window.addEventListener('DOMContentLoaded', () => { setTimeout(tryShow, 500); setTimeout(tryShow, 2000); });
+  }
 })();
 </script>
 
