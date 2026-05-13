@@ -398,7 +398,7 @@ async function fetchLookups() {
   const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
   const [commonRes, lineHideRes] = await Promise.all([
     fetch(`${SB_URL}/rest/v1/common_addons?active=eq.true&select=sku,mfg_num,description`, { headers }),
-    fetch(`${SB_URL}/rest/v1/line_hide_products?active=eq.true&select=order_num,description,size_str,color`, { headers }),
+    fetch(`${SB_URL}/rest/v1/line_hide_products?active=eq.true&select=order_num,mfg_num,description,size_str,color`, { headers }),
   ]);
   const commonRows = await commonRes.json();
   const lineHideRows = await lineHideRes.json();
