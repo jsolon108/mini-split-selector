@@ -5944,6 +5944,18 @@ async function submitFeedback() {
       })
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // Fire-and-forget email notification via Resend (don't block UX on email failure)
+    fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: eclipseSession?.username || 'anonymous',
+        category,
+        message,
+        page: window.location.pathname + window.location.search,
+        device: 'desktop'
+      })
+    }).catch(err => console.error('Feedback email failed:', err));
     // Also log a usage event so it shows up in admin analytics
     try { logEvent('feedback_submitted', { category }); } catch(e) {}
     if (status) { status.textContent = '✓ Thanks — feedback sent.'; status.style.color = '#0f6e56'; }
