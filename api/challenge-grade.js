@@ -46,8 +46,10 @@ function classifyAccessory(line) {
   const desc = String(line.description || '').toUpperCase();
   const sku  = String(line.sku || line.orderNumber || line.order_num || '').toUpperCase();
 
-  // 1) Disconnect+surge combo SKUs (must check before generic disconnect)
-  if (SURGE_COMBO_SKUS.has(sku.replace(/\s/g, ''))) {
+  // 1) Disconnect+surge combo units (G38-072 / G81-048).
+  //    These order numbers appear in the description, not the SKU field.
+  //    Catalog numbers vary (M83915 for G38-072), so we match the order number in the desc.
+  if (/\bG38-?072\b|\bG81-?048\b/.test(desc) || SURGE_COMBO_SKUS.has(sku.replace(/\s/g, ''))) {
     return { type: 'disconnect_with_surge', sku, desc };
   }
 
