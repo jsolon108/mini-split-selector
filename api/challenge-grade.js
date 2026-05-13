@@ -14,6 +14,7 @@
 //      Combo SKUs also satisfy a plain `disconnect` requirement.
 //   7. 115V: scenario voltage:115 → OU must match brand pattern
 //      Daikin RXQ%, Fujitsu %KNAS1, Bosch BMS500-AAS012-0CSXRD
+//   8. Whip size by OU capacity: G89-797 only for OUs ≤24K, G89-798 only for >24K.
 // ═══════════════════════════════════════════════════════════════════════
 
 const SURGE_COMBO_SKUS = new Set(['G38-072', 'G81-048']);
@@ -258,6 +259,19 @@ function gradeQuote(quote, scenario, lookups) {
 
   // 115V scenario — RULE 4 (surge forbidden)
   const is115V = spec.voltage === 115;
+
+  // RULE 8: Whip size by OU capacity. Look at every classified whip; flag mismatches.
+  // Take the largest ou_cap on the quote as the "system" cap (handles multi-zone correctly).
+  const ouCapK = Math.max(0, ...zones.map(z => Number(z.ou_cap || z.cap) || 0));
+  for (const c of classified) {
+    if (c.type !== 'whip') continue;
+    const sku = (c.sku || '').toUpperCase();
+    if (sku === 'G89-797' && ouCapK > 24) {
+      fail.push(`Whip size: G89-797 is for systems ≤24K, but OU is ${ouCapK}K (use G89-798)`);
+    } else if (sku === 'G89-798' && ouCapK > 0 && ouCapK <= 24) {
+      fail.push(`Whip size: G89-798 is for systems >24K, but OU is ${ouCapK}K (use G89-797)`);
+    }
+  }
 
   // ─── REQUIRED ACCESSORIES ───
   const required = spec.required_accessories || [];
