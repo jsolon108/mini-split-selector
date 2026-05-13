@@ -5997,5 +5997,108 @@ async function submitFeedback() {
   </div>
 </div>
 
+<!-- ════════════════════════════════════════════════════════════════════
+     DAILY CHALLENGE — PREVIEW (Slice 1)
+     Schema + seeded scenarios live in Supabase.
+     This UI is read-only for now: shows season info + scenario pool.
+     Slice 2 will replace this with the timed challenge mode.
+══════════════════════════════════════════════════════════════════════ -->
+<button id="challenge-fab" onclick="openChallengePreview()" title="Daily Challenge"
+  style="position:fixed;bottom:72px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#0f6e56;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;gap:7px;font-family:inherit">
+  🏆 Challenge <span style="background:#fff;color:#0f6e56;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px">SOON</span>
+</button>
+
+<div class="modal-overlay" id="challenge-preview-overlay" onclick="if(event.target===this)closeChallengePreview()" style="z-index:9001">
+  <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div style="font-weight:700;font-size:18px">🏆 Daily Challenge</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">Preview — launching soon</div>
+      </div>
+      <button onclick="closeChallengePreview()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+    </div>
+
+    <div id="challenge-season-card" style="padding:14px;background:linear-gradient(135deg,#0f6e56,#185FA5);color:#fff;border-radius:10px;margin-bottom:16px">
+      <div style="font-size:12px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">Loading season…</div>
+    </div>
+
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.6">
+      <div style="font-weight:700;margin-bottom:6px">How it'll work</div>
+      <div style="color:#555">Each day, everyone gets the same 3 scenarios. Build each quote correctly in the tool. Right brand, right BTU, right indoor style, exact accessory checklist — no extras, no missing items. All 3 correct = full points. Fastest time breaks ties. Daily scores add up over the month.</div>
+    </div>
+
+    <div style="font-weight:700;font-size:14px;margin-bottom:8px">Scenario pool preview <span id="challenge-pool-count" style="color:#888;font-weight:400;font-size:12px"></span></div>
+    <div id="challenge-pool-list" style="font-size:13px">
+      <div style="color:#888;padding:10px 0">Loading scenarios…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Daily Challenge preview ───────────────────────────────────────
+async function openChallengePreview() {
+  document.getElementById('challenge-preview-overlay')?.classList.add('open');
+  await Promise.all([loadChallengeSeason(), loadChallengePool()]);
+  try { logEvent('challenge_preview_opened', {}); } catch(e) {}
+}
+function closeChallengePreview() {
+  document.getElementById('challenge-preview-overlay')?.classList.remove('open');
+}
+
+async function loadChallengeSeason() {
+  const card = document.getElementById('challenge-season-card');
+  if (!card) return;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const res = await fetch(`${SB_URL}/rest/v1/challenge_seasons?active=eq.true&start_date=lte.${today}&end_date=gte.${today}&select=name,start_date,end_date,prize_text&limit=1`, { headers: H });
+    const rows = await res.json();
+    if (!rows.length) {
+      card.innerHTML = '<div style="font-size:13px">No active season.</div>';
+      return;
+    }
+    const s = rows[0];
+    const end = new Date(s.end_date + 'T23:59:59');
+    const daysLeft = Math.max(0, Math.ceil((end - new Date()) / 86400000));
+    card.innerHTML = `
+      <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Current Season</div>
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px">${s.name}</div>
+      <div style="font-size:12px;opacity:.9;margin-bottom:10px">${s.start_date} → ${s.end_date} · ${daysLeft} days left</div>
+      <div style="font-size:13px;background:rgba(255,255,255,.15);padding:8px 10px;border-radius:6px">🎁 ${s.prize_text || 'Prize TBA'}</div>
+    `;
+  } catch(e) {
+    card.innerHTML = '<div style="font-size:13px;color:#fee">Could not load season info.</div>';
+  }
+}
+
+async function loadChallengePool() {
+  const list = document.getElementById('challenge-pool-list');
+  const count = document.getElementById('challenge-pool-count');
+  if (!list) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/challenge_scenarios?active=eq.true&select=id,name,customer_blurb,difficulty&order=difficulty.asc,id.asc`, { headers: H });
+    const rows = await res.json();
+    if (!rows.length) { list.innerHTML = '<div style="color:#888">No scenarios yet.</div>'; return; }
+    if (count) count.textContent = `(${rows.length} total)`;
+    const diffBadge = (d) => {
+      const lbl = d === 1 ? 'Easy' : d === 2 ? 'Medium' : 'Hard';
+      const bg = d === 1 ? '#e8f5e9' : d === 2 ? '#fff4e0' : '#fde8e8';
+      const fg = d === 1 ? '#0f6e56' : d === 2 ? '#b06800' : '#a83232';
+      return `<span style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.05em">${lbl}</span>`;
+    };
+    list.innerHTML = rows.map(r => `
+      <div style="padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="font-weight:600;font-size:13px">${r.name}</div>
+          ${diffBadge(r.difficulty)}
+        </div>
+        <div style="font-size:12px;color:#555;line-height:1.5">${r.customer_blurb}</div>
+      </div>
+    `).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="color:#c0392b">Could not load scenarios.</div>';
+  }
+}
+</script>
+
 </body>
 </html>
