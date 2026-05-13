@@ -8,7 +8,7 @@
 //   1. Cassettes have built-in condensate pumps — don't expect separate pump
 //   2. Hisense has factory WiFi — don't expect separate WiFi module
 //   3. Slimduct qty >= 2 → require coupler(s), qty = slimduct_qty - 1
-//   4. Surge protector: universally optional, EXCEPT forbidden on 115V scenarios
+//   4. Surge protector: strict like everything else — only allowed when scenario lists it
 //   5. Line set counting: SKU prefix B62 = 0.5 each (must pair); else 1; unpaired B62 = fail
 //   6. Disconnect-with-surge: must be G38-072 or G81-048 (combo SKUs).
 //      Combo SKUs also satisfy a plain `disconnect` requirement.
@@ -355,15 +355,6 @@ function gradeQuote(quote, scenario, lookups) {
       continue;
     }
 
-    // RULE 4: surge protector is universally optional, EXCEPT forbidden on 115V
-    if (type === 'surge_protector') {
-      if (is115V) {
-        fail.push(`Surge protector not allowed on 115V system`);
-      }
-      // else: optional, ignore
-      continue;
-    }
-
     // RULE 1: cassette quotes — extra condensate pump is wrong
     if (type === 'condensate_pump' && allCassette) {
       fail.push(`Condensate pump not needed on cassette (built in)`);
@@ -376,7 +367,7 @@ function gradeQuote(quote, scenario, lookups) {
       continue;
     }
 
-    // Anything else not in the spec is an extra → fail
+    // Anything else not in the spec is an extra → fail (this catches surge_protector too).
     fail.push(`Unexpected ${type} on quote (${info.qty})`);
     diag.extras.push({ type, qty: info.qty });
   }
