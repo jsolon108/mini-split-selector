@@ -59,27 +59,32 @@ function classifyAccessory(line) {
     return { type: 'lineset', sku, desc };
   }
 
-  // 3) Slimduct / line hide (with size+color extraction)
-  if (/SLIMDUCT|SLIM DUCT|LINE.?HIDE|LINESET COVER/.test(desc)) {
-    const sizeMatch =
-      desc.match(/\b(77|100|140)\b/) ||
-      desc.match(/3[\s"\-]*[xX]\s*2-?1\/2/) || // 77
-      desc.match(/4[\s"\-]*[xX]\s*2-?3\/4/) || // 100
-      desc.match(/5-?1\/2[\s"\-]*[xX]\s*3/);   // 140
+  // 3) Slimduct / line hide — classified by mfg_num prefix, not description.
+  //    SD = slimduct length (the actual duct run)
+  //    SJ = coupler (joins multiple SD lengths)
+  //    SW = wall inlet (where line set enters the wall)
+  //    SC/SK/SF/SI/SP/ST/SE = various fittings (ells, tees, end caps, flexible adapters)
+  //    Size + color come from the line_hide_products table metadata (size_str, color).
+  if (line.source === 'linehide' || /^S[DJWCKFIPTE]/i.test(line.mfg_num || '')) {
+    const m = (line.mfg_num || '').toUpperCase();
+    // Map size_str ("3\" x 2-1/2\" O.D.") → token ("77", "100", "140")
+    const sizeStr = line.attrs?.size || '';
     let size = null;
-    if (sizeMatch) {
-      if (sizeMatch[1]) size = sizeMatch[1];
-      else if (sizeMatch[0].includes('3') && !sizeMatch[0].includes('5')) size = '77';
-      else if (sizeMatch[0].includes('4')) size = '100';
-      else if (sizeMatch[0].includes('5')) size = '140';
+    if (/3\".*2-?1\/2/.test(sizeStr) || /^3 ?x ?2/.test(sizeStr)) size = '77';
+    else if (/4\".*2-?3\/4/.test(sizeStr) || /^4 ?x ?2/.test(sizeStr)) size = '100';
+    else if (/5-?1\/2/.test(sizeStr)) size = '140';
+    else {
+      const m2 = sizeStr.match(/\b(77|100|140)\b/);
+      if (m2) size = m2[1];
     }
-    const colorMatch = desc.match(/\b(WHITE|IVORY|BROWN|BLACK)\b/);
-    const color = colorMatch ? colorMatch[1].toLowerCase() : null;
-    const isCoupler = /COUPLER|JOINT/.test(desc);
-    return {
-      type: isCoupler ? 'linehide_coupler' : 'linehide',
-      sku, desc, attrs: { size, color }
-    };
+    const color = (line.attrs?.color || '').toLowerCase() || null;
+    const attrs = { size, color };
+
+    if (m.startsWith('SD')) return { type: 'linehide',             sku, desc, attrs };
+    if (m.startsWith('SJ')) return { type: 'linehide_coupler',     sku, desc, attrs };
+    if (m.startsWith('SW')) return { type: 'linehide_wall_inlet',  sku, desc, attrs };
+    // All other line hide fittings (ells, tees, end caps, etc.) — treat as a generic fitting
+    return { type: 'linehide_fitting', sku, desc, attrs };
   }
 
   // 4) Disconnects & whips — combined category in source data; split here
@@ -125,6 +130,7 @@ function flattenQuoteLines(quote, lookups) {
     const meta = lineHideByOrder[orderNum] || {};
     lines.push({
       sku: orderNum, description: meta.description || '', qty: q,
+      mfg_num: meta.mfg_num || '',
       attrs: { size: meta.size_str, color: meta.color },
       source: 'linehide'
     });
