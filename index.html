@@ -1472,7 +1472,7 @@ function renderQuote() {
         return `<div class="addon-category ${isOpen?'addon-category-open':''}">
           <div class="addon-category-label" onclick="toggleAddonCategory(${qi}, ${JSON.stringify(cat).replace(/"/g, '&quot;')})">
             <span class="addon-category-chevron">▶</span>
-            <span class="addon-category-name">${cat}</span>
+            <span class="addon-category-name">${cat}${cat === 'Line Sets' ? ' <span style="font-weight:400;color:#888;font-size:11px">(Additional lengths located in Additional Add-Ons)</span>' : ''}</span>
             <span class="addon-category-chips">${chips.join('')}</span>
           </div>
           <div class="addon-category-body">${rows}</div>
