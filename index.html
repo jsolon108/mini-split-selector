@@ -129,6 +129,9 @@ select:focus,input:focus{outline:none;border-color:#999}
 .ca-row .ca-rm:hover{background:#fee}
 .quote-line{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #f0f0f0}
 .quote-line:last-child{border-bottom:none}
+/* Continuation cards that visually merge with the system card above */
+.quote-line.quote-line-attached{padding-top:0;border-top:none;margin-top:-6px}
+.quote-line.quote-line-attached .q-name{font-size:11px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
 .q-name{font-weight:600;font-size:13px;margin-bottom:4px}
 .q-model-list{font-family:'SF Mono',monospace;font-size:14px;color:#555;display:flex;flex-direction:column;gap:4px}
@@ -1325,7 +1328,9 @@ function renderQuote() {
   const ciSummary = renderCustomItemsSummary();
   const summaries = ciSummary + caSummary + sdSummary;
   if(!quote.length){
-    el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
+    // No system cards above → strip the "attached" class so cards don't have negative top margins / missing borders
+    const detached = summaries.replace(/quote-line quote-line-attached/g, 'quote-line');
+    el.innerHTML = detached || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
     return;
   }
@@ -1731,10 +1736,10 @@ function renderCommonAddonsSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Common add-ons total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line">
+  return `<div class="quote-line quote-line-attached">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
-      <div class="q-name">Common Add-ons</div>
+      <div class="q-name">Quote-wide Add-ons</div>
       <div class="q-model-list">${catBlocks}</div>
       ${totalRow}
     </div>
@@ -1791,7 +1796,7 @@ function renderSlimDuctSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Slim Duct total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line">
+  return `<div class="quote-line quote-line-attached">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Slim Duct / Line Hide</div>
@@ -1843,7 +1848,7 @@ function renderCustomItemsSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Items total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line">
+  return `<div class="quote-line quote-line-attached">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Items</div>
@@ -1879,7 +1884,7 @@ function renderLineComments() {
       <span style="color:#555;flex:1;font-style:italic">${escHtml(c.text)}</span>
       <button onclick="removeLineComment('${escAttr(c.id)}')" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
     </div>`).join('');
-  return `<div class="quote-line">
+  return `<div class="quote-line quote-line-attached">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Line Comments</div>
