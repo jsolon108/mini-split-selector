@@ -254,12 +254,14 @@ function gradeQuote(quote, scenario, lookups) {
 
   // Aggregate counts by type. Line sets get bucketed separately for kind-aware matching.
   const counts = {}; // type -> { qty: number, items: [...] }
-  const linesetItems = []; // every classified lineset item (standard + UV mixed)
+  const linesetItems = []; // every classified lineset item (standard + UV mixed), one entry per logical unit
 
   for (const c of classified) {
     if (c.type === 'unknown') continue;
     if (c.type === 'lineset') {
-      linesetItems.push(c);
+      // Expand by qty: if rep added "1/4x3/8 line set" with qty 2, that's TWO logical line sets.
+      const n = Math.max(1, Math.round(c.qty || 1));
+      for (let i = 0; i < n; i++) linesetItems.push({ ...c, qty: 1 });
       continue;
     }
     counts[c.type] = counts[c.type] || { qty: 0, items: [] };
