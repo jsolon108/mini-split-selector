@@ -2878,6 +2878,9 @@ function refreshAdminUI() {
   // Grader Test button — admin only
   const graderBtn = document.getElementById('grader-test-fab');
   if (graderBtn) graderBtn.style.display = isAdmin() ? 'flex' : 'none';
+  // Challenge button — admin only during gated trial. To launch publicly, set always 'flex'.
+  const challengeBtn = document.getElementById('challenge-fab');
+  if (challengeBtn) challengeBtn.style.display = isAdmin() ? 'flex' : 'none';
 }
 
 function escHtml(x) {
@@ -6037,105 +6040,504 @@ async function submitFeedback() {
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════════
-     DAILY CHALLENGE — PREVIEW (Slice 1)
-     Schema + seeded scenarios live in Supabase.
-     This UI is read-only for now: shows season info + scenario pool.
-     Slice 2 will replace this with the timed challenge mode.
+     DAILY CHALLENGE — slice 2b (full playable mode)
+     Flow: open → start screen → 3 scenarios (timed, in-tool) → results → leaderboard
 ══════════════════════════════════════════════════════════════════════ -->
-<button id="challenge-fab" onclick="openChallengePreview()" title="Daily Challenge"
-  style="position:fixed;bottom:72px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#0f6e56;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;gap:7px;font-family:inherit">
-  🏆 Challenge <span style="background:#fff;color:#0f6e56;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px">SOON</span>
+<button id="challenge-fab" onclick="openChallenge()" title="Daily Challenge"
+  style="display:none;position:fixed;bottom:72px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#0f6e56;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;align-items:center;gap:7px;font-family:inherit">
+  🏆 Challenge <span style="background:#fff;color:#0f6e56;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px">ADMIN</span>
 </button>
 
-<div class="modal-overlay" id="challenge-preview-overlay" onclick="if(event.target===this)closeChallengePreview()" style="z-index:9001">
-  <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<!-- Start / status / results modal -->
+<div class="modal-overlay" id="challenge-overlay" onclick="if(event.target===this)closeChallenge()" style="z-index:9001">
+  <div class="modal" style="max-width:640px;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
       <div>
         <div style="font-weight:700;font-size:18px">🏆 Daily Challenge</div>
-        <div style="font-size:12px;color:#888;margin-top:2px">Preview — launching soon</div>
+        <div id="challenge-tab-label" style="font-size:12px;color:#888;margin-top:2px">Today</div>
       </div>
-      <button onclick="closeChallengePreview()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="switchChallengeTab('today')" id="ctab-today" class="ctab" style="padding:5px 12px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer">Today</button>
+        <button onclick="switchChallengeTab('leaderboard')" id="ctab-leaderboard" class="ctab" style="padding:5px 12px;border-radius:6px;border:1px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer">Leaderboard</button>
+        <button onclick="closeChallenge()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888;margin-left:6px">×</button>
+      </div>
     </div>
-
-    <div id="challenge-season-card" style="padding:14px;background:linear-gradient(135deg,#0f6e56,#185FA5);color:#fff;border-radius:10px;margin-bottom:16px">
-      <div style="font-size:12px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">Loading season…</div>
-    </div>
-
-    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.6">
-      <div style="font-weight:700;margin-bottom:6px">How it'll work</div>
-      <div style="color:#555">Each day, everyone gets the same 3 scenarios. Build each quote correctly in the tool. Right brand, right BTU, right indoor style, exact accessory checklist — no extras, no missing items. All 3 correct = full points. Fastest time breaks ties. Daily scores add up over the month.</div>
-    </div>
-
-    <div style="font-weight:700;font-size:14px;margin-bottom:8px">Scenario pool preview <span id="challenge-pool-count" style="color:#888;font-weight:400;font-size:12px"></span></div>
-    <div id="challenge-pool-list" style="font-size:13px">
-      <div style="color:#888;padding:10px 0">Loading scenarios…</div>
+    <div id="challenge-modal-body" style="min-height:200px">
+      <div style="color:#888;padding:24px;text-align:center">Loading…</div>
     </div>
   </div>
 </div>
 
-<script>
-// ── Daily Challenge preview ───────────────────────────────────────
-async function openChallengePreview() {
-  document.getElementById('challenge-preview-overlay')?.classList.add('open');
-  await Promise.all([loadChallengeSeason(), loadChallengePool()]);
-  try { logEvent('challenge_preview_opened', {}); } catch(e) {}
-}
-function closeChallengePreview() {
-  document.getElementById('challenge-preview-overlay')?.classList.remove('open');
-}
-
-async function loadChallengeSeason() {
-  const card = document.getElementById('challenge-season-card');
-  if (!card) return;
-  try {
-    const today = new Date().toISOString().slice(0,10);
-    const res = await fetch(`${SB_URL}/rest/v1/challenge_seasons?active=eq.true&start_date=lte.${today}&end_date=gte.${today}&select=name,start_date,end_date,prize_text&limit=1`, { headers: H });
-    const rows = await res.json();
-    if (!rows.length) {
-      card.innerHTML = '<div style="font-size:13px">No active season.</div>';
-      return;
-    }
-    const s = rows[0];
-    const end = new Date(s.end_date + 'T23:59:59');
-    const daysLeft = Math.max(0, Math.ceil((end - new Date()) / 86400000));
-    card.innerHTML = `
-      <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Current Season</div>
-      <div style="font-size:20px;font-weight:700;margin-bottom:4px">${s.name}</div>
-      <div style="font-size:12px;opacity:.9;margin-bottom:10px">${s.start_date} → ${s.end_date} · ${daysLeft} days left</div>
-      <div style="font-size:13px;background:rgba(255,255,255,.15);padding:8px 10px;border-radius:6px">🎁 ${s.prize_text || 'Prize TBA'}</div>
-    `;
-  } catch(e) {
-    card.innerHTML = '<div style="font-size:13px;color:#fee">Could not load season info.</div>';
-  }
-}
-
-async function loadChallengePool() {
-  const list = document.getElementById('challenge-pool-list');
-  const count = document.getElementById('challenge-pool-count');
-  if (!list) return;
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/challenge_scenarios?active=eq.true&select=id,name,customer_blurb,difficulty&order=difficulty.asc,id.asc`, { headers: H });
-    const rows = await res.json();
-    if (!rows.length) { list.innerHTML = '<div style="color:#888">No scenarios yet.</div>'; return; }
-    if (count) count.textContent = `(${rows.length} total)`;
-    const diffBadge = (d) => {
-      const lbl = d === 1 ? 'Easy' : d === 2 ? 'Medium' : 'Hard';
-      const bg = d === 1 ? '#e8f5e9' : d === 2 ? '#fff4e0' : '#fde8e8';
-      const fg = d === 1 ? '#0f6e56' : d === 2 ? '#b06800' : '#a83232';
-      return `<span style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;text-transform:uppercase;letter-spacing:.05em">${lbl}</span>`;
-    };
-    list.innerHTML = rows.map(r => `
-      <div style="padding:12px;border:1px solid #eee;border-radius:8px;margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
-          <div style="font-weight:600;font-size:13px">${r.name}</div>
-          ${diffBadge(r.difficulty)}
-        </div>
-        <div style="font-size:12px;color:#555;line-height:1.5">${r.customer_blurb}</div>
+<!-- Floating scenario panel shown WHILE playing (overlays the main app) -->
+<div id="challenge-play-panel" style="display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);width:min(720px,calc(100vw - 28px));z-index:8900;background:#fff;border:2px solid #0f6e56;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px 18px;font-family:inherit">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="background:#0f6e56;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px">🏆 CHALLENGE</span>
+        <span id="cplay-progress" style="font-size:12px;font-weight:600;color:#0f6e56">Scenario 1 of 3</span>
+        <span id="cplay-difficulty"></span>
       </div>
-    `).join('');
-  } catch(e) {
-    list.innerHTML = '<div style="color:#c0392b">Could not load scenarios.</div>';
+      <div id="cplay-scenario-name" style="font-weight:700;font-size:15px;margin-bottom:4px"></div>
+      <div id="cplay-scenario-blurb" style="font-size:13px;color:#555;line-height:1.5"></div>
+    </div>
+    <div style="text-align:right;flex-shrink:0">
+      <div id="cplay-timer" style="font-family:'SF Mono',monospace;font-size:22px;font-weight:700;color:#0f6e56">0:00</div>
+      <div style="font-size:11px;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">total time</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;margin-top:14px;border-top:1px solid #eee;padding-top:12px">
+    <button onclick="submitChallengeScenario()" id="cplay-submit-btn" style="flex:1;height:36px;background:#0f6e56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">Submit Scenario 1 →</button>
+    <button onclick="abandonChallenge()" style="height:36px;padding:0 14px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:12px;cursor:pointer;color:#888">Abandon</button>
+  </div>
+</div>
+
+<script>
+// ── Daily Challenge state ───────────────────────────────────────────
+const _ch = {
+  today: null,            // response from /api/challenge-today
+  startedAt: null,        // ISO timestamp when Start clicked
+  timerInterval: null,
+  scenarioIdx: 0,
+  submissions: [],        // [{ scenario_id, quote }]
+  savedQuote: null,       // backup of in-progress quote at start
+  activeTab: 'today',
+  leaderboard: null,
+};
+
+function openChallenge() {
+  _ch.activeTab = 'today';
+  highlightChallengeTab();
+  document.getElementById('challenge-overlay').classList.add('open');
+  loadChallengeToday();
+  try { logEvent('challenge_opened', {}); } catch(e) {}
+}
+
+function closeChallenge() {
+  // If they're mid-play, don't allow closing the start modal (the floating panel is visible instead)
+  document.getElementById('challenge-overlay').classList.remove('open');
+}
+
+function switchChallengeTab(tab) {
+  _ch.activeTab = tab;
+  highlightChallengeTab();
+  if (tab === 'today') loadChallengeToday();
+  else loadChallengeLeaderboard();
+}
+
+function highlightChallengeTab() {
+  for (const t of ['today', 'leaderboard']) {
+    const btn = document.getElementById('ctab-' + t);
+    if (!btn) continue;
+    const active = _ch.activeTab === t;
+    btn.style.background = active ? '#0f6e56' : '#fff';
+    btn.style.color = active ? '#fff' : '#222';
+    btn.style.borderColor = active ? '#0f6e56' : '#ddd';
   }
+}
+
+function challengeUsername() {
+  return eclipseSession?.username || '';
+}
+
+// ── TODAY view (start screen / status / play / results) ────────────
+async function loadChallengeToday() {
+  const body = document.getElementById('challenge-modal-body');
+  const user = challengeUsername();
+  if (!user) {
+    body.innerHTML = `<div style="padding:24px;text-align:center;color:#888">
+      <div style="font-size:14px;margin-bottom:6px">Please sign in first.</div>
+      <div style="font-size:12px">The Daily Challenge requires an Eclipse login.</div>
+    </div>`;
+    return;
+  }
+  body.innerHTML = '<div style="color:#888;padding:24px;text-align:center">Loading today\u2019s challenge…</div>';
+  try {
+    const res = await fetch(`/api/challenge-today?username=${encodeURIComponent(user)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    _ch.today = data;
+    renderChallengeToday();
+  } catch (e) {
+    body.innerHTML = `<div style="padding:24px;color:#c0392b">Could not load today's challenge: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderChallengeToday() {
+  const body = document.getElementById('challenge-modal-body');
+  const d = _ch.today;
+  if (!d) return;
+
+  // Trial banner
+  let trialBanner = '';
+  if (d.is_trial) {
+    trialBanner = `<div style="padding:10px 14px;background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 8px 8px 0;margin-bottom:14px;font-size:13px;line-height:1.5">
+      <b>🧪 Trial Day</b> — today's run is for testing. Unlimited retries, per-scenario feedback, and these scores don't count toward the season. The real season starts tomorrow.
+    </div>`;
+  }
+
+  // Season banner
+  let seasonHtml = '';
+  if (d.season) {
+    const end = new Date(d.season.end_date + 'T23:59:59');
+    const daysLeft = Math.max(0, Math.ceil((end - new Date()) / 86400000));
+    const startDate = d.season.start_date;
+    const futureSeason = startDate > d.challenge_date;
+    seasonHtml = `<div style="padding:12px 14px;background:linear-gradient(135deg,#0f6e56,#185FA5);color:#fff;border-radius:10px;margin-bottom:14px">
+      <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">${escHtml(d.season.name)} ${futureSeason ? `· starts ${startDate}` : `· ${daysLeft} days left`}</div>
+      <div style="font-size:13px;margin-top:4px;opacity:.95">🎁 ${escHtml(d.season.prize_text || 'Prize TBA')}</div>
+    </div>`;
+  }
+
+  // Already attempted today?
+  if (d.already_attempted && d.attempt) {
+    const playAgainBtn = d.is_trial
+      ? `<div style="margin-top:14px"><button onclick="startChallenge()" style="width:100%;height:42px;background:#0f6e56;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Play Again (trial) →</button></div>`
+      : `<div style="margin-top:10px;text-align:center;font-size:12px;color:#888">You already played today. Check back tomorrow!</div>`;
+    body.innerHTML = trialBanner + seasonHtml + renderAttemptResults(d.attempt, /*hidePlayedNote*/ true) + playAgainBtn;
+    return;
+  }
+
+  // Scenarios list (just difficulty — names hidden until they start)
+  const diffBadge = (n) => {
+    const lbl = n === 1 ? 'Easy' : n === 2 ? 'Medium' : 'Hard';
+    const bg = n === 1 ? '#e8f5e9' : n === 2 ? '#fff4e0' : '#fde8e8';
+    const fg = n === 1 ? '#0f6e56' : n === 2 ? '#b06800' : '#a83232';
+    return `<span style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px">${lbl}</span>`;
+  };
+  const previewList = (d.scenarios || []).map((s, i) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f0f0">
+       <div style="font-size:13px;color:#555">Scenario ${i+1}</div>
+       ${diffBadge(s.difficulty)}
+     </div>`).join('');
+
+  body.innerHTML = trialBanner + seasonHtml + `
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;line-height:1.6">
+      <div style="font-weight:700;margin-bottom:6px">How it works</div>
+      <div style="color:#555">Build 3 quotes correctly — right equipment, exact accessory checklist. ${d.is_trial ? 'Trial day: as many retries as you want.' : 'One attempt per day.'} Click <b>Start</b> when you're ready; the timer runs until you submit all 3.</div>
+    </div>
+    <div style="margin-bottom:14px">${previewList}</div>
+    <div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:10px 12px;font-size:12px;line-height:1.5;color:#665012;margin-bottom:14px">
+      <b>Time bonuses</b> (only if all 3 correct):<br>
+      🥇 Gold (under 5 min): +100 pts &nbsp;·&nbsp; 🥈 Silver (under 8 min): +50 pts &nbsp;·&nbsp; 🥉 Bronze (under 12 min): +25 pts
+    </div>
+    <button onclick="startChallenge()" style="width:100%;height:42px;background:#0f6e56;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Start Challenge →</button>
+  `;
+}
+
+function renderAttemptResults(attempt, hidePlayedNote) {
+  const results = attempt.scenario_results || [];
+  const tier = attempt.scenarios_correct === 3
+    ? (attempt.time_seconds < 300 ? 'gold' : attempt.time_seconds < 480 ? 'silver' : attempt.time_seconds < 720 ? 'bronze' : null)
+    : null;
+  const tierBadge = tier
+    ? `<span style="display:inline-block;background:${tier==='gold'?'#fff3c4':tier==='silver'?'#e8e8e8':'#f0d8c0'};color:#222;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:700;margin-left:8px">${tier==='gold'?'🥇 GOLD':tier==='silver'?'🥈 SILVER':'🥉 BRONZE'}</span>`
+    : '';
+  const mins = Math.floor((attempt.time_seconds || 0) / 60);
+  const secs = (attempt.time_seconds || 0) % 60;
+  const timeStr = `${mins}:${String(secs).padStart(2,'0')}`;
+
+  const rows = results.map((r, i) => {
+    const pass = r.passed;
+    const reasons = (r.fail_reasons || []).map(f => `<li>${escHtml(f)}</li>`).join('');
+    return `<div style="padding:12px;border:1px solid ${pass?'#c8e6d0':'#f0c8c8'};background:${pass?'#f0faf5':'#fff7f7'};border-radius:8px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${reasons?'8px':'0'}">
+        <div style="font-weight:600;font-size:13px">Scenario ${i+1}: ${escHtml(r.name || '')}</div>
+        <span style="background:${pass?'#0f6e56':'#a83232'};color:#fff;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700">${pass?'✓ PASS':'✗ FAIL'}</span>
+      </div>
+      ${reasons ? `<ul style="margin:0;padding-left:18px;font-size:12px;color:#666">${reasons}</ul>` : ''}
+    </div>`;
+  }).join('');
+
+  return `
+    <div style="text-align:center;padding:14px 14px 18px;background:linear-gradient(135deg,#0f6e56,#185FA5);color:#fff;border-radius:10px;margin-bottom:14px">
+      <div style="font-size:12px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">Today's Score</div>
+      <div style="font-size:42px;font-weight:700;line-height:1;margin:6px 0">${attempt.daily_score}</div>
+      <div style="font-size:13px;opacity:.95">${attempt.scenarios_correct} of 3 correct · ${timeStr}${tierBadge}</div>
+    </div>
+    <div>${rows}</div>
+    ${hidePlayedNote ? '' : '<div style="margin-top:10px;text-align:center;font-size:12px;color:#888">You already played today. Check back tomorrow!</div>'}
+  `;
+}
+
+// ── PLAY MODE ───────────────────────────────────────────────────────
+function startChallenge() {
+  if (!_ch.today || !_ch.today.scenarios) return;
+  // Confirm-clear if quote has anything in it
+  const nonEmpty = (quote && quote.length > 0)
+    || Object.keys(quoteWideState?.common || {}).length
+    || Object.keys(quoteWideState?.lineHide || {}).length
+    || Object.keys(quoteWideState?.customItems || {}).length;
+  if (nonEmpty) {
+    const ok = confirm('Starting the challenge will clear your current quote. Your in-progress work will be saved and restored automatically when the challenge ends. Continue?');
+    if (!ok) return;
+    // Save full state to localStorage as a safety net
+    try {
+      _ch.savedQuote = {
+        quote: JSON.parse(JSON.stringify(quote)),
+        quoteWideState: JSON.parse(JSON.stringify(quoteWideState))
+      };
+      localStorage.setItem('mss_pre_challenge_quote', JSON.stringify(_ch.savedQuote));
+    } catch(e) { console.warn('Could not save quote backup', e); }
+  } else {
+    _ch.savedQuote = null;
+  }
+
+  // Clear quote state
+  quote.length = 0;
+  quoteWideState.common = {};
+  quoteWideState.lineHide = {};
+  quoteWideState.customItems = {};
+  if (quoteWideState.lineComments) quoteWideState.lineComments.length = 0;
+
+  // Initialize challenge run
+  _ch.scenarioIdx = 0;
+  _ch.submissions = [];
+  _ch.startedAt = new Date().toISOString();
+  startChallengeTimer();
+  showChallengePlayPanel();
+  renderChallengePlayPanel();
+  // Close the start modal so they can see the quote builder
+  document.getElementById('challenge-overlay').classList.remove('open');
+  renderQuote();
+  try { logEvent('challenge_started', {}); } catch(e) {}
+}
+
+function startChallengeTimer() {
+  if (_ch.timerInterval) clearInterval(_ch.timerInterval);
+  _ch.timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - Date.parse(_ch.startedAt)) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    const t = `${m}:${String(s).padStart(2,'0')}`;
+    const el = document.getElementById('cplay-timer');
+    if (el) el.textContent = t;
+  }, 1000);
+}
+
+function stopChallengeTimer() {
+  if (_ch.timerInterval) clearInterval(_ch.timerInterval);
+  _ch.timerInterval = null;
+}
+
+function showChallengePlayPanel() {
+  document.getElementById('challenge-play-panel').style.display = '';
+}
+function hideChallengePlayPanel() {
+  document.getElementById('challenge-play-panel').style.display = 'none';
+}
+
+function renderChallengePlayPanel() {
+  const scenarios = _ch.today?.scenarios || [];
+  const idx = _ch.scenarioIdx;
+  const s = scenarios[idx];
+  if (!s) return;
+  document.getElementById('cplay-progress').textContent = `Scenario ${idx+1} of ${scenarios.length}`;
+  document.getElementById('cplay-scenario-name').textContent = s.name;
+  document.getElementById('cplay-scenario-blurb').textContent = s.customer_blurb;
+  const diff = s.difficulty;
+  const lbl = diff === 1 ? 'Easy' : diff === 2 ? 'Medium' : 'Hard';
+  const bg = diff === 1 ? '#e8f5e9' : diff === 2 ? '#fff4e0' : '#fde8e8';
+  const fg = diff === 1 ? '#0f6e56' : diff === 2 ? '#b06800' : '#a83232';
+  document.getElementById('cplay-difficulty').innerHTML = `<span style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px">${lbl}</span>`;
+  const isLast = idx === scenarios.length - 1;
+  document.getElementById('cplay-submit-btn').textContent = isLast ? `Finish Challenge ✓` : `Submit Scenario ${idx+1} →`;
+}
+
+function buildCurrentQuoteForGrader() {
+  // Same shape buildGraderTestPayload produces, but inlined to avoid coupling
+  const src = Array.isArray(quote) ? quote : [];
+  const zones = [];
+  for (const q of src) {
+    if (Array.isArray(q.zones) && q.zones.length) {
+      for (const z of q.zones) {
+        zones.push({
+          z: z.z, brand: q.brand, ou: q.ou || q.outdoor,
+          ou_cap: q.cap, iu: z.model || z.iu, model: z.model,
+          cap: z.cap, type: z.type || z.indoor,
+          liq: z.liq || z.liq_pipe, gas: z.gas || z.gas_pipe,
+          systemType: 'multi'
+        });
+      }
+    } else {
+      zones.push({
+        z: q.z, brand: q.brand, ou: q.ou || q.outdoor,
+        ou_cap: q.cap, iu: q.iu, model: q.model || q.iu,
+        cap: q.cap, type: q.type || q.indoor,
+        liq: q.liq || q.liq_pipe, gas: q.gas || q.gas_pipe,
+        systemType: src.length > 1 ? 'multi' : 'single'
+      });
+    }
+  }
+  const zoneAddons = {};
+  let k = 0;
+  for (const q of src) {
+    for (const a of (q.addons || [])) {
+      if (!a.checked) continue;
+      const baseQty = (typeof addonQty === 'function') ? addonQty(a) : (a.qty || 1);
+      zoneAddons[`zaddon_${k++}`] = {
+        catalogNumber: a.catalogNumber,
+        orderNumber: a.catalogNumber,
+        description: a.description || '',
+        qty: baseQty * (q.qty || 1)
+      };
+    }
+  }
+  return {
+    zones,
+    common: { ...(quoteWideState?.common || {}) },
+    lineHide: { ...(quoteWideState?.lineHide || {}) },
+    customItems: { ...(quoteWideState?.customItems || {}), ...zoneAddons }
+  };
+}
+
+async function submitChallengeScenario() {
+  const scenarios = _ch.today?.scenarios || [];
+  const s = scenarios[_ch.scenarioIdx];
+  if (!s) return;
+
+  if (!Array.isArray(quote) || !quote.length) {
+    if (!confirm('You haven\'t added any equipment for this scenario. Submit anyway?')) return;
+  }
+
+  // Snapshot the current quote
+  _ch.submissions.push({
+    scenario_id: s.id,
+    quote: buildCurrentQuoteForGrader()
+  });
+
+  // Clear quote for next scenario
+  quote.length = 0;
+  quoteWideState.common = {};
+  quoteWideState.lineHide = {};
+  quoteWideState.customItems = {};
+  if (quoteWideState.lineComments) quoteWideState.lineComments.length = 0;
+  renderQuote();
+
+  _ch.scenarioIdx++;
+  if (_ch.scenarioIdx < scenarios.length) {
+    renderChallengePlayPanel();
+    return;
+  }
+
+  // All 3 submitted — POST to server
+  await finishChallenge();
+}
+
+async function finishChallenge() {
+  stopChallengeTimer();
+  hideChallengePlayPanel();
+  document.getElementById('challenge-overlay').classList.add('open');
+  const body = document.getElementById('challenge-modal-body');
+  body.innerHTML = '<div style="padding:32px;text-align:center;color:#888">Grading your quotes…</div>';
+
+  try {
+    const res = await fetch('/api/challenge-submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: challengeUsername(),
+        challenge_date: _ch.today.challenge_date,
+        started_at: _ch.startedAt,
+        submissions: _ch.submissions,
+        user_branch: (typeof eclipseSession !== 'undefined' && eclipseSession?.branch) || null
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    // Reload today (so the "already attempted" path renders the result)
+    _ch.today.already_attempted = true;
+    _ch.today.attempt = data.attempt;
+    restoreSavedQuote();
+    renderChallengeToday();
+    try { logEvent('challenge_submitted', { score: data.daily_score, correct: data.attempt?.scenarios_correct }); } catch(e) {}
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:#c0392b">Submit failed: ${escHtml(e.message)}<br><br><button onclick="restoreSavedQuote();renderChallengeToday()" style="margin-top:10px;padding:6px 14px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer">Close</button></div>`;
+  }
+}
+
+function abandonChallenge() {
+  if (!confirm('Abandon this challenge? Your attempt won\'t be scored and you can\'t restart today.')) return;
+  stopChallengeTimer();
+  hideChallengePlayPanel();
+  restoreSavedQuote();
+  document.getElementById('challenge-overlay').classList.add('open');
+  // Note: we intentionally don't mark them as attempted server-side, so technically they CAN restart.
+  // The "no restart" warning is to discourage frivolous abandons; the unique constraint will block
+  // them naturally only if they actually submit later.
+  loadChallengeToday();
+}
+
+function restoreSavedQuote() {
+  if (!_ch.savedQuote) {
+    try {
+      const stored = localStorage.getItem('mss_pre_challenge_quote');
+      if (stored) _ch.savedQuote = JSON.parse(stored);
+    } catch(e) {}
+  }
+  if (!_ch.savedQuote) {
+    renderQuote();
+    return;
+  }
+  try {
+    quote.length = 0;
+    for (const q of (_ch.savedQuote.quote || [])) quote.push(q);
+    Object.assign(quoteWideState, _ch.savedQuote.quoteWideState || {});
+  } catch(e) { console.warn('Could not restore quote', e); }
+  localStorage.removeItem('mss_pre_challenge_quote');
+  _ch.savedQuote = null;
+  renderQuote();
+}
+
+// ── LEADERBOARD ────────────────────────────────────────────────────
+async function loadChallengeLeaderboard() {
+  const body = document.getElementById('challenge-modal-body');
+  body.innerHTML = '<div style="color:#888;padding:24px;text-align:center">Loading leaderboard…</div>';
+  try {
+    const user = challengeUsername();
+    const res = await fetch(`/api/challenge-leaderboard?username=${encodeURIComponent(user)}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    _ch.leaderboard = data;
+    renderChallengeLeaderboard();
+  } catch(e) {
+    body.innerHTML = `<div style="padding:20px;color:#c0392b">Could not load leaderboard: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderChallengeLeaderboard() {
+  const body = document.getElementById('challenge-modal-body');
+  const data = _ch.leaderboard;
+  if (!data) return;
+  const tierIcon = (t) => t === 'gold' ? '🥇' : t === 'silver' ? '🥈' : t === 'bronze' ? '🥉' : '';
+  const fmtTime = (s) => `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+
+  const todayRows = (data.today.standings || []).map(r =>
+    `<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:6px 8px;font-weight:700;color:#888;width:30px">${r.rank}</td><td style="padding:6px 8px;font-weight:600">${escHtml(r.username)}</td><td style="padding:6px 8px;font-size:12px;color:#555">${r.scenarios_correct}/3 · ${fmtTime(r.time_seconds||0)} ${tierIcon(r.time_tier)}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#0f6e56">${r.daily_score}</td></tr>`).join('')
+    || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;font-size:13px">No attempts yet today. Be the first!</td></tr>';
+
+  const yourTodayRow = data.today.your_row
+    ? `<tr style="background:#f0faf5;border-top:2px solid #0f6e56"><td style="padding:6px 8px;font-weight:700;color:#0f6e56">#${data.today.your_row.rank}</td><td style="padding:6px 8px;font-weight:700">${escHtml(data.today.your_row.username)} (you)</td><td style="padding:6px 8px;font-size:12px;color:#555">${data.today.your_row.scenarios_correct}/3 · ${fmtTime(data.today.your_row.time_seconds||0)} ${tierIcon(data.today.your_row.time_tier)}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#0f6e56">${data.today.your_row.daily_score}</td></tr>`
+    : '';
+
+  let html = `<div style="margin-bottom:18px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:700;font-size:14px">Today (${data.today.date})</div><div style="font-size:11px;color:#888">${data.today.total_players} player${data.today.total_players===1?'':'s'}</div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">${todayRows}${yourTodayRow}</table>
+  </div>`;
+
+  if (data.season) {
+    const seasonRows = (data.season.standings || []).map(r =>
+      `<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:6px 8px;font-weight:700;color:#888;width:30px">${r.rank}</td><td style="padding:6px 8px;font-weight:600">${escHtml(r.username)}</td><td style="padding:6px 8px;font-size:12px;color:#555">${r.days_played} day${r.days_played===1?'':'s'}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${r.total_score}</td></tr>`).join('')
+      || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;font-size:13px">Season has just started.</td></tr>';
+    const yourSeasonRow = data.season.your_row
+      ? `<tr style="background:#eef4fb;border-top:2px solid #185FA5"><td style="padding:6px 8px;font-weight:700;color:#185FA5">#${data.season.your_row.rank}</td><td style="padding:6px 8px;font-weight:700">${escHtml(data.season.your_row.username)} (you)</td><td style="padding:6px 8px;font-size:12px;color:#555">${data.season.your_row.days_played} days · best: ${data.season.your_row.best_day}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${data.season.your_row.total_score}</td></tr>`
+      : '';
+    html += `<div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:700;font-size:14px">${escHtml(data.season.name)} Season</div><div style="font-size:11px;color:#888">${data.season.total_players} player${data.season.total_players===1?'':'s'} · 🎁 ${escHtml(data.season.prize_text||'')}</div></div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px">${seasonRows}${yourSeasonRow}</table>
+    </div>`;
+  }
+
+  body.innerHTML = html;
 }
 </script>
 
