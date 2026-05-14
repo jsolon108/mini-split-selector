@@ -312,6 +312,8 @@ function gradeQuote(quote, scenario, lookups) {
     const expectedQty = req.qty || 1;
 
     if (req.type === 'lineset') {
+      // Helper: strip trailing quote/whitespace from pipe size strings ('1/4"' → '1/4')
+      const normSize = s => String(s || '').replace(/["'\s]/g, '');
       // expectedQty = number of line sets needed (one per zone).
       // req.attrs.kind = "standard" | "uv_rated" | undefined (any, but no mixing).
       // req.attrs.length = optional, applies only to standard.
@@ -347,11 +349,13 @@ function gradeQuote(quote, scenario, lookups) {
         const used = new Array(pool.length).fill(false);
         for (let zi = 0; zi < zones.length; zi++) {
           const z = zones[zi];
+          const zLiq = normSize(z.liq), zGas = normSize(z.gas);
           let foundIdx = -1;
           for (let i = 0; i < pool.length; i++) {
             if (used[i]) continue;
             const a = pool[i].attrs || {};
-            if (a.liq && a.gas && z.liq && z.gas && (a.liq !== z.liq || a.gas !== z.gas)) continue;
+            const aLiq = normSize(a.liq), aGas = normSize(a.gas);
+            if (aLiq && aGas && zLiq && zGas && (aLiq !== zLiq || aGas !== zGas)) continue;
             if (wantLen && a.length && a.length !== wantLen) continue;
             foundIdx = i; break;
           }
@@ -373,12 +377,13 @@ function gradeQuote(quote, scenario, lookups) {
         const used = new Array(uvItems.length).fill(false);
         for (let zi = 0; zi < zones.length; zi++) {
           const z = zones[zi];
-          for (const want of [{role:'liquid', size:z.liq}, {role:'gas', size:z.gas}]) {
+          for (const want of [{role:'liquid', size:normSize(z.liq)}, {role:'gas', size:normSize(z.gas)}]) {
             let foundIdx = -1;
             for (let i = 0; i < uvItems.length; i++) {
               if (used[i]) continue;
               const a = uvItems[i].attrs || {};
-              if (a.od && want.size && a.od !== want.size) continue;
+              const aOd = normSize(a.od);
+              if (aOd && want.size && aOd !== want.size) continue;
               foundIdx = i; break;
             }
             if (foundIdx === -1) {
