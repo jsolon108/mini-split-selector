@@ -32,9 +32,9 @@ function todayET() {
 
 function deriveTier(time, correct) {
   if (correct !== 3) return null;
-  if (time < 300) return 'gold';
-  if (time < 480) return 'silver';
-  if (time < 720) return 'bronze';
+  if (time < 180) return 'gold';
+  if (time < 300) return 'silver';
+  if (time < 480) return 'bronze';
   return null;
 }
 
@@ -77,13 +77,21 @@ export default async function handler(req, res) {
     );
     if (seasons.length) {
       const season = seasons[0];
-      const seasonAttempts = await fetchJson(
-        `${SB_URL}/rest/v1/challenge_attempts?challenge_date=gte.${season.start_date}&challenge_date=lte.${season.end_date}&select=username,daily_score`,
+      // Get list of trial dates so we can exclude them from season scoring
+      const trialRows = await fetchJson(
+        `${SB_URL}/rest/v1/challenges_daily?is_trial=eq.true&select=challenge_date`,
         headers
       );
-      // Aggregate per user
+      const trialDates = new Set(trialRows.map(r => r.challenge_date));
+
+      const seasonAttempts = await fetchJson(
+        `${SB_URL}/rest/v1/challenge_attempts?challenge_date=gte.${season.start_date}&challenge_date=lte.${season.end_date}&select=username,daily_score,challenge_date`,
+        headers
+      );
+      // Aggregate per user, excluding trial days
       const agg = {};
       for (const a of seasonAttempts) {
+        if (trialDates.has(a.challenge_date)) continue;
         const u = a.username;
         if (!agg[u]) agg[u] = { username: u, total_score: 0, days_played: 0, best_day: 0 };
         agg[u].total_score += a.daily_score || 0;
