@@ -6395,8 +6395,33 @@ function renderAttemptResults(attempt, hidePlayedNote) {
     </div>
     <div>${rows}</div>
     ${challengeHowItWorksHtml({ collapsed: true })}
+    ${typeof isAdmin === 'function' && isAdmin() ? '<div style="margin-top:14px;padding:10px;background:#f3eef7;border:1px dashed #b8a8c8;border-radius:6px;text-align:center"><button onclick="adminResetMyAttempt()" style="padding:6px 14px;border:1px solid #5a2a82;background:#fff;color:#5a2a82;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🛠 Reset my attempt (admin)</button><div style="font-size:11px;color:#666;margin-top:4px">Wipes your attempt for today so you can replay from scratch.</div></div>' : ''}
     ${hidePlayedNote ? '' : '<div style="margin-top:10px;text-align:center;font-size:12px;color:#888">You already played today. Check back tomorrow!</div>'}
   `;
+}
+
+// Admin-only: delete your own attempt row for today and refresh the modal.
+// Useful when iterating on the challenge as an admin or when locked out by an
+// earlier test attempt during a strict (non-trial) day.
+async function adminResetMyAttempt() {
+  if (!isAdmin()) return;
+  const user = challengeUsername();
+  if (!user) return;
+  const date = _ch.today?.challenge_date;
+  if (!date) return;
+  if (!confirm(`Wipe your attempt for ${date} and start over? This is admin-only.`)) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(user)}&challenge_date=eq.${date}`, {
+      method: 'DELETE',
+      headers: { ...H, 'Prefer': 'return=minimal' }
+    });
+    if (!res.ok) throw new Error(await res.text());
+    try { logEvent('challenge_admin_reset', { date }); } catch(e) {}
+    // Reload today to refresh the modal back to the "start" state
+    await loadChallengeToday();
+  } catch (e) {
+    alert('Reset failed: ' + e.message);
+  }
 }
 
 // ── PLAY MODE ───────────────────────────────────────────────────────
