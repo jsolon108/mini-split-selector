@@ -3254,7 +3254,7 @@ async function injectDefaultAddons(q, addons) {
   const defaults = await loadDefaultAddons();
   if (!defaults?.length) return;
 
-  // Find which categories already have Eclipse addons
+  // Find which categories already have Eclipse addons (only used for non-size-typed defaults)
   const existingCats = new Set(addons.map(a => a.category));
 
   // OU capacity for this system (in K BTU). SZ uses q.cap; MZ uses q.cap (OU capacity).
@@ -3273,11 +3273,23 @@ async function injectDefaultAddons(q, addons) {
     });
   }
 
-  // For each default addon, check if it should be injected
+  // Pre-compute which (liq,gas) combos Eclipse already covered for STANDARD line sets,
+  // so we don't double-inject the same paired line set.
+  // Match by description containing "1/4"x3/8"" or similar pair patterns.
+  const eclipseStandardPairs = new Set();
+  for (const a of addons) {
+    if (a.category !== 'Line Sets') continue;
+    const desc = String(a.description || '').toUpperCase();
+    // DuraGuard items have single OD (e.g. "1/4IN OD"); standard items have paired (e.g. "1/4"X3/8"")
+    const isDura = /DURAGUARD|UV INSULATED/.test(desc) || /^B62/i.test(a.catalogNumber || '');
+    if (isDura) continue;
+    const m = desc.match(/(\d\/\d)["']?\s?[xX]\s?(\d\/\d)/);
+    if (m) eclipseStandardPairs.add(`${normSize(m[1])}|${normSize(m[2])}`);
+  }
+
+  // For each default addon, decide injection
   for (const d of defaults) {
     const cat = d.category;
-    // Skip if Eclipse already returned items for this category
-    if (existingCats.has(cat)) continue;
 
     // Capacity gating: skip if OU cap is outside this row's range
     const minK = d.cap_min_kbtu;
@@ -3286,20 +3298,24 @@ async function injectDefaultAddons(q, addons) {
     if (maxK != null && ouCapK > maxK) continue;
 
     if (d.size_type === null || d.size_type === undefined) {
-      // Non-size-specific — inject once if category is missing
+      // Non-size-specific (e.g. whips, generic accessories).
+      // Skip if Eclipse already covered the category.
+      if (existingCats.has(cat)) continue;
       if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
         addons.push(makeDefaultAddon(d, ''));
       }
     } else if (d.size_type === 'both') {
-      // Line set — match liq+gas per zone
+      // Standard line set — match liq+gas per zone.
+      // Only inject if Eclipse did NOT already supply a standard line set matching this zone's pair.
       for (const z of zones) {
         if (!z.liq || !z.gas) continue;
-        if (normSize(d.liq_size) === normSize(z.liq) && normSize(d.gas_size) === normSize(z.gas)) {
-          addons.push(makeDefaultAddon(d, z.label));
-        }
+        if (normSize(d.liq_size) !== normSize(z.liq) || normSize(d.gas_size) !== normSize(z.gas)) continue;
+        const key = `${normSize(z.liq)}|${normSize(z.gas)}`;
+        if (eclipseStandardPairs.has(key)) continue;
+        addons.push(makeDefaultAddon(d, z.label));
       }
     } else if (d.size_type === 'liq') {
-      // Duraguard liq tube — match liq size per zone
+      // DuraGuard liquid roll — match liq OD per zone. Always offer (DuraGuard isn't an Eclipse default).
       for (const z of zones) {
         if (!z.liq) continue;
         if (normSize(d.liq_size) === normSize(z.liq)) {
@@ -3307,7 +3323,7 @@ async function injectDefaultAddons(q, addons) {
         }
       }
     } else if (d.size_type === 'gas') {
-      // Duraguard gas tube — match gas size per zone
+      // DuraGuard gas roll — match gas OD per zone. Always offer.
       for (const z of zones) {
         if (!z.gas) continue;
         if (normSize(d.gas_size) === normSize(z.gas)) {
@@ -6076,7 +6092,10 @@ async function submitFeedback() {
   </div>
   <div id="cplay-progress" style="font-size:11px;font-weight:600;color:#0f6e56;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Scenario 1 of 3</div>
   <div id="cplay-scenario-name" style="font-weight:700;font-size:14px;margin-bottom:6px;line-height:1.3"></div>
-  <div id="cplay-scenario-blurb" style="font-size:12px;color:#555;line-height:1.5;margin-bottom:12px"></div>
+  <div id="cplay-scenario-blurb" style="font-size:12px;color:#555;line-height:1.5;margin-bottom:8px"></div>
+  <div style="font-size:11px;color:#888;font-style:italic;line-height:1.4;padding:8px 10px;background:#f8f9fa;border-radius:6px;margin-bottom:12px">
+    Any SKU in each category counts — pick any pad, any whip, etc. Line sets must match the equipment's connection size.
+  </div>
   <div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid #eee;border-bottom:1px solid #eee;margin-bottom:12px">
     <span style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.05em">Total time</span>
     <span id="cplay-timer" style="font-family:'SF Mono',monospace;font-size:18px;font-weight:700;color:#0f6e56">0:00</span>
