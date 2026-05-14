@@ -53,12 +53,24 @@ function classifyAccessory(line) {
     return { type: 'disconnect_with_surge', sku, desc };
   }
 
-  // 2) Line sets — DuraGuard (B62 prefix) separately tracked
+  // 2) Line sets — DuraGuard (B62 prefix) separately tracked.
+  // Extract length (e.g. "35FT" → "35") and connection sizes (e.g. "1/4"x3/8"" → {liq:"1/4", gas:"3/8"}).
+  function extractLinesetAttrs(d) {
+    const lenMatch = d.match(/\b(\d{2,3})\s?(?:FT|')\b/);
+    const length = lenMatch ? lenMatch[1] : null;
+    // Connection like 1/4"x3/8" or 3/8"x5/8" or 1/4x1/2 (sometimes without quotes)
+    const connMatch = d.match(/(\d\/\d)["']?\s?[xX]\s?(\d\/\d)/);
+    const liq = connMatch ? connMatch[1] : null;
+    const gas = connMatch ? connMatch[2] : null;
+    return { length, liq, gas };
+  }
   if (sku.startsWith('B62')) {
-    return { type: 'lineset', sku, desc, half: true };
+    const a = extractLinesetAttrs(desc);
+    return { type: 'lineset', sku, desc, half: true, attrs: a };
   }
   if (/\bLINE.?SET\b|\bLINESET\b|\bCOPPER TUBING\b|\bTUBING COPPER\b|\bREFRIGERANT LINE\b/.test(desc)) {
-    return { type: 'lineset', sku, desc };
+    const a = extractLinesetAttrs(desc);
+    return { type: 'lineset', sku, desc, attrs: a };
   }
 
   // 3) Slimduct / line hide — classified by mfg_num prefix, not description.
@@ -294,8 +306,53 @@ function gradeQuote(quote, scenario, lookups) {
     const expectedQty = req.qty || 1;
 
     if (req.type === 'lineset') {
-      if (Math.abs((counts.lineset?.qty || 0) - expectedQty) > 0.001) {
-        fail.push(`Line sets: expected ${expectedQty}, got ${counts.lineset?.qty || 0}`);
+      // Multiset match: each zone needs exactly one line set with matching connection sizes.
+      // Optional `req.attrs.length` enforces a specific length on every line set.
+      const want = expectedQty;
+      const got = counts.lineset?.qty || 0;
+      if (Math.abs(got - want) > 0.001) {
+        fail.push(`Line sets: expected ${want}, got ${got}`);
+      }
+      // Build available line set items (each item carries attrs from extractLinesetAttrs)
+      // For B62 pairs, the half-flag was already collapsed in linesetItems; treat each
+      // distinct SKU group as one logical line set carrying the description's attrs.
+      const wantLen = req.attrs?.length || null;
+      const lineItems = (counts.lineset?.items || []).slice();
+      // Flatten lineItems by their lineset_units count (so a B62 pair = 1 logical unit)
+      const logical = [];
+      for (const li of lineItems) {
+        const count = Math.round(li.lineset_units || li.qty || 1);
+        for (let i = 0; i < count; i++) logical.push(li);
+      }
+      // Greedy zone match: for each zone, find an unused logical line set with matching liq+gas (and length if specified)
+      const used = new Array(logical.length).fill(false);
+      for (let zi = 0; zi < zones.length; zi++) {
+        const z = zones[zi];
+        const zLiq = z.liq, zGas = z.gas;
+        let foundIdx = -1;
+        for (let i = 0; i < logical.length; i++) {
+          if (used[i]) continue;
+          const a = logical[i].attrs || {};
+          if (a.liq && a.gas && zLiq && zGas && (a.liq !== zLiq || a.gas !== zGas)) continue;
+          if (wantLen && a.length && a.length !== wantLen) continue;
+          foundIdx = i;
+          break;
+        }
+        if (foundIdx === -1) {
+          fail.push(`Line set for zone ${z.z || zi+1}: no match for ${zLiq||'?'}x${zGas||'?'}${wantLen?` ${wantLen}FT`:''}`);
+        } else {
+          used[foundIdx] = true;
+        }
+      }
+      // If there are unused line sets, they're extras (already partially flagged by qty check above, but call out connection mismatches explicitly)
+      for (let i = 0; i < logical.length; i++) {
+        if (used[i]) continue;
+        const a = logical[i].attrs || {};
+        if (a.liq && a.gas) {
+          // Only report once per unique connection size to avoid noise on B62 pairs
+          const msg = `Extra line set (${a.liq}x${a.gas}${a.length?` ${a.length}FT`:''}) doesn't match any zone`;
+          if (!fail.includes(msg)) fail.push(msg);
+        }
       }
     } else if (req.type === 'disconnect') {
       if (effectiveDisconnects < expectedQty) {
