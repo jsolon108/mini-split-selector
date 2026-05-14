@@ -6309,10 +6309,35 @@ function startChallenge() {
   startChallengeTimer();
   showChallengePlayPanel();
   renderChallengePlayPanel();
+  setEclipseActionsEnabled(false); // lock Push-to-Eclipse during challenge
   // Close the start modal so they can see the quote builder
   document.getElementById('challenge-overlay').classList.remove('open');
   renderQuote();
   try { logEvent('challenge_started', {}); } catch(e) {}
+}
+
+// Enable/disable the Eclipse push button while a challenge is in progress.
+// Copy-to-clipboard stays enabled — that's safe during a challenge.
+function setEclipseActionsEnabled(enabled) {
+  const btn = document.getElementById('push-eclipse-btn');
+  if (!btn) return;
+  if (enabled) {
+    btn.disabled = false;
+    btn.style.opacity = '';
+    btn.style.cursor = '';
+    btn.title = '';
+    if (btn.dataset.origLabel) {
+      btn.textContent = btn.dataset.origLabel;
+      delete btn.dataset.origLabel;
+    }
+  } else {
+    if (!btn.dataset.origLabel) btn.dataset.origLabel = btn.textContent;
+    btn.disabled = true;
+    btn.style.opacity = '0.45';
+    btn.style.cursor = 'not-allowed';
+    btn.title = 'Disabled during the Daily Challenge';
+    btn.textContent = '🔒 Locked during challenge';
+  }
 }
 
 function startChallengeTimer() {
@@ -6460,10 +6485,12 @@ async function finishChallenge() {
     // Reload today (so the "already attempted" path renders the result)
     _ch.today.already_attempted = true;
     _ch.today.attempt = data.attempt;
+    setEclipseActionsEnabled(true);
     restoreSavedQuote();
     renderChallengeToday();
     try { logEvent('challenge_submitted', { score: data.daily_score, correct: data.attempt?.scenarios_correct }); } catch(e) {}
   } catch (e) {
+    setEclipseActionsEnabled(true);
     body.innerHTML = `<div style="padding:20px;color:#c0392b">Submit failed: ${escHtml(e.message)}<br><br><button onclick="restoreSavedQuote();renderChallengeToday()" style="margin-top:10px;padding:6px 14px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer">Close</button></div>`;
   }
 }
@@ -6472,11 +6499,9 @@ function abandonChallenge() {
   if (!confirm('Abandon this challenge? Your attempt won\'t be scored and you can\'t restart today.')) return;
   stopChallengeTimer();
   hideChallengePlayPanel();
+  setEclipseActionsEnabled(true);
   restoreSavedQuote();
   document.getElementById('challenge-overlay').classList.add('open');
-  // Note: we intentionally don't mark them as attempted server-side, so technically they CAN restart.
-  // The "no restart" warning is to discourage frivolous abandons; the unique constraint will block
-  // them naturally only if they actually submit later.
   loadChallengeToday();
 }
 
