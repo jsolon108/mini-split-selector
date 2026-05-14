@@ -6231,18 +6231,20 @@ function buildGraderTestPayload() {
       for (const z of q.zones) {
         zones.push({
           z: z.z, brand: q.brand, ou: q.ou || q.outdoor,
-          ou_cap: q.cap, // multi-zone: q.cap = outdoor unit capacity
+          ou_cap: q.cap,
           iu: z.model || z.iu, model: z.model,
           cap: z.cap, type: z.type || z.indoor,
+          liq: z.liq || z.liq_pipe, gas: z.gas || z.gas_pipe,
           systemType: 'multi'
         });
       }
     } else {
       zones.push({
         z: q.z, brand: q.brand, ou: q.ou || q.outdoor,
-        ou_cap: q.cap, // single-zone: cap is the system capacity
+        ou_cap: q.cap,
         iu: q.iu, model: q.model || q.iu,
         cap: q.cap, type: q.type || q.indoor,
+        liq: q.liq || q.liq_pipe, gas: q.gas || q.gas_pipe,
         systemType: src.length > 1 ? 'multi' : 'single'
       });
     }
