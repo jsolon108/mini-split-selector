@@ -129,9 +129,6 @@ select:focus,input:focus{outline:none;border-color:#999}
 .ca-row .ca-rm:hover{background:#fee}
 .quote-line{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #f0f0f0}
 .quote-line:last-child{border-bottom:none}
-/* Continuation cards that visually merge with the system card above */
-.quote-line.quote-line-attached{padding-top:0;border-top:none;margin-top:-6px}
-.quote-line.quote-line-attached .q-name{font-size:11px;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
 .q-body{flex:1;overflow:hidden;word-break:break-word}
 .q-name{font-weight:600;font-size:13px;margin-bottom:4px}
 .q-model-list{font-family:'SF Mono',monospace;font-size:14px;color:#555;display:flex;flex-direction:column;gap:4px}
@@ -1324,13 +1321,10 @@ function priceBadge(model) {
 function renderQuote() {
   const el=document.getElementById('quote-box');
   const sdSummary = renderSlimDuctSummary();
-  const caSummary = renderCommonAddonsSummary();
   const ciSummary = renderCustomItemsSummary();
-  const summaries = ciSummary + caSummary + sdSummary;
+  const summaries = ciSummary + sdSummary;
   if(!quote.length){
-    // No system cards above → strip the "attached" class so cards don't have negative top margins / missing borders
-    const detached = summaries.replace(/quote-line quote-line-attached/g, 'quote-line');
-    el.innerHTML = detached || '<div class="empty">No systems added yet</div>';
+    el.innerHTML = summaries || '<div class="empty">No systems added yet</div>';
     renderQuoteWideSections();
     return;
   }
@@ -1509,13 +1503,13 @@ function renderQuote() {
         ${totalRow}
         <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
         ${accordion}
-
+        <div style="margin-top:8px"><button onclick="openCommonAddonPicker(${qi})" style="padding:4px 10px;border:1px solid #d0d7e2;background:#f8fafc;color:#185FA5;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer">+ Common Add-on</button></div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
         <button class="rm-btn" onclick="removeQ(${qi})">✕</button>
       </div>
     </div>`;
-  }).join('') + ciSummary + caSummary + sdSummary;
+  }).join('') + summaries;
   renderQuoteWideSections();
 }
 
@@ -1676,12 +1670,11 @@ const LH_SIZES = [77, 100, 140];
 function renderQuoteWideSections() {
   const el = document.getElementById('quote-wide-sections');
   if (!el) return;
-  const hasSelections = Object.keys(quoteWideState.common).length > 0
-    || Object.keys(quoteWideState.lineHide).length > 0
+  const hasSelections = Object.keys(quoteWideState.lineHide).length > 0
     || Object.keys(quoteWideState.customItems || {}).length > 0;
   // Hide when there's nothing on the quote at all
   if (!quote.length && !hasSelections) { el.innerHTML = ''; return; }
-  el.innerHTML = renderCommonAddonsSection() + renderLineHideSection();
+  el.innerHTML = renderLineHideSection();
 }
 
 // Renders a summary card showing currently-selected Slim Duct items.
@@ -1736,7 +1729,7 @@ function renderCommonAddonsSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Common add-ons total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line quote-line-attached">
+  return `<div class="quote-line">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Quote-wide Add-ons</div>
@@ -1796,7 +1789,7 @@ function renderSlimDuctSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Slim Duct total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line quote-line-attached">
+  return `<div class="quote-line">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Slim Duct / Line Hide</div>
@@ -1848,7 +1841,7 @@ function renderCustomItemsSummary() {
 
   const totalRow = total > 0 ? `<div class="q-total-row">Items total: $${total.toFixed(2)}</div>` : '';
 
-  return `<div class="quote-line quote-line-attached">
+  return `<div class="quote-line">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Items</div>
@@ -1884,7 +1877,7 @@ function renderLineComments() {
       <span style="color:#555;flex:1;font-style:italic">${escHtml(c.text)}</span>
       <button onclick="removeLineComment('${escAttr(c.id)}')" title="Remove" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:14px;padding:0 4px;line-height:1">✕</button>
     </div>`).join('');
-  return `<div class="quote-line quote-line-attached">
+  return `<div class="quote-line">
     <div style="width:44px;flex-shrink:0"></div>
     <div class="q-body">
       <div class="q-name">Line Comments</div>
@@ -6363,6 +6356,141 @@ function renderGraderTestResult(data, payload) {
     window.addEventListener('DOMContentLoaded', () => { setTimeout(tryShow, 500); setTimeout(tryShow, 2000); });
   }
 })();
+</script>
+
+<!-- ════════════════════════════════════════════════════════════════════
+     COMMON ADD-ON PICKER (per-system)
+     Replaces the standalone Common Add-ons section. Opens via the
+     "+ Common Add-on" button on each system card. Picks land in q.addons[].
+══════════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="common-addon-picker-overlay" onclick="if(event.target===this)closeCommonAddonPicker()" style="z-index:9001">
+  <div class="modal" style="max-width:640px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <div style="font-weight:700;font-size:17px">+ Add Common Add-on</div>
+        <div style="font-size:12px;color:#888;margin-top:2px" id="cap-target-label">to system</div>
+      </div>
+      <button onclick="closeCommonAddonPicker()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
+    </div>
+    <input id="cap-search" placeholder="Search by description, SKU, or category…" oninput="renderCommonAddonPickerList()"
+      style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:10px"/>
+    <div id="cap-list" style="font-size:13px">Loading…</div>
+    <div style="display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid #eee">
+      <button onclick="commitCommonAddonPicks()" id="cap-add-btn" style="flex:1;height:38px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">Add Selected (0)</button>
+      <button onclick="closeCommonAddonPicker()" style="height:38px;padding:0 14px;border:1px solid #ddd;background:#fff;border-radius:6px;font-size:13px;cursor:pointer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Common Add-on Picker (per-system) ────────────────────────────────
+let _capTargetQi = null;
+let _capPicks = {}; // { sku: qty }
+
+async function openCommonAddonPicker(qi) {
+  _capTargetQi = qi;
+  _capPicks = {};
+  await loadCommonAddons();
+  const q = quote[qi];
+  const label = q ? `${q.brand} ${q.series||''} — ${q.cap}K${q.qtype==='mz'?' (Multi-zone)':''}` : '';
+  document.getElementById('cap-target-label').textContent = `to: ${label}`;
+  document.getElementById('cap-search').value = '';
+  document.getElementById('common-addon-picker-overlay').classList.add('open');
+  renderCommonAddonPickerList();
+  updateCapAddButton();
+}
+function closeCommonAddonPicker() {
+  document.getElementById('common-addon-picker-overlay').classList.remove('open');
+  _capTargetQi = null;
+  _capPicks = {};
+}
+
+function setCapPick(sku, qty) {
+  const q = Math.max(0, Math.floor(qty || 0));
+  if (q === 0) delete _capPicks[sku];
+  else _capPicks[sku] = q;
+  updateCapAddButton();
+}
+
+function updateCapAddButton() {
+  const btn = document.getElementById('cap-add-btn');
+  if (!btn) return;
+  const n = Object.values(_capPicks).reduce((s, q) => s + q, 0);
+  btn.textContent = `Add Selected (${n})`;
+  btn.disabled = n === 0;
+  btn.style.opacity = n === 0 ? '0.5' : '1';
+  btn.style.cursor = n === 0 ? 'not-allowed' : 'pointer';
+}
+
+function renderCommonAddonPickerList() {
+  const list = document.getElementById('cap-list');
+  if (!list || !COMMON_ADDONS) return;
+  const search = (document.getElementById('cap-search')?.value || '').toLowerCase().trim();
+  const filtered = COMMON_ADDONS.filter(a => {
+    if (!search) return true;
+    const cat = (categorizeAddon(a.description || '', a.sku || '') || '').toLowerCase();
+    return (a.sku || '').toLowerCase().includes(search)
+      || (a.description || '').toLowerCase().includes(search)
+      || cat.includes(search);
+  });
+  if (!filtered.length) { list.innerHTML = '<div style="padding:12px;color:#888;text-align:center">No matches.</div>'; return; }
+  // Group by category
+  const byCat = {};
+  filtered.forEach(a => {
+    const cat = categorizeAddon(a.description || '', a.sku || '') || 'Other';
+    (byCat[cat] = byCat[cat] || []).push(a);
+  });
+  list.innerHTML = Object.keys(byCat).sort().map(cat => {
+    const rows = byCat[cat].map(a => {
+      const qty = _capPicks[a.sku] || 0;
+      return `<div style="display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #f5f5f5">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:monospace;font-size:12px;color:#185FA5">${escHtml(a.sku)}</div>
+          <div style="font-size:12px;color:#555;line-height:1.3">${escHtml(a.description || '')}</div>
+        </div>
+        <input type="number" min="0" value="${qty}" onchange="setCapPick('${escAttr(a.sku)}', this.value)"
+          style="width:54px;padding:4px 6px;border:1px solid #ddd;border-radius:4px;font-size:12px;text-align:center"/>
+      </div>`;
+    }).join('');
+    return `<div style="margin-bottom:10px">
+      <div style="font-size:11px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;background:#f8f9fa;border-radius:4px;margin-bottom:4px">${escHtml(cat)}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function commitCommonAddonPicks() {
+  if (_capTargetQi == null) return;
+  const q = quote[_capTargetQi];
+  if (!q) return closeCommonAddonPicker();
+  q.addons = q.addons || [];
+  for (const [sku, qty] of Object.entries(_capPicks)) {
+    const meta = COMMON_ADDONS.find(a => a.sku === sku);
+    if (!meta || qty <= 0) continue;
+    // Match existing entry by catalogNumber - bump qty if already present
+    const existing = q.addons.find(a => a.catalogNumber === sku);
+    if (existing) {
+      existing.qtyOverride = (existing.qtyOverride ?? existing.qtyNeeded ?? 1) + qty;
+      existing.checked = true;
+    } else {
+      q.addons.push({
+        productId: `common-${sku}-${Date.now()}`,
+        catalogNumber: sku,
+        description: meta.description || sku,
+        qtyNeeded: qty,
+        qtyOverride: null,
+        required: false,
+        tagAlongType: '',
+        category: categorizeAddon(meta.description || '', sku) || '',
+        checked: true,
+        isCommon: true // flag so we can distinguish from Eclipse defaults / tag-alongs
+      });
+    }
+  }
+  closeCommonAddonPicker();
+  renderQuote();
+  try { logEvent('common_addon_added_to_system', { qi: _capTargetQi, count: Object.keys(_capPicks).length }); } catch(e) {}
+}
 </script>
 
 </body>
