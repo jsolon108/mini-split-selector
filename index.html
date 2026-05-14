@@ -6259,6 +6259,32 @@ function challengeUsername() {
   return eclipseSession?.username || '';
 }
 
+// Shared "How it works / scoring" block — used on the start screen AND results screen.
+// `collapsed` controls whether it renders as an expandable details element.
+function challengeHowItWorksHtml({ collapsed = false } = {}) {
+  const inner = `
+    <div style="background:#f8f9fa;border-radius:8px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:8px">
+      <div style="font-weight:700;margin-bottom:4px">How it works</div>
+      <div style="color:#555">Build 3 quotes correctly in the tool — right brand, right BTU, right indoor style, exact accessory checklist. No extras, no missing items. Any SKU in each category counts (any pad, any whip, etc.). Line sets must match the equipment's connection size.</div>
+    </div>
+    <div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:10px 12px;font-size:12px;line-height:1.5;color:#665012;margin-bottom:8px">
+      <div style="font-weight:700;margin-bottom:4px">Scoring</div>
+      <div>· Each scenario passed: <b>+100 pts</b></div>
+      <div>· All 3 correct (perfect): <b>+50 pts</b></div>
+      <div style="margin-top:4px"><b>Time bonuses</b> (only if all 3 correct):</div>
+      <div>🥇 Gold (under 3 min): +100 pts</div>
+      <div>🥈 Silver (under 5 min): +50 pts</div>
+      <div>🥉 Bronze (under 8 min): +25 pts</div>
+      <div style="margin-top:4px;color:#888">Max daily: <b>450 pts</b></div>
+    </div>
+  `;
+  if (!collapsed) return inner;
+  return `<details style="margin-top:10px;background:#f8f9fa;border-radius:8px;padding:8px 12px">
+    <summary style="cursor:pointer;font-weight:600;font-size:13px;color:#555;padding:4px 0">How it works · Scoring</summary>
+    <div style="padding-top:8px">${inner}</div>
+  </details>`;
+}
+
 // ── TODAY view (start screen / status / play / results) ────────────
 async function loadChallengeToday() {
   const body = document.getElementById('challenge-modal-body');
@@ -6331,15 +6357,8 @@ function renderChallengeToday() {
      </div>`).join('');
 
   body.innerHTML = trialBanner + seasonHtml + `
-    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:14px;font-size:13px;line-height:1.6">
-      <div style="font-weight:700;margin-bottom:6px">How it works</div>
-      <div style="color:#555">Build 3 quotes correctly — right equipment, exact accessory checklist. ${d.is_trial ? 'Trial day: as many retries as you want.' : 'One attempt per day.'} Click <b>Start</b> when you're ready; the timer runs until you submit all 3.</div>
-    </div>
-    <div style="margin-bottom:14px">${previewList}</div>
-    <div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:10px 12px;font-size:12px;line-height:1.5;color:#665012;margin-bottom:14px">
-      <b>Time bonuses</b> (only if all 3 correct):<br>
-      🥇 Gold (under 3 min): +100 pts &nbsp;·&nbsp; 🥈 Silver (under 5 min): +50 pts &nbsp;·&nbsp; 🥉 Bronze (under 8 min): +25 pts
-    </div>
+    ${challengeHowItWorksHtml({ collapsed: false })}
+    <div style="margin-bottom:14px;margin-top:14px">${previewList}</div>
     <button onclick="startChallenge()" style="width:100%;height:42px;background:#0f6e56;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Start Challenge →</button>
   `;
 }
@@ -6375,6 +6394,7 @@ function renderAttemptResults(attempt, hidePlayedNote) {
       <div style="font-size:13px;opacity:.95">${attempt.scenarios_correct} of 3 correct · ${timeStr}${tierBadge}</div>
     </div>
     <div>${rows}</div>
+    ${challengeHowItWorksHtml({ collapsed: true })}
     ${hidePlayedNote ? '' : '<div style="margin-top:10px;text-align:center;font-size:12px;color:#888">You already played today. Check back tomorrow!</div>'}
   `;
 }
