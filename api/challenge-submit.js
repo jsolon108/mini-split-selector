@@ -23,9 +23,9 @@
 //   - Each scenario passed: 100 pts
 //   - All 3 passed (perfect): +50 pts
 //   - Time bonuses (only awarded if all 3 passed):
-//       under  5 min: +100 (gold)
-//       under  8 min: +50  (silver)
-//       under 12 min: +25  (bronze)
+//       under 3 min: +100 (gold)
+//       under 5 min: +50  (silver)
+//       under 8 min: +25  (bronze)
 //   - Max daily: 100+100+100 + 50 + 100 = 450
 //
 // Enforces one-attempt-per-day via UNIQUE (username, challenge_date) on challenge_attempts.
@@ -66,9 +66,9 @@ function scoreBreakdown(scenarioResults, timeSeconds) {
   let timeBonus = 0;
   let tier = null;
   if (passedCount === 3) {
-    if (timeSeconds < 300) { timeBonus = 100; tier = 'gold'; }
-    else if (timeSeconds < 480) { timeBonus = 50; tier = 'silver'; }
-    else if (timeSeconds < 720) { timeBonus = 25; tier = 'bronze'; }
+    if (timeSeconds < 180) { timeBonus = 100; tier = 'gold'; }
+    else if (timeSeconds < 300) { timeBonus = 50; tier = 'silver'; }
+    else if (timeSeconds < 480) { timeBonus = 25; tier = 'bronze'; }
   }
   return {
     per_scenario: perScenario,
@@ -95,26 +95,27 @@ export default async function handler(req, res) {
 
     const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
 
-    // Hard guard: has this user already attempted today?
-    const existing = await fetch(
-      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}&select=id`,
-      { headers }
-    ).then(r => r.json());
-    if (existing.length) {
-      return res.status(409).json({ error: 'Already attempted today', attempt_id: existing[0].id });
-    }
-
     // Verify the scenarios match today's daily row (rep can't substitute their own)
     const dailyRow = await fetch(
-      `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challenge_date}&select=scenario_ids`,
+      `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challenge_date}&select=scenario_ids,is_trial`,
       { headers }
     ).then(r => r.json());
     if (!dailyRow.length) return res.status(400).json({ error: 'No challenge for today yet — please fetch /api/challenge-today first' });
+    const isTrial = !!dailyRow[0].is_trial;
     const allowedIds = new Set(dailyRow[0].scenario_ids || []);
     for (const sub of submissions) {
       if (!allowedIds.has(sub.scenario_id)) {
         return res.status(400).json({ error: `scenario_id ${sub.scenario_id} is not in today's challenge` });
       }
+    }
+
+    // Has this user already attempted today?
+    const existing = await fetch(
+      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}&select=id`,
+      { headers }
+    ).then(r => r.json());
+    if (existing.length && !isTrial) {
+      return res.status(409).json({ error: 'Already attempted today', attempt_id: existing[0].id });
     }
 
     // Fetch the full scenario specs
@@ -151,6 +152,15 @@ export default async function handler(req, res) {
     const breakdown = scoreBreakdown(scenarioResults, timeSeconds);
     const passedCount = scenarioResults.filter(r => r.passed).length;
 
+    // On trial days, delete the existing attempt before inserting the new one
+    // (we already loaded the existing row above).
+    if (isTrial && existing.length) {
+      await fetch(
+        `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}`,
+        { method: 'DELETE', headers }
+      );
+    }
+
     // Write the attempt row
     const attemptInsert = await fetch(`${SB_URL}/rest/v1/challenge_attempts`, {
       method: 'POST',
@@ -169,7 +179,6 @@ export default async function handler(req, res) {
     });
     if (!attemptInsert.ok) {
       const errText = await attemptInsert.text();
-      // Likely a unique constraint race — surface gracefully
       return res.status(409).json({ error: 'Attempt write failed (probably already attempted today)', detail: errText });
     }
     const attemptRows = await attemptInsert.json();
@@ -177,6 +186,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       attempt,
+      is_trial: isTrial,
       scenario_results: scenarioResults,
       daily_score: breakdown.total,
       time_seconds: timeSeconds,
