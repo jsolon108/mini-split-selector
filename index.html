@@ -854,6 +854,7 @@ async function fetchData() {
   loadDefaultAddons(); // preload fallback addons
   loadLineHideProducts(); // preload line hide catalog
   loadActiveAlerts(); // fire-and-forget; renders banners in header
+  loadFeatureFlags().then(() => { if (typeof refreshAdminUI === 'function') refreshAdminUI(); });
   renderSingle();
   renderMulti();
 }
@@ -871,7 +872,7 @@ function switchTab(t) {
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
-  if (t === 'cats') { renderCategories(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); }
+  if (t === 'cats') { renderCategories(); renderFeatureFlags(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); }
   if (t === 'unitary') renderUnitary();
   if (t === 'import') renderImport();
   if (t === 'alerts') renderAlertsAdmin();
@@ -1651,6 +1652,87 @@ async function loadDefaultAddons(force=false) {
     DEFAULT_ADDONS = await res.json();
   } catch(e) { console.warn('Could not load default addons', e); DEFAULT_ADDONS = []; }
   return DEFAULT_ADDONS;
+}
+
+// ── Feature flags ─────────────────────────────────────────────────
+let FEATURE_FLAGS = null; // { flag_key: value }
+async function loadFeatureFlags(force=false) {
+  if (FEATURE_FLAGS && !force) return FEATURE_FLAGS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/feature_flags?select=flag_key,value`, { headers: H });
+    const rows = await res.json();
+    FEATURE_FLAGS = {};
+    for (const r of rows) FEATURE_FLAGS[r.flag_key] = r.value;
+  } catch(e) {
+    console.warn('Could not load feature flags', e);
+    FEATURE_FLAGS = {};
+  }
+  return FEATURE_FLAGS;
+}
+function getFeatureFlag(key, fallback='off') {
+  if (!FEATURE_FLAGS) return fallback;
+  return FEATURE_FLAGS[key] || fallback;
+}
+async function setFeatureFlag(key, value) {
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/feature_flags?flag_key=eq.${encodeURIComponent(key)}`, {
+      method: 'PATCH',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ value, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    if (FEATURE_FLAGS) FEATURE_FLAGS[key] = value;
+    return true;
+  } catch(e) {
+    console.error('setFeatureFlag failed', e);
+    return false;
+  }
+}
+
+// Catalog of admin-controlled flags. Each describes its options + helper text.
+const KNOWN_FLAGS = [
+  {
+    key: 'challenge_visibility',
+    title: 'Daily Challenge visibility',
+    description: 'Controls who sees the 🏆 Challenge button.',
+    options: [
+      { value: 'off',        label: '🔒 Off',         hint: 'Hidden for everyone (kill switch)' },
+      { value: 'admin_only', label: '🧪 Admin only',  hint: 'Visible only to admins for testing' },
+      { value: 'public',     label: '🚀 Public',      hint: 'Visible to all users' },
+    ]
+  }
+];
+
+async function renderFeatureFlags() {
+  const wrap = document.getElementById('feature-flag-list');
+  if (!wrap) return;
+  await loadFeatureFlags(true); // always reload latest
+  wrap.innerHTML = KNOWN_FLAGS.map(f => {
+    const current = getFeatureFlag(f.key, f.options[0].value);
+    const opts = f.options.map(o => {
+      const active = o.value === current;
+      const bg = active ? '#0f6e56' : '#fff';
+      const color = active ? '#fff' : '#222';
+      const border = active ? '#0f6e56' : '#ddd';
+      return `<button onclick="changeFeatureFlag('${escAttr(f.key)}', '${escAttr(o.value)}')"
+        style="flex:1;padding:10px 12px;border:2px solid ${border};background:${bg};color:${color};border-radius:6px;cursor:pointer;font-family:inherit;text-align:left;transition:all .1s">
+        <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escHtml(o.label)}</div>
+        <div style="font-size:11px;opacity:.85;line-height:1.3">${escHtml(o.hint)}</div>
+      </button>`;
+    }).join('');
+    return `<div style="margin-bottom:8px">
+      <div style="font-weight:600;font-size:13px;margin-bottom:2px">${escHtml(f.title)}</div>
+      <div style="font-size:12px;color:#666;margin-bottom:8px">${escHtml(f.description)}</div>
+      <div style="display:flex;gap:8px">${opts}</div>
+    </div>`;
+  }).join('');
+}
+
+async function changeFeatureFlag(key, value) {
+  const ok = await setFeatureFlag(key, value);
+  if (!ok) { alert('Could not update flag.'); return; }
+  renderFeatureFlags();
+  if (typeof refreshAdminUI === 'function') refreshAdminUI();
 }
 
 async function loadLineHideProducts(force=false) {
@@ -2878,9 +2960,21 @@ function refreshAdminUI() {
   // Grader Test button — admin only
   const graderBtn = document.getElementById('grader-test-fab');
   if (graderBtn) graderBtn.style.display = isAdmin() ? 'flex' : 'none';
-  // Challenge button — admin only during gated trial. To launch publicly, set always 'flex'.
+  // Challenge button — controlled by the challenge_visibility feature flag.
+  //   'off'        → hidden for everyone
+  //   'admin_only' → visible to admins only
+  //   'public'     → visible to everyone
   const challengeBtn = document.getElementById('challenge-fab');
-  if (challengeBtn) challengeBtn.style.display = isAdmin() ? 'flex' : 'none';
+  if (challengeBtn) {
+    const vis = getFeatureFlag('challenge_visibility', 'off');
+    let show = false;
+    if (vis === 'public') show = true;
+    else if (vis === 'admin_only') show = isAdmin();
+    challengeBtn.style.display = show ? 'flex' : 'none';
+    // Hide the "ADMIN" pill when public; show it during admin-only mode
+    const adminPill = challengeBtn.querySelector('span');
+    if (adminPill) adminPill.style.display = vis === 'admin_only' ? '' : 'none';
+  }
 }
 
 function escHtml(x) {
@@ -5782,6 +5876,19 @@ async function renderDefaultAddonsTable() {
       </div>
       <div id="cat-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
 
+      <!-- Feature Flags -->
+      <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <h2 style="font-size:16px;font-weight:600;margin:0">Feature Flags</h2>
+          <span style="font-size:12px;color:#666">Control rollout of new features without a code deploy. Changes take effect on next page load for users.</span>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px">
+          <div id="feature-flag-list" style="font-size:13px">
+            <div style="color:#888;padding:10px 0">Loading flags…</div>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
           <h2 style="font-size:16px;font-weight:600;margin:0">Additional Add-ons</h2>
@@ -6231,7 +6338,7 @@ function renderChallengeToday() {
     <div style="margin-bottom:14px">${previewList}</div>
     <div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:10px 12px;font-size:12px;line-height:1.5;color:#665012;margin-bottom:14px">
       <b>Time bonuses</b> (only if all 3 correct):<br>
-      🥇 Gold (under 5 min): +100 pts &nbsp;·&nbsp; 🥈 Silver (under 8 min): +50 pts &nbsp;·&nbsp; 🥉 Bronze (under 12 min): +25 pts
+      🥇 Gold (under 3 min): +100 pts &nbsp;·&nbsp; 🥈 Silver (under 5 min): +50 pts &nbsp;·&nbsp; 🥉 Bronze (under 8 min): +25 pts
     </div>
     <button onclick="startChallenge()" style="width:100%;height:42px;background:#0f6e56;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Start Challenge →</button>
   `;
@@ -6240,7 +6347,7 @@ function renderChallengeToday() {
 function renderAttemptResults(attempt, hidePlayedNote) {
   const results = attempt.scenario_results || [];
   const tier = attempt.scenarios_correct === 3
-    ? (attempt.time_seconds < 300 ? 'gold' : attempt.time_seconds < 480 ? 'silver' : attempt.time_seconds < 720 ? 'bronze' : null)
+    ? (attempt.time_seconds < 180 ? 'gold' : attempt.time_seconds < 300 ? 'silver' : attempt.time_seconds < 480 ? 'bronze' : null)
     : null;
   const tierBadge = tier
     ? `<span style="display:inline-block;background:${tier==='gold'?'#fff3c4':tier==='silver'?'#e8e8e8':'#f0d8c0'};color:#222;padding:4px 10px;border-radius:14px;font-size:11px;font-weight:700;margin-left:8px">${tier==='gold'?'🥇 GOLD':tier==='silver'?'🥈 SILVER':'🥉 BRONZE'}</span>`
