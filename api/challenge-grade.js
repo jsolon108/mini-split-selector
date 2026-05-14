@@ -9,7 +9,11 @@
 //   2. Hisense has factory WiFi — don't expect separate WiFi module
 //   3. Slimduct qty >= 2 → require coupler(s), qty = slimduct_qty - 1
 //   4. Surge protector: strict like everything else — only allowed when scenario lists it
-//   5. Line set counting: SKU prefix B62 = 0.5 each (must pair); else 1; unpaired B62 = fail
+//   5. Line sets — Standard (paired LS... SKU) vs UV rated (DuraGuard, sold as separate
+//      liquid + gas rolls; B62 prefix or "DURAGUARD"/"UV INSULATED" in description).
+//      If scenario doesn't specify, whole quote must be one kind (no mixing).
+//      Standard: match liq×gas connection + optional length per zone.
+//      UV rated: each zone needs two items, one liquid OD + one gas OD matching the zone.
 //   6. Disconnect-with-surge: must be G38-072 or G81-048 (combo SKUs).
 //      Combo SKUs also satisfy a plain `disconnect` requirement.
 //   7. 115V: scenario voltage:115 → OU must match brand pattern
@@ -53,24 +57,38 @@ function classifyAccessory(line) {
     return { type: 'disconnect_with_surge', sku, desc };
   }
 
-  // 2) Line sets — DuraGuard (B62 prefix) separately tracked.
-  // Extract length (e.g. "35FT" → "35") and connection sizes (e.g. "1/4"x3/8"" → {liq:"1/4", gas:"3/8"}).
-  function extractLinesetAttrs(d) {
+  // 2) Line sets — two variants:
+  //    STANDARD: bagged paired line sets (e.g. LS14121250DMSF). Description includes paired
+  //              connection like 1/4"x1/2" and a length like 50FT.
+  //    UV RATED (DuraGuard): per-pipe rolls, sold liquid + gas separately. SKU starts with B62
+  //              OR description contains "DURAGUARD" / "UV INSULATED". Each item describes a
+  //              single OD (e.g. "1/4IN OD"). Length not graded for UV.
+  function extractStandardLinesetAttrs(d) {
     const lenMatch = d.match(/\b(\d{2,3})\s?(?:FT|')\b/);
     const length = lenMatch ? lenMatch[1] : null;
-    // Connection like 1/4"x3/8" or 3/8"x5/8" or 1/4x1/2 (sometimes without quotes)
     const connMatch = d.match(/(\d\/\d)["']?\s?[xX]\s?(\d\/\d)/);
-    const liq = connMatch ? connMatch[1] : null;
-    const gas = connMatch ? connMatch[2] : null;
-    return { length, liq, gas };
+    return {
+      length,
+      liq: connMatch ? connMatch[1] : null,
+      gas: connMatch ? connMatch[2] : null,
+      kind: 'standard'
+    };
   }
-  if (sku.startsWith('B62')) {
-    const a = extractLinesetAttrs(desc);
-    return { type: 'lineset', sku, desc, half: true, attrs: a };
+  function extractUVLinesetAttrs(d) {
+    // Look for "1/4IN OD" or "1/4 IN OD" — the first dimension followed by IN OD.
+    // Avoid matching "1/2IN INSUL" (insulation thickness).
+    const odMatch = d.match(/(\d\/\d)\s?IN\s?OD\b/i);
+    return {
+      od: odMatch ? odMatch[1] : null,
+      kind: 'uv_rated'
+    };
+  }
+  const isUVDuraguard = sku.startsWith('B62') || /DURAGUARD|UV INSULATED/.test(desc);
+  if (isUVDuraguard) {
+    return { type: 'lineset', sku, desc, attrs: extractUVLinesetAttrs(desc) };
   }
   if (/\bLINE.?SET\b|\bLINESET\b|\bCOPPER TUBING\b|\bTUBING COPPER\b|\bREFRIGERANT LINE\b/.test(desc)) {
-    const a = extractLinesetAttrs(desc);
-    return { type: 'lineset', sku, desc, attrs: a };
+    return { type: 'lineset', sku, desc, attrs: extractStandardLinesetAttrs(desc) };
   }
 
   // 3) Slimduct / line hide — classified by mfg_num prefix, not description.
@@ -234,35 +252,23 @@ function gradeQuote(quote, scenario, lookups) {
   const classified = lines.map(l => ({ ...classifyAccessory(l), qty: l.qty }));
   diag.classified = classified;
 
-  // Aggregate counts by type, applying B62 half-counting + cassette/Hisense built-ins
+  // Aggregate counts by type. Line sets get bucketed separately for kind-aware matching.
   const counts = {}; // type -> { qty: number, items: [...] }
-  const linesetItems = [];
-  let b62HalfRemainder = 0;
+  const linesetItems = []; // every classified lineset item (standard + UV mixed)
 
   for (const c of classified) {
     if (c.type === 'unknown') continue;
     if (c.type === 'lineset') {
-      // B62 pairs to make 1 line set; non-B62 lines = 1 each
-      if (c.half) {
-        const halfUnits = c.qty * 0.5;
-        b62HalfRemainder += halfUnits;
-        linesetItems.push({ ...c, lineset_units: halfUnits });
-      } else {
-        linesetItems.push({ ...c, lineset_units: c.qty });
-      }
+      linesetItems.push(c);
       continue;
     }
     counts[c.type] = counts[c.type] || { qty: 0, items: [] };
     counts[c.type].qty += c.qty;
     counts[c.type].items.push(c);
   }
-
-  // Finalize line set count, after B62 pairing — RULE 5
-  if (b62HalfRemainder > 0 && Math.abs(b62HalfRemainder - Math.round(b62HalfRemainder)) > 0.001) {
-    fail.push(`Unpaired DuraGuard line set component (must come in liquid+gas pairs)`);
+  if (linesetItems.length) {
+    counts.lineset = { qty: linesetItems.length, items: linesetItems };
   }
-  const totalLinesetUnits = linesetItems.reduce((s, x) => s + x.lineset_units, 0);
-  if (totalLinesetUnits > 0) counts.lineset = { qty: totalLinesetUnits, items: linesetItems };
 
   // Combo disconnects (G38-072 / G81-048) satisfy BOTH disconnect AND surge_protector
   // We track them in a separate `disconnect_with_surge` bucket — but the require-loop
@@ -306,51 +312,84 @@ function gradeQuote(quote, scenario, lookups) {
     const expectedQty = req.qty || 1;
 
     if (req.type === 'lineset') {
-      // Multiset match: each zone needs exactly one line set with matching connection sizes.
-      // Optional `req.attrs.length` enforces a specific length on every line set.
-      const want = expectedQty;
-      const got = counts.lineset?.qty || 0;
-      if (Math.abs(got - want) > 0.001) {
-        fail.push(`Line sets: expected ${want}, got ${got}`);
-      }
-      // Build available line set items (each item carries attrs from extractLinesetAttrs)
-      // For B62 pairs, the half-flag was already collapsed in linesetItems; treat each
-      // distinct SKU group as one logical line set carrying the description's attrs.
-      const wantLen = req.attrs?.length || null;
-      const lineItems = (counts.lineset?.items || []).slice();
-      // Flatten lineItems by their lineset_units count (so a B62 pair = 1 logical unit)
-      const logical = [];
-      for (const li of lineItems) {
-        const count = Math.round(li.lineset_units || li.qty || 1);
-        for (let i = 0; i < count; i++) logical.push(li);
-      }
-      // Greedy zone match: for each zone, find an unused logical line set with matching liq+gas (and length if specified)
-      const used = new Array(logical.length).fill(false);
-      for (let zi = 0; zi < zones.length; zi++) {
-        const z = zones[zi];
-        const zLiq = z.liq, zGas = z.gas;
-        let foundIdx = -1;
-        for (let i = 0; i < logical.length; i++) {
-          if (used[i]) continue;
-          const a = logical[i].attrs || {};
-          if (a.liq && a.gas && zLiq && zGas && (a.liq !== zLiq || a.gas !== zGas)) continue;
-          if (wantLen && a.length && a.length !== wantLen) continue;
-          foundIdx = i;
-          break;
-        }
-        if (foundIdx === -1) {
-          fail.push(`Line set for zone ${z.z || zi+1}: no match for ${zLiq||'?'}x${zGas||'?'}${wantLen?` ${wantLen}FT`:''}`);
+      // expectedQty = number of line sets needed (one per zone).
+      // req.attrs.kind = "standard" | "uv_rated" | undefined (any, but no mixing).
+      // req.attrs.length = optional, applies only to standard.
+      const items = (counts.lineset?.items || []);
+      const stdItems = items.filter(i => (i.attrs?.kind || 'standard') === 'standard');
+      const uvItems  = items.filter(i => i.attrs?.kind === 'uv_rated');
+
+      // Determine effective kind. If spec asks for one, use it. If not, infer from quote.
+      let kind = req.attrs?.kind;
+      if (!kind) {
+        if (stdItems.length && uvItems.length) {
+          fail.push(`Line sets: mix of standard and UV rated — pick one or the other for the whole quote`);
+          kind = null; // skip further per-zone matching; the mix is already a fail
+        } else if (uvItems.length && !stdItems.length) {
+          kind = 'uv_rated';
         } else {
-          used[foundIdx] = true;
+          kind = 'standard';
         }
+      } else if (kind === 'standard' && uvItems.length) {
+        fail.push(`Line sets: scenario calls for standard line sets, but UV rated (DuraGuard) found`);
+      } else if (kind === 'uv_rated' && stdItems.length) {
+        fail.push(`Line sets: scenario calls for UV rated (DuraGuard) line sets, but standard found`);
       }
-      // If there are unused line sets, they're extras (already partially flagged by qty check above, but call out connection mismatches explicitly)
-      for (let i = 0; i < logical.length; i++) {
-        if (used[i]) continue;
-        const a = logical[i].attrs || {};
-        if (a.liq && a.gas) {
-          // Only report once per unique connection size to avoid noise on B62 pairs
-          const msg = `Extra line set (${a.liq}x${a.gas}${a.length?` ${a.length}FT`:''}) doesn't match any zone`;
+
+      const wantLen = req.attrs?.length || null;
+
+      if (kind === 'standard') {
+        // Each zone needs exactly one standard line set with matching liq/gas (and length if specified).
+        const pool = stdItems.slice();
+        if (pool.length !== expectedQty) {
+          fail.push(`Line sets: expected ${expectedQty} (standard), got ${pool.length}`);
+        }
+        const used = new Array(pool.length).fill(false);
+        for (let zi = 0; zi < zones.length; zi++) {
+          const z = zones[zi];
+          let foundIdx = -1;
+          for (let i = 0; i < pool.length; i++) {
+            if (used[i]) continue;
+            const a = pool[i].attrs || {};
+            if (a.liq && a.gas && z.liq && z.gas && (a.liq !== z.liq || a.gas !== z.gas)) continue;
+            if (wantLen && a.length && a.length !== wantLen) continue;
+            foundIdx = i; break;
+          }
+          if (foundIdx === -1) {
+            fail.push(`Line set for zone ${z.z || zi+1}: no standard line set matching ${z.liq||'?'}x${z.gas||'?'}${wantLen?` ${wantLen}FT`:''}`);
+          } else used[foundIdx] = true;
+        }
+        for (let i = 0; i < pool.length; i++) {
+          if (used[i]) continue;
+          const a = pool[i].attrs || {};
+          const msg = `Extra standard line set (${a.liq||'?'}x${a.gas||'?'}${a.length?` ${a.length}FT`:''}) doesn't match any zone`;
+          if (!fail.includes(msg)) fail.push(msg);
+        }
+      } else if (kind === 'uv_rated') {
+        // Each zone needs TWO UV items: one with OD matching zone.liq, one matching zone.gas.
+        if (uvItems.length !== expectedQty * 2) {
+          fail.push(`UV rated line sets: expected ${expectedQty*2} items (${expectedQty} pairs), got ${uvItems.length}`);
+        }
+        const used = new Array(uvItems.length).fill(false);
+        for (let zi = 0; zi < zones.length; zi++) {
+          const z = zones[zi];
+          for (const want of [{role:'liquid', size:z.liq}, {role:'gas', size:z.gas}]) {
+            let foundIdx = -1;
+            for (let i = 0; i < uvItems.length; i++) {
+              if (used[i]) continue;
+              const a = uvItems[i].attrs || {};
+              if (a.od && want.size && a.od !== want.size) continue;
+              foundIdx = i; break;
+            }
+            if (foundIdx === -1) {
+              fail.push(`UV line set for zone ${z.z || zi+1} ${want.role} (${want.size||'?'}): not found`);
+            } else used[foundIdx] = true;
+          }
+        }
+        for (let i = 0; i < uvItems.length; i++) {
+          if (used[i]) continue;
+          const a = uvItems[i].attrs || {};
+          const msg = `Extra UV line set component (${a.od||'?'} OD) doesn't match any zone`;
           if (!fail.includes(msg)) fail.push(msg);
         }
       }
