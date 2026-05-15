@@ -71,10 +71,28 @@ export default async function handler(req, res) {
 
     // ─── SEASON ───
     let seasonOut = null;
-    const seasons = await fetchJson(
+    // First try: active season covering today
+    let seasons = await fetchJson(
       `${SB_URL}/rest/v1/challenge_seasons?active=eq.true&start_date=lte.${today}&end_date=gte.${today}&select=*&limit=1`,
       headers
     );
+    // Fallback: if today is a trial day with no active season, show the next upcoming season
+    // so users still see "May 2026 starts Tuesday" instead of blank.
+    let isUpcoming = false;
+    if (!seasons.length) {
+      const todaysDailyRow = await fetchJson(
+        `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${today}&select=is_trial`,
+        headers
+      );
+      const todayIsTrial = todaysDailyRow.length > 0 && !!todaysDailyRow[0].is_trial;
+      if (todayIsTrial) {
+        seasons = await fetchJson(
+          `${SB_URL}/rest/v1/challenge_seasons?active=eq.true&start_date=gt.${today}&select=*&order=start_date.asc&limit=1`,
+          headers
+        );
+        isUpcoming = seasons.length > 0;
+      }
+    }
     if (seasons.length) {
       const season = seasons[0];
       // Get list of trial dates so we can exclude them from season scoring
@@ -136,6 +154,7 @@ export default async function handler(req, res) {
         start_date: season.start_date,
         end_date: season.end_date,
         prize_text: season.prize_text,
+        is_upcoming: isUpcoming,
         standings: top10Season,
         your_row: yourSeasonRow,
         total_players: ranked.length
