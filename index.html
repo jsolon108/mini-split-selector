@@ -4899,6 +4899,7 @@ function hideSessionExpiredBanner() {
 // Called from the banner's "Sign in again" button.
 // Reuses the existing login overlay — the user enters their creds and hits Sign In.
 function reauthEclipse() {
+  pauseChallengeTimer(); // freeze challenge timer (if running) so login latency doesn't cost the user
   hideSessionExpiredBanner();
   const overlay = document.getElementById('login-overlay');
   if (overlay) {
@@ -4922,6 +4923,7 @@ async function eclipseCall(body) {
 
   // Session expired — re-login and retry once
   if (res.status === 419 || data?.error?.includes('419') || data?.error?.includes('session') || res.status === 401) {
+    if (typeof pauseChallengeTimer === 'function') pauseChallengeTimer();
     try {
       const loginRes = await fetch('/api/eclipse', {
         method: 'POST',
@@ -4942,6 +4944,8 @@ async function eclipseCall(body) {
       }
     } catch(e) {
       throw new Error('Session expired — please log in again.');
+    } finally {
+      if (typeof resumeChallengeTimer === 'function') resumeChallengeTimer();
     }
   }
 
@@ -4980,6 +4984,7 @@ async function doLogin() {
     document.getElementById('user-badge').style.display = '';
     if (data.homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = data.homeBranch; }
     loadAdminUsers(true).then(refreshAdminUI);
+    if (typeof resumeChallengeTimer === 'function') resumeChallengeTimer();
   } catch (err) {
     errEl.textContent = 'Network error — ' + err.message;
     btn.disabled = false;
@@ -6495,6 +6500,7 @@ function setEclipseActionsEnabled(enabled) {
 function startChallengeTimer() {
   if (_ch.timerInterval) clearInterval(_ch.timerInterval);
   _ch.timerInterval = setInterval(() => {
+    if (_ch.pausedAt) return; // freeze the display while paused
     const elapsed = Math.floor((Date.now() - Date.parse(_ch.startedAt)) / 1000);
     const m = Math.floor(elapsed / 60);
     const s = elapsed % 60;
@@ -6507,6 +6513,27 @@ function startChallengeTimer() {
 function stopChallengeTimer() {
   if (_ch.timerInterval) clearInterval(_ch.timerInterval);
   _ch.timerInterval = null;
+}
+
+// Freeze the timer (e.g. during Eclipse re-auth so login latency doesn't eat into time bonus).
+// Safe to call when no challenge is running — does nothing.
+function pauseChallengeTimer() {
+  if (!_ch.startedAt || _ch.pausedAt) return;
+  _ch.pausedAt = Date.now();
+  // Optional UI signal — show that the timer is paused
+  const el = document.getElementById('cplay-timer');
+  if (el) el.style.opacity = '0.45';
+}
+
+function resumeChallengeTimer() {
+  if (!_ch.pausedAt) return;
+  // Shift startedAt forward by the paused duration so the elapsed math stays correct
+  const pausedMs = Date.now() - _ch.pausedAt;
+  const newStart = Date.parse(_ch.startedAt) + pausedMs;
+  _ch.startedAt = new Date(newStart).toISOString();
+  _ch.pausedAt = null;
+  const el = document.getElementById('cplay-timer');
+  if (el) el.style.opacity = '';
 }
 
 function showChallengePlayPanel() {
@@ -6614,6 +6641,8 @@ async function submitChallengeScenario() {
 }
 
 async function finishChallenge() {
+  // If for some reason we're paused at the moment of submit, resume first so the shift is committed
+  if (_ch.pausedAt) resumeChallengeTimer();
   stopChallengeTimer();
   hideChallengePlayPanel();
   document.getElementById('challenge-overlay').classList.add('open');
