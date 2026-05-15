@@ -6750,8 +6750,13 @@ function renderChallengeLeaderboard() {
     const yourSeasonRow = data.season.your_row
       ? `<tr style="background:#eef4fb;border-top:2px solid #185FA5"><td style="padding:6px 8px;font-weight:700;color:#185FA5">#${data.season.your_row.rank}</td><td style="padding:6px 8px;font-weight:700">${escHtml(data.season.your_row.username)} (you)</td><td style="padding:6px 8px;font-size:12px;color:#555">${data.season.your_row.days_played} days · best: ${data.season.your_row.best_day}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${data.season.your_row.total_score}</td></tr>`
       : '';
+    // Show a trial note above the season standings if today is still a trial day
+    const trialNote = (_ch.today && _ch.today.is_trial)
+      ? `<div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;color:#665012;margin-bottom:10px;line-height:1.5">🧪 <b>Trial period through Monday May 18.</b> Scores from trial days don't count below — the real season starts Tuesday May 19.</div>`
+      : '';
     html += `<div>
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:700;font-size:14px">${escHtml(data.season.name)} Season</div><div style="font-size:11px;color:#888">${data.season.total_players} player${data.season.total_players===1?'':'s'} · 🎁 ${escHtml(data.season.prize_text||'')}</div></div>
+      ${trialNote}
       <table style="width:100%;border-collapse:collapse;font-size:13px">${seasonRows}${yourSeasonRow}</table>
     </div>`;
   }
