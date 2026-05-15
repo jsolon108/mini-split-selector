@@ -6313,12 +6313,29 @@ function highlightChallengeTab() {
   // Update the small subtitle under the modal title. On the leaderboard tab during the trial
   // period, surface the reset notice so people don't think their current standing is final.
   const label = document.getElementById('challenge-tab-label');
-  if (label) {
-    if (_ch.activeTab === 'leaderboard' && _ch.today?.is_trial) {
+  if (!label) return;
+  if (_ch.activeTab === 'leaderboard') {
+    // If we don't yet know whether today is a trial day, fetch the daily row directly so
+    // the user opening Leaderboard FIRST still sees the reset notice.
+    if (_ch.today?.is_trial) {
       label.textContent = 'Leaderboard · scores reset on Tuesday when the contest goes live';
+    } else if (_ch.today) {
+      label.textContent = 'Leaderboard';
     } else {
-      label.textContent = _ch.activeTab === 'leaderboard' ? 'Leaderboard' : 'Today';
+      label.textContent = 'Leaderboard';
+      // Fire-and-forget lightweight check; update label when it returns.
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+      fetch(`${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${today}&select=is_trial`, { headers: H })
+        .then(r => r.json())
+        .then(rows => {
+          if (_ch.activeTab !== 'leaderboard') return;
+          if (rows.length && rows[0].is_trial) {
+            label.textContent = 'Leaderboard · scores reset on Tuesday when the contest goes live';
+          }
+        }).catch(() => {});
     }
+  } else {
+    label.textContent = 'Today';
   }
 }
 
@@ -6800,6 +6817,7 @@ async function loadChallengeLeaderboard() {
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     _ch.leaderboard = data;
     renderChallengeLeaderboard();
+    highlightChallengeTab(); // refresh label in case _ch.today populated during the fetch
   } catch(e) {
     body.innerHTML = `<div style="padding:20px;color:#c0392b">Could not load leaderboard: ${escHtml(e.message)}</div>`;
   }
