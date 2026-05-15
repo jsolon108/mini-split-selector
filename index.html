@@ -33,6 +33,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .session-banner .session-msg{flex:1;min-width:0}
 .session-banner button{background:#7f1d1d;color:#fff;border:0;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer}
 .session-banner button:hover{background:#991b1b}
+/* Trial banner — yellow, top of page, hidden by default; flipped on at runtime if today is a trial day */
+.trial-banner{background:#fff8e1;border-bottom:1px solid #e6d484;color:#665012;padding:10px 20px;font-size:13px;line-height:1.4;display:none;align-items:center;gap:10px;font-weight:500}
+.trial-banner.visible{display:flex}
+.trial-banner .trial-msg{flex:1;min-width:0}
 .container{max-width:980px;margin:0 auto;padding:20px}
 .tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid #e5e5e5}
 .tab{padding:8px 18px;font-size:13px;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;color:#666;background:none}
@@ -515,6 +519,7 @@ select:focus,input:focus{outline:none;border-color:#999}
   .alert-banner { font-size: 12px; padding: 8px 12px; }
   .session-banner { font-size: 12px; padding: 8px 12px; }
   .session-banner button { font-size: 11px; padding: 4px 10px; }
+  .trial-banner { font-size: 12px; padding: 8px 12px; }
 }
 </style>
 </head>
@@ -525,6 +530,10 @@ select:focus,input:focus{outline:none;border-color:#999}
   <span class="session-msg">Your Eclipse session has expired. Pricing, inventory, and customer info won't load until you sign in again.</span>
   <button onclick="reauthEclipse()">Sign in again</button>
   <button onclick="document.getElementById('session-banner').classList.remove('visible')" style="background:transparent;color:#7f1d1d;border:1px solid #7f1d1d" title="Dismiss">✕</button>
+</div>
+<div class="trial-banner" id="trial-banner">
+  <span>🧪</span>
+  <span class="trial-msg">The Ductless Quote Builder is live and ready to use. The new <b>Daily Challenge</b> is in a trial period through Monday May 18 — practice all you want; scores reset before the real season starts Tuesday May 19.</span>
 </div>
 <div class="header">
   <div>
@@ -2961,9 +2970,6 @@ function refreshAdminUI() {
   const graderBtn = document.getElementById('grader-test-fab');
   if (graderBtn) graderBtn.style.display = isAdmin() ? 'flex' : 'none';
   // Challenge button — controlled by the challenge_visibility feature flag.
-  //   'off'        → hidden for everyone
-  //   'admin_only' → visible to admins only
-  //   'public'     → visible to everyone
   const challengeBtn = document.getElementById('challenge-fab');
   if (challengeBtn) {
     const vis = getFeatureFlag('challenge_visibility', 'off');
@@ -2971,9 +2977,33 @@ function refreshAdminUI() {
     if (vis === 'public') show = true;
     else if (vis === 'admin_only') show = isAdmin();
     challengeBtn.style.display = show ? 'flex' : 'none';
-    // Hide the "ADMIN" pill when public; show it during admin-only mode
     const adminPill = challengeBtn.querySelector('span');
     if (adminPill) adminPill.style.display = vis === 'admin_only' ? '' : 'none';
+  }
+  refreshTrialBanner();
+}
+
+// Show the top-of-page trial banner if today is a trial day AND the Challenge is visible to this user.
+// Auto-hides once today's daily row is no longer marked is_trial.
+async function refreshTrialBanner() {
+  const el = document.getElementById('trial-banner');
+  if (!el) return;
+  const vis = getFeatureFlag('challenge_visibility', 'off');
+  let challengeVisibleToUser = false;
+  if (vis === 'public') challengeVisibleToUser = true;
+  else if (vis === 'admin_only') challengeVisibleToUser = isAdmin();
+  if (!challengeVisibleToUser) { el.classList.remove('visible'); return; }
+  // Check if today's daily challenge is a trial. Lightweight DB call.
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+    const res = await fetch(`${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${today}&select=is_trial`, { headers: H });
+    const rows = await res.json();
+    const isTrial = rows.length > 0 && !!rows[0].is_trial;
+    if (isTrial) el.classList.add('visible');
+    else el.classList.remove('visible');
+  } catch(e) {
+    // On error, leave banner hidden — don't break the page
+    el.classList.remove('visible');
   }
 }
 
@@ -6744,21 +6774,29 @@ function renderChallengeLeaderboard() {
   </div>`;
 
   if (data.season) {
-    const seasonRows = (data.season.standings || []).map(r =>
-      `<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:6px 8px;font-weight:700;color:#888;width:30px">${r.rank}</td><td style="padding:6px 8px;font-weight:600">${escHtml(r.username)}</td><td style="padding:6px 8px;font-size:12px;color:#555">${r.days_played} day${r.days_played===1?'':'s'}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${r.total_score}</td></tr>`).join('')
-      || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;font-size:13px">Season has just started.</td></tr>';
-    const yourSeasonRow = data.season.your_row
-      ? `<tr style="background:#eef4fb;border-top:2px solid #185FA5"><td style="padding:6px 8px;font-weight:700;color:#185FA5">#${data.season.your_row.rank}</td><td style="padding:6px 8px;font-weight:700">${escHtml(data.season.your_row.username)} (you)</td><td style="padding:6px 8px;font-size:12px;color:#555">${data.season.your_row.days_played} days · best: ${data.season.your_row.best_day}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${data.season.your_row.total_score}</td></tr>`
-      : '';
-    // Show a trial note above the season standings if today is still a trial day
-    const trialNote = (_ch.today && _ch.today.is_trial)
-      ? `<div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:8px 12px;font-size:12px;color:#665012;margin-bottom:10px;line-height:1.5">🧪 <b>Trial period through Monday May 18.</b> Scores from trial days don't count below — the real season starts Tuesday May 19.</div>`
-      : '';
-    html += `<div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:700;font-size:14px">${escHtml(data.season.name)} Season</div><div style="font-size:11px;color:#888">${data.season.total_players} player${data.season.total_players===1?'':'s'} · 🎁 ${escHtml(data.season.prize_text||'')}</div></div>
-      ${trialNote}
-      <table style="width:100%;border-collapse:collapse;font-size:13px">${seasonRows}${yourSeasonRow}</table>
-    </div>`;
+    if (data.season.is_upcoming) {
+      // Season hasn't started yet (trial period). Show a clear banner instead of an empty table.
+      html += `<div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+          <div style="font-weight:700;font-size:14px">${escHtml(data.season.name)} Season</div>
+          <div style="font-size:11px;color:#888">🎁 ${escHtml(data.season.prize_text||'')}</div>
+        </div>
+        <div style="background:#fff8e1;border-left:3px solid #ddb441;border-radius:0 6px 6px 0;padding:12px 14px;font-size:13px;line-height:1.5;color:#665012">
+          🧪 <b>Trial period through Monday May 18.</b> The real ${escHtml(data.season.name)} season starts ${escHtml(data.season.start_date)} (Tuesday). Trial-day scores don't count — practice all you want.
+        </div>
+      </div>`;
+    } else {
+      const seasonRows = (data.season.standings || []).map(r =>
+        `<tr style="border-bottom:1px solid #f5f5f5"><td style="padding:6px 8px;font-weight:700;color:#888;width:30px">${r.rank}</td><td style="padding:6px 8px;font-weight:600">${escHtml(r.username)}</td><td style="padding:6px 8px;font-size:12px;color:#555">${r.days_played} day${r.days_played===1?'':'s'}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${r.total_score}</td></tr>`).join('')
+        || '<tr><td colspan="4" style="padding:14px;text-align:center;color:#888;font-size:13px">Season has just started.</td></tr>';
+      const yourSeasonRow = data.season.your_row
+        ? `<tr style="background:#eef4fb;border-top:2px solid #185FA5"><td style="padding:6px 8px;font-weight:700;color:#185FA5">#${data.season.your_row.rank}</td><td style="padding:6px 8px;font-weight:700">${escHtml(data.season.your_row.username)} (you)</td><td style="padding:6px 8px;font-size:12px;color:#555">${data.season.your_row.days_played} days · best: ${data.season.your_row.best_day}</td><td style="padding:6px 8px;text-align:right;font-weight:700;color:#185FA5">${data.season.your_row.total_score}</td></tr>`
+        : '';
+      html += `<div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><div style="font-weight:700;font-size:14px">${escHtml(data.season.name)} Season</div><div style="font-size:11px;color:#888">${data.season.total_players} player${data.season.total_players===1?'':'s'} · 🎁 ${escHtml(data.season.prize_text||'')}</div></div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">${seasonRows}${yourSeasonRow}</table>
+      </div>`;
+    }
   }
 
   body.innerHTML = html;
