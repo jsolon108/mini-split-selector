@@ -64,7 +64,7 @@ export default async function handler(req, res) {
       daily_score: a.daily_score,
       time_tier: deriveTier(a.time_seconds, a.scenarios_correct),
     }));
-    const top10Today = todayStandings.slice(0, 10);
+    const top10Today = todayStandings; // return all — frontend scrolls
     const yourTodayRow = username
       ? todayStandings.find(r => r.username.toLowerCase() === username.toLowerCase()) || null
       : null;
@@ -143,7 +143,7 @@ export default async function handler(req, res) {
         const { _avg_perfect_time, perfect_days_time_sum, perfect_days_count, ...visible } = r;
         return { rank: i + 1, ...visible };
       });
-      const top10Season = ranked.slice(0, 10);
+      const top10Season = ranked; // return all — frontend scrolls
       const yourSeasonRow = username
         ? ranked.find(r => r.username.toLowerCase() === username.toLowerCase()) || null
         : null;
