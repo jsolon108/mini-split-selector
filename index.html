@@ -3481,6 +3481,14 @@ function makeDefaultAddon(d, zoneLabel) {
 
 async function loadAddonsForQuoteItem(qi) {
   const q = quote[qi];
+  if (!q) return; // system already removed before we could even start
+  // Capture a snapshot of q so the late-arriving response can verify it still belongs to this object.
+  // If the user wiped the quote (e.g. starting a challenge or moving to the next scenario)
+  // before our async work finished, we'll bail out instead of writing stale addons.
+  const targetQ = q;
+  const isStillTargeted = () => quote.indexOf(targetQ) !== -1;
+  // Pause challenge timer (no-op outside challenge mode) so Eclipse latency doesn't eat into the user's score
+  beginChallengeAddonLoadPause();
   q.addonsLoading = true;
   renderQuote();
   try {
@@ -3574,6 +3582,13 @@ async function loadAddonsForQuoteItem(qi) {
 
     // Inject fallback addons for categories that Eclipse returned nothing for
     await injectDefaultAddons(q, addons);
+    // Race guard: if the user wiped the quote (challenge scenario transition, abandon, etc.)
+    // while our addon fetches were in flight, bail out so we don't write stale data into a
+    // now-orphaned q (or worse, mask a fresh system's add-ons by overwriting its q.addons).
+    if (!isStillTargeted()) {
+      console.log('[Addons] q no longer in quote — abandoning stale addon write');
+      return;
+    }
     // Dedup by catalog number — keep first (required items sorted first already)
     const seen = new Set();
     q.addons = addons.filter(a => { if (seen.has(a.catalogNumber)) return false; seen.add(a.catalogNumber); return true; });
@@ -3582,13 +3597,17 @@ async function loadAddonsForQuoteItem(qi) {
 
     // Refresh pricing to include new addon catalog numbers
     renderQuote();
-    if (qSelectedCustomer) {
+    if (qSelectedCustomer && isStillTargeted()) {
       await getPricing();
     }
   } catch(err) {
+    if (!isStillTargeted()) return; // don't touch state if the system was removed
     q.addonsLoading = false;
     q.addonsError = 'Failed to load add-ons: ' + err.message;
     renderQuote();
+  } finally {
+    // Always end the timer pause when this load completes — race-guard return, success, or error.
+    endChallengeAddonLoadPause();
   }
 }
 
@@ -6460,8 +6479,13 @@ async function adminResetMyAttempt() {
 }
 
 // ── PLAY MODE ───────────────────────────────────────────────────────
-function startChallenge() {
+async function startChallenge() {
   if (!_ch.today || !_ch.today.scenarios) return;
+  // Make sure all addon data needed by injectDefaultAddons is loaded.
+  // If user starts a challenge before page-load finishes these, the first system added during
+  // the challenge will be missing default add-ons (line sets, whips, etc.).
+  try { await Promise.all([loadDefaultAddons(), loadCommonAddons(), loadAddonRules()]); }
+  catch(e) { console.warn('Could not preload addon data for challenge', e); }
   // Confirm-clear if quote has anything in it
   const nonEmpty = (quote && quote.length > 0)
     || Object.keys(quoteWideState?.common || {}).length
@@ -6564,6 +6588,20 @@ function resumeChallengeTimer() {
   _ch.pausedAt = null;
   const el = document.getElementById('cplay-timer');
   if (el) el.style.opacity = '';
+}
+
+// Reference-counted pause for addon-loading: multiple systems can be loading at once,
+// so we only un-pause when ALL outstanding loads are done. Calling pause twice and resume
+// once would leak a paused state — the counter avoids that.
+function beginChallengeAddonLoadPause() {
+  if (!_ch.startedAt) return;            // not in a challenge — nothing to do
+  _ch.addonLoadCount = (_ch.addonLoadCount || 0) + 1;
+  if (_ch.addonLoadCount === 1) pauseChallengeTimer();
+}
+function endChallengeAddonLoadPause() {
+  if (!_ch.startedAt) return;
+  _ch.addonLoadCount = Math.max(0, (_ch.addonLoadCount || 0) - 1);
+  if (_ch.addonLoadCount === 0) resumeChallengeTimer();
 }
 
 function showChallengePlayPanel() {
