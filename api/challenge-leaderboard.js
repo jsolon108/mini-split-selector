@@ -85,7 +85,7 @@ export default async function handler(req, res) {
       const trialDates = new Set(trialRows.map(r => r.challenge_date));
 
       const seasonAttempts = await fetchJson(
-        `${SB_URL}/rest/v1/challenge_attempts?challenge_date=gte.${season.start_date}&challenge_date=lte.${season.end_date}&select=username,daily_score,challenge_date`,
+        `${SB_URL}/rest/v1/challenge_attempts?challenge_date=gte.${season.start_date}&challenge_date=lte.${season.end_date}&select=username,daily_score,challenge_date,scenarios_correct,time_seconds`,
         headers
       );
       // Aggregate per user, excluding trial days
@@ -93,16 +93,38 @@ export default async function handler(req, res) {
       for (const a of seasonAttempts) {
         if (trialDates.has(a.challenge_date)) continue;
         const u = a.username;
-        if (!agg[u]) agg[u] = { username: u, total_score: 0, days_played: 0, best_day: 0 };
+        if (!agg[u]) agg[u] = {
+          username: u, total_score: 0, days_played: 0, best_day: 0,
+          perfect_days_time_sum: 0, perfect_days_count: 0
+        };
         agg[u].total_score += a.daily_score || 0;
         agg[u].days_played += 1;
         if ((a.daily_score || 0) > agg[u].best_day) agg[u].best_day = a.daily_score || 0;
+        // Track time on perfect days only (all 3 correct). Used as third tiebreaker.
+        if (a.scenarios_correct === 3 && typeof a.time_seconds === 'number') {
+          agg[u].perfect_days_time_sum += a.time_seconds;
+          agg[u].perfect_days_count += 1;
+        }
+      }
+      // Compute average perfect-day time. Users with no perfect days sort last on this dimension.
+      for (const u of Object.values(agg)) {
+        u._avg_perfect_time = u.perfect_days_count > 0
+          ? u.perfect_days_time_sum / u.perfect_days_count
+          : Number.POSITIVE_INFINITY;
       }
       const sorted = Object.values(agg).sort((a, b) => {
+        // 1. Higher total_score wins
         if (b.total_score !== a.total_score) return b.total_score - a.total_score;
-        return b.days_played - a.days_played; // tiebreak: more active player ranks higher
+        // 2. More days_played wins (more committed player)
+        if (b.days_played !== a.days_played) return b.days_played - a.days_played;
+        // 3. Lower avg time on perfect days wins (faster, but only counted on full clears)
+        return a._avg_perfect_time - b._avg_perfect_time;
       });
-      const ranked = sorted.map((r, i) => ({ rank: i + 1, ...r }));
+      // Strip internal-only sort key before returning
+      const ranked = sorted.map((r, i) => {
+        const { _avg_perfect_time, perfect_days_time_sum, perfect_days_count, ...visible } = r;
+        return { rank: i + 1, ...visible };
+      });
       const top10Season = ranked.slice(0, 10);
       const yourSeasonRow = username
         ? ranked.find(r => r.username.toLowerCase() === username.toLowerCase()) || null
