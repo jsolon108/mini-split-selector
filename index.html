@@ -6310,6 +6310,16 @@ function highlightChallengeTab() {
     btn.style.color = active ? '#fff' : '#222';
     btn.style.borderColor = active ? '#0f6e56' : '#ddd';
   }
+  // Update the small subtitle under the modal title. On the leaderboard tab during the trial
+  // period, surface the reset notice so people don't think their current standing is final.
+  const label = document.getElementById('challenge-tab-label');
+  if (label) {
+    if (_ch.activeTab === 'leaderboard' && _ch.today?.is_trial) {
+      label.textContent = 'Leaderboard · scores reset on Tuesday when the contest goes live';
+    } else {
+      label.textContent = _ch.activeTab === 'leaderboard' ? 'Leaderboard' : 'Today';
+    }
+  }
 }
 
 function challengeUsername() {
