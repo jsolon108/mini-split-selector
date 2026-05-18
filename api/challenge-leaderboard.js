@@ -47,7 +47,10 @@ async function fetchJson(url, headers) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const username = String(req.query.username || '').trim();
+    // Parse query params via the WHATWG URL API instead of req.query — avoids the
+    // legacy url.parse() fallback in Vercel's runtime that logs a DEP0169 warning.
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const username = String(reqUrl.searchParams.get('username') || '').trim();
     const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
     const today = todayET();
 
