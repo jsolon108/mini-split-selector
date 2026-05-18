@@ -4964,6 +4964,35 @@ function reauthEclipse() {
   }
 }
 
+// Single-flight re-auth: when multiple Eclipse calls hit a 419 at the same time
+// (e.g. several add-on loads firing at once), only the FIRST one performs the login.
+// Every other concurrent caller awaits that same promise, then retries with the
+// shared fresh token. Prevents a burst of redundant logins hammering Eclipse.
+let _eclipseReauthPromise = null;
+
+async function reauthEclipseSession() {
+  // If a re-auth is already in flight, just wait for it.
+  if (_eclipseReauthPromise) return _eclipseReauthPromise;
+  _eclipseReauthPromise = (async () => {
+    const loginRes = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', username: eclipseSession.username, password: eclipseSession.password })
+    });
+    const loginData = await loginRes.json();
+    if (!loginData.token) throw new Error('Re-auth failed — no token returned');
+    eclipseSession.token = loginData.token;
+    localStorage.setItem('eclipseToken', loginData.token);
+    return loginData.token;
+  })();
+  try {
+    return await _eclipseReauthPromise;
+  } finally {
+    // Clear the lock once settled so a future expiry can re-auth again.
+    _eclipseReauthPromise = null;
+  }
+}
+
 async function eclipseCall(body) {
   body.sessionToken = eclipseSession.token;
   let res = await fetch('/api/eclipse', {
@@ -4973,27 +5002,19 @@ async function eclipseCall(body) {
   });
   let data = await res.json();
 
-  // Session expired — re-login and retry once
+  // Session expired — re-login (shared across concurrent callers) and retry once
   if (res.status === 419 || data?.error?.includes('419') || data?.error?.includes('session') || res.status === 401) {
     if (typeof pauseChallengeTimer === 'function') pauseChallengeTimer();
     try {
-      const loginRes = await fetch('/api/eclipse', {
+      const freshToken = await reauthEclipseSession();
+      // Always rebuild the body with the CURRENT token — not a token captured earlier.
+      body.sessionToken = freshToken;
+      res = await fetch('/api/eclipse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'login', username: eclipseSession.username, password: eclipseSession.password })
+        body: JSON.stringify(body)
       });
-      const loginData = await loginRes.json();
-      if (loginData.token) {
-        eclipseSession.token = loginData.token;
-        localStorage.setItem('eclipseToken', loginData.token);
-        body.sessionToken = loginData.token;
-        res = await fetch('/api/eclipse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        data = await res.json();
-      }
+      data = await res.json();
     } catch(e) {
       throw new Error('Session expired — please log in again.');
     } finally {
