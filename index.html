@@ -3530,6 +3530,7 @@ async function loadAddonsForQuoteItem(qi) {
         const data = await res.json();
         const product = (data.results || []).find(p => p.catalogNumber === c.cat) || (data.results || [])[0];
         if (!product) continue;
+        console.log('[Addons] tag-alongs for', c.cat, ':', (product.tagAlongs || []).map(ta => ta.tagAlongProductId || ta.productId));
         for (const ta of (product.tagAlongs || [])) {
           const pid = ta.tagAlongProductId || ta.productId || ta.id;
           if (!pid) continue;
@@ -3557,6 +3558,7 @@ async function loadAddonsForQuoteItem(qi) {
           })
         });
         const detail = await res.json();
+        console.log('[Addons] tag-along pid:', pid, '→ catalogNumber:', detail.catalogNumber, 'desc:', detail.description);
         if (detail.catalogNumber) {
           // Skip if this is one of our own equipment models
           if (equipmentCatalogs.has(detail.catalogNumber)) {
