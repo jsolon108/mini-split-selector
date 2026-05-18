@@ -6250,7 +6250,7 @@ async function submitFeedback() {
 
 <!-- Narrow left-docked scenario panel shown WHILE playing -->
 <div id="challenge-play-panel" style="display:none;position:fixed;top:80px;left:14px;width:280px;z-index:8900;background:#fff;border:2px solid #0f6e56;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px;font-family:inherit;max-height:calc(100vh - 100px);overflow-y:auto">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+  <div id="cplay-header-row" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <span style="background:#0f6e56;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px">🏆 CHALLENGE</span>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="cplay-difficulty"></span>
@@ -6271,7 +6271,7 @@ async function submitFeedback() {
   <button onclick="submitChallengeScenario()" id="cplay-submit-btn" style="width:100%;height:38px;background:#0f6e56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px">Submit Scenario 1 →</button>
   <button onclick="abandonChallenge()" style="width:100%;height:30px;padding:0 10px;border:1px solid #eee;background:#fff;border-radius:6px;font-size:11px;cursor:pointer;color:#888">Abandon</button>
   </div>
-  <div id="cplay-collapsed-summary" style="display:none;font-size:12px;color:#555;cursor:pointer" onclick="toggleChallengePanel()">
+  <div id="cplay-collapsed-summary" style="display:none;font-size:12px;color:#555;cursor:pointer;white-space:nowrap" onclick="toggleChallengePanel()">
     <span id="cplay-collapsed-text" style="font-weight:600">Scenario 1 of 3</span> · <span id="cplay-collapsed-timer" style="font-family:'SF Mono',monospace;font-weight:700;color:#0f6e56">0:00</span>
     <span style="color:#888;margin-left:4px">— tap to expand</span>
   </div>
@@ -6607,20 +6607,40 @@ function startChallengeTimer() {
 }
 
 // Collapse/expand the floating challenge panel — keeps it from covering the tool on small screens.
+// Collapsed: a compact pill docked to the BOTTOM-left, clear of the tool's tabs/controls.
+// Expanded: the full 280px panel at the top-left.
 function toggleChallengePanel() {
+  const panel = document.getElementById('challenge-play-panel');
   const full = document.getElementById('cplay-collapsible');
   const mini = document.getElementById('cplay-collapsed-summary');
   const btn = document.getElementById('cplay-collapse-btn');
-  if (!full || !mini) return;
+  const hdr = document.getElementById('cplay-header-row');
+  if (!panel || !full || !mini) return;
   const collapsing = full.style.display !== 'none';
   full.style.display = collapsing ? 'none' : '';
   mini.style.display = collapsing ? '' : 'none';
   if (btn) { btn.textContent = collapsing ? '+' : '–'; btn.title = collapsing ? 'Expand' : 'Collapse'; }
   if (collapsing) {
-    // Sync the collapsed summary text on collapse
+    // Shrink to a pill and move to the bottom-left so it never overlaps the tabs.
+    panel.style.width = 'auto';
+    panel.style.top = 'auto';
+    panel.style.bottom = '14px';
+    panel.style.maxHeight = 'none';
+    panel.style.padding = '10px 14px';
+    panel.style.overflowY = 'visible';
+    if (hdr) hdr.style.marginBottom = '6px';
     const prog = document.getElementById('cplay-progress');
     const ct = document.getElementById('cplay-collapsed-text');
     if (prog && ct) ct.textContent = prog.textContent;
+  } else {
+    // Restore the full panel
+    panel.style.width = '280px';
+    panel.style.top = '80px';
+    panel.style.bottom = 'auto';
+    panel.style.maxHeight = 'calc(100vh - 100px)';
+    panel.style.padding = '14px';
+    panel.style.overflowY = 'auto';
+    if (hdr) hdr.style.marginBottom = '8px';
   }
 }
 
