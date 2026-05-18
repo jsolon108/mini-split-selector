@@ -3426,8 +3426,12 @@ async function injectDefaultAddons(q, addons) {
 
     if (d.size_type === null || d.size_type === undefined) {
       // Non-size-specific (e.g. whips, generic accessories).
-      // Skip if Eclipse already covered the category.
-      if (existingCats.has(cat)) continue;
+      // Normally we skip if Eclipse already covered the category — that's right for whips
+      // (don't pile on a duplicate whip). But "Mounting & Pads" defaults (pads, stands) are
+      // genuine ALTERNATIVE choices: a rep picks a pad OR a 12"/18" stand depending on the
+      // job, so they must always be offered even when Eclipse returned a pad. Dedup by SKU only.
+      const alwaysOffer = (cat === 'Mounting & Pads');
+      if (!alwaysOffer && existingCats.has(cat)) continue;
       if (!addons.some(a => a.catalogNumber === d.mfg_num)) {
         addons.push(makeDefaultAddon(d, ''));
       }
