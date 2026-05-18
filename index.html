@@ -881,7 +881,7 @@ function switchTab(t) {
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
-  if (t === 'cats') { renderCategories(); renderFeatureFlags(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); }
+  if (t === 'cats') { renderCategories(); renderFeatureFlags(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); renderExclusions(); }
   if (t === 'unitary') renderUnitary();
   if (t === 'import') renderImport();
   if (t === 'alerts') renderAlertsAdmin();
@@ -2766,6 +2766,7 @@ function getQuoteWideLines() {
 // Categorize add-ons by rules loaded from Supabase addon_categories table.
 // Rules are editable via the Categories admin tab — no code changes needed.
 let ADDON_RULES = null;   // populated by loadAddonRules()
+let ADDON_EXCLUSIONS = null; // populated by loadAddonExclusions(); set of catalog numbers to hide
 let ADMIN_USERS = null;   // populated by loadAdminUsers(); array of lowercased usernames
 const DEFAULT_CATEGORY = 'Other Accessories';
 
@@ -2780,6 +2781,19 @@ async function loadAddonRules(force=false) {
     ADDON_RULES = [];
   }
   return ADDON_RULES;
+}
+
+async function loadAddonExclusions(force=false) {
+  if (ADDON_EXCLUSIONS && !force) return ADDON_EXCLUSIONS;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_exclusions?order=catalog_number.asc`, { headers: H });
+    const rows = await res.json();
+    ADDON_EXCLUSIONS = new Set((Array.isArray(rows) ? rows : []).map(r => (r.catalog_number || '').toUpperCase().trim()));
+  } catch(e) {
+    console.warn('Could not load addon exclusions', e);
+    ADDON_EXCLUSIONS = new Set();
+  }
+  return ADDON_EXCLUSIONS;
 }
 
 // Synchronous categorize using whatever rules have been loaded.
@@ -3154,6 +3168,89 @@ async function deleteAddonRule(id) {
   }
 }
 
+// ─── Addon Exclusions admin ────────────────────────────────────────────────
+async function renderExclusions() {
+  const wrap = document.getElementById('excl-table-wrap');
+  if (!wrap) return;
+  const exclusions = await loadAddonExclusions(true);
+  // Fetch full rows from Supabase for display (ADDON_EXCLUSIONS is just a Set of catalog numbers)
+  let rows = [];
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_exclusions?order=catalog_number.asc`, { headers: H });
+    rows = await res.json();
+  } catch(e) {}
+  if (!rows.length) {
+    wrap.innerHTML = `<div style="padding:16px;text-align:center;color:#888;font-size:13px">No exclusions yet.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead>
+        <tr style="background:#f8f8f6;font-weight:600;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em">
+          <th style="padding:8px 12px;text-align:left;width:160px">Catalog number</th>
+          <th style="padding:8px 12px;text-align:left">Reason</th>
+          <th style="padding:8px 12px;text-align:left;width:90px">Added by</th>
+          <th style="padding:8px 12px;text-align:left;width:110px">Date</th>
+          <th style="padding:8px 12px;width:70px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `<tr style="border-top:1px solid #f0f0f0">
+          <td style="padding:8px 12px;font-family:monospace;font-weight:600;color:#185FA5">${escHtml(r.catalog_number)}</td>
+          <td style="padding:8px 12px;color:#555">${escHtml(r.reason || '—')}</td>
+          <td style="padding:8px 12px;color:#888">${escHtml(r.added_by || '—')}</td>
+          <td style="padding:8px 12px;color:#888;font-size:11px">${r.added_at ? new Date(r.added_at).toLocaleDateString() : '—'}</td>
+          <td style="padding:8px 12px">
+            <button onclick="deleteAddonExclusion(${r.id},'${escAttr(r.catalog_number)}')"
+              style="padding:2px 10px;background:#fff;border:1px solid #e0e0e0;border-radius:4px;font-size:11px;color:#c0392b;cursor:pointer;font-weight:600">Delete</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+async function addAddonExclusion() {
+  const skuEl = document.getElementById('excl-new-sku');
+  const reasonEl = document.getElementById('excl-new-reason');
+  const msgEl = document.getElementById('excl-new-msg');
+  const sku = (skuEl?.value || '').trim().toUpperCase();
+  if (!sku) { msgEl.textContent = 'Catalog number is required.'; msgEl.style.color = '#c0392b'; return; }
+  msgEl.textContent = 'Saving…'; msgEl.style.color = '#888';
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_exclusions`, {
+      method: 'POST',
+      headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({
+        catalog_number: sku,
+        reason: reasonEl?.value.trim() || null,
+        added_by: (eclipseSession?.username || null)
+      })
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      if (txt.includes('unique') || txt.includes('duplicate')) throw new Error(`${sku} is already excluded.`);
+      throw new Error(txt);
+    }
+    if (skuEl) skuEl.value = '';
+    if (reasonEl) reasonEl.value = '';
+    msgEl.textContent = `✓ ${sku} added to exclusions.`; msgEl.style.color = '#0f6e56';
+    ADDON_EXCLUSIONS = null; // force reload
+    renderExclusions();
+  } catch(e) {
+    msgEl.textContent = e.message; msgEl.style.color = '#c0392b';
+  }
+}
+
+async function deleteAddonExclusion(id, sku) {
+  if (!confirm(`Remove ${sku} from exclusions? It will appear as an add-on again.`)) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/addon_exclusions?id=eq.${id}`, { method: 'DELETE', headers: H });
+    if (!res.ok) throw new Error(await res.text());
+    ADDON_EXCLUSIONS = null;
+    renderExclusions();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}
+
 // ─── Common Add-ons admin ───────────────────────────────────────────
 async function renderCommonAddonsAdmin() {
   const wrap = document.getElementById('ca-table-wrap');
@@ -3501,6 +3598,8 @@ async function loadAddonsForQuoteItem(qi) {
   try {
     // Collect catalog numbers for all products in this system (ODU + IDU(s))
     const catalogs = [];
+    // Ensure exclusions are loaded before filtering
+    await loadAddonExclusions();
     if (q.qtype === 'unitary') {
       if (q.model) catalogs.push({cat: formatCatNumLocal(q.model), label: q.category});
     } else if (q.qtype === 'sz') {
@@ -3530,7 +3629,6 @@ async function loadAddonsForQuoteItem(qi) {
         const data = await res.json();
         const product = (data.results || []).find(p => p.catalogNumber === c.cat) || (data.results || [])[0];
         if (!product) continue;
-        console.log('[Addons] tag-alongs for', c.cat, ':', (product.tagAlongs || []).map(ta => ta.tagAlongProductId || ta.productId));
         for (const ta of (product.tagAlongs || [])) {
           const pid = ta.tagAlongProductId || ta.productId || ta.id;
           if (!pid) continue;
@@ -3558,11 +3656,26 @@ async function loadAddonsForQuoteItem(qi) {
           })
         });
         const detail = await res.json();
-        console.log('[Addons] tag-along pid:', pid, '→ catalogNumber:', detail.catalogNumber, 'desc:', detail.description);
+        // Eclipse sometimes returns an empty catalogNumber even though the description
+        // contains it as the second token (e.g. "B87-409 UTG-LCGVCW GRILLE CASSETTE").
+        // Fall back to parsing it from the description so these items aren't silently dropped.
+        if (!detail.catalogNumber && detail.description) {
+          const tokens = detail.description.trim().split(/\s+/);
+          // First token is the internal warehouse code (B##-###); second is the catalog number.
+          if (tokens.length >= 2 && /^[A-Z0-9]/.test(tokens[1])) {
+            detail.catalogNumber = tokens[1];
+            // Strip the leading internal code from the description so it doesn't show in the UI
+            detail.description = tokens.slice(2).join(' ') || detail.description;
+          }
+        }
         if (detail.catalogNumber) {
           // Skip if this is one of our own equipment models
           if (equipmentCatalogs.has(detail.catalogNumber)) {
             console.log('[Addons] Skipping equipment model as add-on:', detail.catalogNumber);
+            continue;
+          }
+          // Skip if this catalog number is on the admin-managed exclusion list
+          if (ADDON_EXCLUSIONS?.has(detail.catalogNumber.toUpperCase().trim())) {
             continue;
           }
           const agg = tagAlongAgg[pid];
@@ -5959,6 +6072,33 @@ async function renderDefaultAddonsTable() {
           style="height:32px;padding:0 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer">↻ Reload</button>
       </div>
       <div id="cat-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+
+      <!-- Addon Exclusions -->
+      <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+          <h2 style="font-size:16px;font-weight:600;margin:0">Add-on Exclusions</h2>
+          <span style="font-size:12px;color:#666">Catalog numbers listed here will never appear as add-ons even if Eclipse returns them as tag-alongs.</span>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:12px">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px">Exclude a catalog number</div>
+          <div style="display:grid;grid-template-columns:1fr 2fr auto;gap:8px;align-items:end">
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Catalog number</label>
+              <input id="excl-new-sku" placeholder="e.g. UTG-LCGVCW" style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:monospace"/>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#666;display:block;margin-bottom:3px">Reason (optional)</label>
+              <input id="excl-new-reason" placeholder="e.g. Cassette grille — not sold as a separate accessory" style="width:100%;height:32px;padding:0 8px;border:1px solid #ddd;border-radius:6px;font-size:13px"/>
+            </div>
+            <button onclick="addAddonExclusion()" style="height:32px;padding:0 14px;border:0;border-radius:6px;background:#0066cc;color:#fff;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add</button>
+          </div>
+          <div id="excl-new-msg" style="font-size:12px;margin-top:8px"></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+          <button onclick="loadAddonExclusions(true).then(renderExclusions)" style="height:32px;padding:0 12px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer">↻ Reload</button>
+        </div>
+        <div id="excl-table-wrap" style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;overflow:hidden"></div>
+      </div>
 
       <!-- Feature Flags -->
       <div style="margin-top:28px;padding-top:18px;border-top:1px solid #e5e5e5">
