@@ -6252,8 +6252,12 @@ async function submitFeedback() {
 <div id="challenge-play-panel" style="display:none;position:fixed;top:80px;left:14px;width:280px;z-index:8900;background:#fff;border:2px solid #0f6e56;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px;font-family:inherit;max-height:calc(100vh - 100px);overflow-y:auto">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <span style="background:#0f6e56;color:#fff;font-size:10px;font-weight:700;padding:3px 7px;border-radius:10px">🏆 CHALLENGE</span>
-    <span id="cplay-difficulty"></span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="cplay-difficulty"></span>
+      <button onclick="toggleChallengePanel()" id="cplay-collapse-btn" title="Collapse" style="background:none;border:none;cursor:pointer;font-size:15px;line-height:1;color:#888;padding:0 2px">–</button>
+    </div>
   </div>
+  <div id="cplay-collapsible">
   <div id="cplay-progress" style="font-size:11px;font-weight:600;color:#0f6e56;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Scenario 1 of 3</div>
   <div id="cplay-scenario-name" style="font-weight:700;font-size:14px;margin-bottom:6px;line-height:1.3"></div>
   <div id="cplay-scenario-blurb" style="font-size:12px;color:#555;line-height:1.5;margin-bottom:8px"></div>
@@ -6266,6 +6270,11 @@ async function submitFeedback() {
   </div>
   <button onclick="submitChallengeScenario()" id="cplay-submit-btn" style="width:100%;height:38px;background:#0f6e56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px">Submit Scenario 1 →</button>
   <button onclick="abandonChallenge()" style="width:100%;height:30px;padding:0 10px;border:1px solid #eee;background:#fff;border-radius:6px;font-size:11px;cursor:pointer;color:#888">Abandon</button>
+  </div>
+  <div id="cplay-collapsed-summary" style="display:none;font-size:12px;color:#555;cursor:pointer" onclick="toggleChallengePanel()">
+    <span id="cplay-collapsed-text" style="font-weight:600">Scenario 1 of 3</span> · <span id="cplay-collapsed-timer" style="font-family:'SF Mono',monospace;font-weight:700;color:#0f6e56">0:00</span>
+    <span style="color:#888;margin-left:4px">— tap to expand</span>
+  </div>
 </div>
 
 <script>
@@ -6592,7 +6601,27 @@ function startChallengeTimer() {
     const t = `${m}:${String(s).padStart(2,'0')}`;
     const el = document.getElementById('cplay-timer');
     if (el) el.textContent = t;
+    const elc = document.getElementById('cplay-collapsed-timer');
+    if (elc) elc.textContent = t;
   }, 1000);
+}
+
+// Collapse/expand the floating challenge panel — keeps it from covering the tool on small screens.
+function toggleChallengePanel() {
+  const full = document.getElementById('cplay-collapsible');
+  const mini = document.getElementById('cplay-collapsed-summary');
+  const btn = document.getElementById('cplay-collapse-btn');
+  if (!full || !mini) return;
+  const collapsing = full.style.display !== 'none';
+  full.style.display = collapsing ? 'none' : '';
+  mini.style.display = collapsing ? '' : 'none';
+  if (btn) { btn.textContent = collapsing ? '+' : '–'; btn.title = collapsing ? 'Expand' : 'Collapse'; }
+  if (collapsing) {
+    // Sync the collapsed summary text on collapse
+    const prog = document.getElementById('cplay-progress');
+    const ct = document.getElementById('cplay-collapsed-text');
+    if (prog && ct) ct.textContent = prog.textContent;
+  }
 }
 
 function stopChallengeTimer() {
@@ -6637,6 +6666,12 @@ function endChallengeAddonLoadPause() {
 
 function showChallengePlayPanel() {
   document.getElementById('challenge-play-panel').style.display = '';
+  // On narrow screens the fixed panel overlaps the working area — start collapsed.
+  // Users can expand it any time; the timer keeps running either way.
+  if (window.innerWidth < 1100) {
+    const full = document.getElementById('cplay-collapsible');
+    if (full && full.style.display !== 'none') toggleChallengePanel();
+  }
 }
 function hideChallengePlayPanel() {
   document.getElementById('challenge-play-panel').style.display = 'none';
