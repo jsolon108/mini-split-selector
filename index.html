@@ -7336,11 +7336,29 @@ function renderCommonAddonPickerList() {
   const list = document.getElementById('cap-list');
   if (!list || !COMMON_ADDONS) return;
   const search = (document.getElementById('cap-search')?.value || '').toLowerCase().trim();
+
+  // Get the target system's connection sizes for line-set filtering
+  const q = _capTargetQi != null ? quote[_capTargetQi] : null;
+  const sysLiq = normSize(q?.liq || q?.liq_pipe || '');
+  const sysGas = normSize(q?.gas || q?.gas_pipe || '');
+
   const filtered = COMMON_ADDONS.filter(a => {
+    const desc = a.description || '';
+    const cat = (categorizeAddon(desc, a.sku || '') || '').toLowerCase();
+    // For line sets: only show sizes that match this system's liq + gas connection sizes.
+    // Parse the size pair from the description e.g. '1/4"x5/8"' → liq=1/4, gas=5/8.
+    if (cat === 'line sets' && (sysLiq || sysGas)) {
+      const m = desc.match(/(\d\/\d+)["\u201C\u201D]?\s*[xX]\s*(\d\/\d+)/);
+      if (m) {
+        const descLiq = normSize(m[1]);
+        const descGas = normSize(m[2]);
+        if (sysLiq && descLiq !== sysLiq) return false;
+        if (sysGas && descGas !== sysGas) return false;
+      }
+    }
     if (!search) return true;
-    const cat = (categorizeAddon(a.description || '', a.sku || '') || '').toLowerCase();
     return (a.sku || '').toLowerCase().includes(search)
-      || (a.description || '').toLowerCase().includes(search)
+      || desc.toLowerCase().includes(search)
       || cat.includes(search);
   });
   if (!filtered.length) { list.innerHTML = '<div style="padding:12px;color:#888;text-align:center">No matches.</div>'; return; }
