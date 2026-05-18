@@ -40,7 +40,7 @@ async function fetchJson(url, opts) {
 async function getOrCreateDailyChallenge(challengeDate, headers) {
   // 1) Does today's challenge row already exist?
   const existing = await fetchJson(
-    `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challengeDate}&select=challenge_date,scenario_ids`,
+    `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challengeDate}&select=challenge_date,scenario_ids,is_trial`,
     { headers }
   );
   if (existing.length) return existing[0];
@@ -86,16 +86,20 @@ async function getOrCreateDailyChallenge(challengeDate, headers) {
     // ignore — refetch below
   }
   const after = await fetchJson(
-    `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challengeDate}&select=challenge_date,scenario_ids`,
+    `${SB_URL}/rest/v1/challenges_daily?challenge_date=eq.${challengeDate}&select=challenge_date,scenario_ids,is_trial`,
     { headers }
   );
-  return after[0] || { challenge_date: challengeDate, scenario_ids: picked };
+  return after[0] || { challenge_date: challengeDate, scenario_ids: picked, is_trial: false };
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const username = String(req.query.username || '').trim();
+    // Parse query params via the WHATWG URL API instead of req.query.
+    // Touching req.query makes Vercel's runtime fall back to the legacy url.parse(),
+    // which logs a DEP0169 deprecation warning on current Node versions.
+    const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const username = String(reqUrl.searchParams.get('username') || '').trim();
     if (!username) return res.status(400).json({ error: 'username required' });
 
     const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
@@ -119,7 +123,7 @@ export default async function handler(req, res) {
 
     // Has this user already attempted today?
     const attemptRows = await fetchJson(
-      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challengeDate}&select=*`,
+      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challengeDate}&select=*&order=completed_at.desc&limit=1`,
       { headers }
     );
     const attempt = attemptRows[0] || null;
@@ -132,6 +136,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       challenge_date: challengeDate,
+      is_trial: !!daily.is_trial,
       scenarios: orderedScenarios,
       already_attempted: !!attempt,
       attempt,
