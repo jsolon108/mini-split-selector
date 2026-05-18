@@ -6836,6 +6836,9 @@ async function submitChallengeScenario() {
   quoteWideState.customItems = {};
   if (quoteWideState.lineComments) quoteWideState.lineComments.length = 0;
   renderQuote();
+  // Deselect any system highlighted on the zone tabs (selection is derived from the quote array)
+  if (typeof renderSingle === 'function') renderSingle();
+  if (typeof updateCount === 'function') updateCount();
 
   _ch.scenarioIdx++;
   if (_ch.scenarioIdx < scenarios.length) {
@@ -6874,13 +6877,31 @@ async function finishChallenge() {
     _ch.today.already_attempted = true;
     _ch.today.attempt = data.attempt;
     setEclipseActionsEnabled(true);
-    restoreSavedQuote();
+    clearQuoteAfterChallenge();
     renderChallengeToday();
     try { logEvent('challenge_submitted', { score: data.daily_score, correct: data.attempt?.scenarios_correct }); } catch(e) {}
   } catch (e) {
     setEclipseActionsEnabled(true);
-    body.innerHTML = `<div style="padding:20px;color:#c0392b">Submit failed: ${escHtml(e.message)}<br><br><button onclick="restoreSavedQuote();renderChallengeToday()" style="margin-top:10px;padding:6px 14px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer">Close</button></div>`;
+    body.innerHTML = `<div style="padding:20px;color:#c0392b">Submit failed: ${escHtml(e.message)}<br><br><button onclick="clearQuoteAfterChallenge();renderChallengeToday()" style="margin-top:10px;padding:6px 14px;border:1px solid #ddd;background:#fff;border-radius:6px;cursor:pointer">Close</button></div>`;
   }
+}
+
+// After a challenge ends, leave the user with a clean empty quote — not the pre-challenge
+// quote and not the last scenario's systems. Also deselects any system on the Single/Multi
+// zone tabs (selection there is derived from the quote array, so clearing it deselects).
+function clearQuoteAfterChallenge() {
+  quote.length = 0;
+  quoteWideState.common = {};
+  quoteWideState.lineHide = {};
+  quoteWideState.customItems = {};
+  if (quoteWideState.lineComments) quoteWideState.lineComments.length = 0;
+  // Drop the saved pre-challenge quote so it isn't restored later
+  _ch.savedQuote = null;
+  try { localStorage.removeItem('mss_pre_challenge_quote'); } catch(e) {}
+  renderQuote();
+  // Re-render the zone tabs so the previously-selected system is no longer highlighted
+  if (typeof renderSingle === 'function') renderSingle();
+  if (typeof updateCount === 'function') updateCount();
 }
 
 function abandonChallenge() {
