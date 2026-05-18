@@ -124,8 +124,13 @@ function classifyAccessory(line) {
   if (/\bWHIP\b/.test(desc))       return { type: 'whip', sku, desc };
 
   // 5) Mounting — split pad vs stand vs bracket
+  // wall_bracket is checked FIRST so wall-mounted brackets aren't swept up by the stand rule.
   if (/WALL.?BRACKET|WALL BRKT/.test(desc))               return { type: 'wall_bracket', sku, desc };
-  if (/CONDENSER STAND|EQUIPMENT STAND|GROUND.?STAND/.test(desc)) return { type: 'condenser_stand', sku, desc };
+  // condenser_stand: any ground/equipment stand. Covers "Condenser Stand", "Equipment Stand",
+  // "Ground Stand", and product-named stands like "12in High Mini Split Stand Wide" / "Quick-Sling".
+  // The \bSTAND\b catch-all is safe here because wall brackets were already returned above.
+  if (/CONDENSER STAND|EQUIPMENT STAND|GROUND.?STAND|MINI.?SPLIT STAND|\bSTAND\b/.test(desc))
+                                                           return { type: 'condenser_stand', sku, desc };
   if (/\bPAD\b/.test(desc))                                return { type: 'pad', sku, desc };
 
   // 6) Other discrete types
