@@ -7243,6 +7243,11 @@ function renderGraderTestResult(data, payload) {
       </div>
       <button onclick="closeCommonAddonPicker()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#888">×</button>
     </div>
+    <div id="cap-scenario-reminder" style="display:none;background:#f0f7f4;border:1px solid #cde5dc;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.5">
+      <div style="font-weight:700;color:#0f6e56;text-transform:uppercase;letter-spacing:.04em;font-size:10px;margin-bottom:3px">Challenge scenario</div>
+      <div id="cap-scenario-name" style="font-weight:700;color:#222;margin-bottom:2px"></div>
+      <div id="cap-scenario-blurb" style="color:#555"></div>
+    </div>
     <input id="cap-search" placeholder="Search by description, SKU, or category…" oninput="renderCommonAddonPickerList()"
       style="width:100%;padding:8px 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;font-family:inherit;margin-bottom:10px"/>
     <div id="cap-list" style="font-size:13px">Loading…</div>
@@ -7273,6 +7278,20 @@ async function openCommonAddonPicker(qi) {
   }
   const label = q ? `${q.brand} ${q.series||''} — ${q.cap}K${q.qtype==='mz'?' (Multi-zone)':''}` : '';
   document.getElementById('cap-target-label').textContent = `to: ${label}`;
+  // During a challenge, surface the current scenario's description so the user is reminded
+  // which accessories the job calls for while picking add-ons.
+  const reminder = document.getElementById('cap-scenario-reminder');
+  if (reminder) {
+    const inChallenge = !!_ch.startedAt && Array.isArray(_ch.today?.scenarios);
+    const sc = inChallenge ? _ch.today.scenarios[_ch.scenarioIdx] : null;
+    if (sc) {
+      document.getElementById('cap-scenario-name').textContent = sc.name || '';
+      document.getElementById('cap-scenario-blurb').textContent = sc.customer_blurb || '';
+      reminder.style.display = '';
+    } else {
+      reminder.style.display = 'none';
+    }
+  }
   document.getElementById('cap-search').value = '';
   document.getElementById('common-addon-picker-overlay').classList.add('open');
   renderCommonAddonPickerList();
