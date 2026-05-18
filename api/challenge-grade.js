@@ -363,11 +363,16 @@ function gradeQuote(quote, scenario, lookups) {
             const a = pool[i].attrs || {};
             const aLiq = normSize(a.liq), aGas = normSize(a.gas);
             if (aLiq && aGas && zLiq && zGas && (aLiq !== zLiq || aGas !== zGas)) continue;
-            if (wantLen && a.length && a.length !== wantLen) continue;
+            // If the spec requires a specific length, the line set must match it.
+            // If a.length couldn't be parsed from the description, treat it as a mismatch
+            // (unknown length cannot satisfy a specific-length requirement).
+            if (wantLen && (a.length == null || a.length !== wantLen)) continue;
             foundIdx = i; break;
           }
           if (foundIdx === -1) {
-            fail.push(`Line set for zone ${z.z || zi+1}: no standard line set matching ${z.liq||'?'}x${z.gas||'?'}${wantLen?` ${wantLen}FT`:''}`);
+            const sizeStr = `${z.liq||'?'}x${z.gas||'?'}`;
+            const lenStr = wantLen ? ` ${wantLen}FT` : '';
+            fail.push(`Line set for zone ${z.z || zi+1}: need a ${sizeStr}${lenStr} line set — check size and length`);
           } else used[foundIdx] = true;
         }
         for (let i = 0; i < pool.length; i++) {
