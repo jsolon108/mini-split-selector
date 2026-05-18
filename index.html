@@ -6271,9 +6271,13 @@ async function submitFeedback() {
   <button onclick="submitChallengeScenario()" id="cplay-submit-btn" style="width:100%;height:38px;background:#0f6e56;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:6px">Submit Scenario 1 →</button>
   <button onclick="abandonChallenge()" style="width:100%;height:30px;padding:0 10px;border:1px solid #eee;background:#fff;border-radius:6px;font-size:11px;cursor:pointer;color:#888">Abandon</button>
   </div>
-  <div id="cplay-collapsed-summary" style="display:none;font-size:12px;color:#555;cursor:pointer;white-space:nowrap" onclick="toggleChallengePanel()">
-    <span id="cplay-collapsed-text" style="font-weight:600">Scenario 1 of 3</span> · <span id="cplay-collapsed-timer" style="font-family:'SF Mono',monospace;font-weight:700;color:#0f6e56">0:00</span>
-    <span style="color:#888;margin-left:4px">— tap to expand</span>
+  <div id="cplay-collapsed-summary" style="display:none;font-size:12px;color:#555;cursor:pointer;max-width:260px" onclick="toggleChallengePanel()">
+    <div style="white-space:nowrap">
+      <span id="cplay-collapsed-text" style="font-weight:600">Scenario 1 of 3</span> · <span id="cplay-collapsed-timer" style="font-family:'SF Mono',monospace;font-weight:700;color:#0f6e56">0:00</span>
+    </div>
+    <div id="cplay-collapsed-name" style="font-weight:700;font-size:12px;color:#222;margin-top:3px;line-height:1.3"></div>
+    <div id="cplay-collapsed-blurb" style="font-size:11px;color:#666;line-height:1.4;margin-top:2px"></div>
+    <div style="color:#888;font-size:11px;margin-top:4px">— tap to expand</div>
   </div>
 </div>
 
@@ -6632,6 +6636,14 @@ function toggleChallengePanel() {
     const prog = document.getElementById('cplay-progress');
     const ct = document.getElementById('cplay-collapsed-text');
     if (prog && ct) ct.textContent = prog.textContent;
+    // Mirror the scenario name + description into the collapsed pill so users have full
+    // context without expanding.
+    const nm = document.getElementById('cplay-scenario-name');
+    const cn = document.getElementById('cplay-collapsed-name');
+    if (nm && cn) cn.textContent = nm.textContent;
+    const bl = document.getElementById('cplay-scenario-blurb');
+    const cb = document.getElementById('cplay-collapsed-blurb');
+    if (bl && cb) cb.textContent = bl.textContent;
   } else {
     // Restore the full panel
     panel.style.width = '280px';
@@ -6712,6 +6724,13 @@ function renderChallengePlayPanel() {
   document.getElementById('cplay-difficulty').innerHTML = `<span style="background:${bg};color:${fg};font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px">${lbl}</span>`;
   const isLast = idx === scenarios.length - 1;
   document.getElementById('cplay-submit-btn').textContent = isLast ? `Finish Challenge ✓` : `Submit Scenario ${idx+1} →`;
+  // Keep the collapsed pill in sync if the user advanced scenarios while minimized.
+  const ct = document.getElementById('cplay-collapsed-text');
+  if (ct) ct.textContent = `Scenario ${idx+1} of ${scenarios.length}`;
+  const cn = document.getElementById('cplay-collapsed-name');
+  if (cn) cn.textContent = s.name;
+  const cb = document.getElementById('cplay-collapsed-blurb');
+  if (cb) cb.textContent = s.customer_blurb;
 }
 
 function buildCurrentQuoteForGrader() {
