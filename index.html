@@ -7659,6 +7659,24 @@ function removeAddonFromSystem(qi, ai) {
 (function() {
   if (new URLSearchParams(location.search).get('demo') !== '1') return;
 
+  // ── Suppress session-expired UI in demo mode ─────────────────────────
+  // The wrapEclipseFetch monitor can still fire in some edge cases.
+  // Override showSessionExpiredBanner and the login overlay show path so they
+  // never interrupt a demo session.
+  document.addEventListener('DOMContentLoaded', () => {
+    window.showSessionExpiredBanner = function() { /* no-op in demo */ };
+    window.reauthEclipseSession = async () => 'DEMO_TOKEN';
+    // Also prevent the login overlay from re-appearing
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) {
+      const _add = overlay.classList.add.bind(overlay.classList);
+      overlay.classList.add = function(cls) {
+        if (cls === 'visible') return; // block in demo mode
+        _add(cls);
+      };
+    }
+  });
+
   // ── Auto-login: populate eclipseSession and hide login overlay ────────
   function applyDemoSession() {
     if (window.eclipseSession) {
