@@ -524,6 +524,73 @@ select:focus,input:focus{outline:none;border-color:#999}
 </style>
 </head>
 <body>
+<script>
+// Demo mode fetch interceptor — must run before ANY other script.
+// Full demo setup (banner, session, etc.) is at the bottom of the page.
+(function() {
+  if (new URLSearchParams(location.search).get('demo') !== '1') return;
+  function demoPrice(sku, base, spread) {
+    let h = 0; for (let i = 0; i < (sku||'').length; i++) h = (h * 31 + sku.charCodeAt(i)) >>> 0;
+    return base + (h % spread);
+  }
+  function mockEclipse(body) {
+    const a = body.action;
+    if (a === 'login') return { sessionToken: 'DEMO_TOKEN', username: 'DEMO', homeBranch: 'FARM' };
+    if (a === 'pricing') {
+      const pricing = {};
+      (body.items||[]).forEach(item => { const c = item.catalogNumber||item.cat||''; if (c) pricing[c] = demoPrice(c,650,1800); });
+      return { pricing };
+    }
+    if (a === 'inventoryForProducts') {
+      const inventory = {};
+      (body.products||body.catalogNumbers||[]).forEach(c => { const q = 8+demoPrice(c,0,55); inventory[c] = { onHand:q, available:q, branchId:'FARM', status:'In Stock' }; });
+      return { inventory };
+    }
+    if (a === 'branchInventory') {
+      const c = body.catalogNumber||'', t = 8+demoPrice(c,0,55);
+      return { inventory: [
+        { branchId:'FARM', branchName:'Farmingdale', onHand:Math.floor(t*.55), available:Math.floor(t*.5) },
+        { branchId:'BALD', branchName:'Baldwin',     onHand:Math.floor(t*.3),  available:Math.floor(t*.25) },
+        { branchId:'STAM', branchName:'Stamford',    onHand:Math.ceil(t*.15),  available:Math.ceil(t*.12) },
+      ]};
+    }
+    if (a === 'searchCustomers') {
+      const kw = (body.keyword||'').toLowerCase();
+      const all = [
+        { id:'DEMO001', name:'Demo HVAC Contractor',   address:'123 Main St, Farmingdale NY' },
+        { id:'DEMO002', name:'Sample Mechanical Inc',  address:'456 Oak Ave, Stamford CT'    },
+        { id:'DEMO003', name:'Prospect Heating & Air', address:'789 Elm Rd, Baldwin NY'      },
+      ];
+      return { customers: kw ? all.filter(c => c.name.toLowerCase().includes(kw)) : all };
+    }
+    if (a === 'searchProducts'||a === 'searchProductsLite') {
+      const c = (body.catalogNumber||body.keyword||'').toUpperCase();
+      return { results: [{ catalogNumber:c, description:c+' DEMO PRODUCT', tagAlongs:[], productId:'DEMO-'+c }] };
+    }
+    if (a === 'getProduct') return { catalogNumber:body.productId||'', description:'DEMO PRODUCT', tagAlongs:[] };
+    if (a === 'getSubstitutes') return { substitutes:[] };
+    if (a === 'futureLedger') return { items:[] };
+    if (a === 'productImageUrl') return { url:null };
+    if (a === 'searchOrders'||a === 'searchOpenOrders') return { orders:[] };
+    if (a === 'salesOrderPreview') {
+      const lines = body.lines||[];
+      const sub = lines.reduce((s,l) => s+demoPrice(l.model||l.catalogNumber||'',200,800)*(l.qty||1),0);
+      return { preview:lines.map(l => ({ catalogNumber:l.model||l.catalogNumber, qty:l.qty||1, price:demoPrice(l.model||'',200,800), available:12 })), subtotal:sub, tax:+(sub*.08875).toFixed(2), total:+(sub*1.08875).toFixed(2) };
+    }
+    if (a === 'order') return { __demoBlocked:true };
+    return {};
+  }
+  const _fetch = window.fetch;
+  window.fetch = async function(url, opts) {
+    if (typeof url === 'string' && url.includes('/api/eclipse')) {
+      let body = {}; try { body = JSON.parse(opts?.body||'{}'); } catch(e) {}
+      await new Promise(r => setTimeout(r, 80 + Math.random()*120));
+      return new Response(JSON.stringify(mockEclipse(body)), { status:200, headers:{'Content-Type':'application/json'} });
+    }
+    return _fetch.apply(this, arguments);
+  };
+})();
+</script>
 <div class="alert-banner-wrap" id="alert-banner-wrap"></div>
 <div class="session-banner" id="session-banner">
   <span>⚠️</span>
@@ -7585,216 +7652,59 @@ function removeAddonFromSystem(qi, ai) {
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     DEMO MODE  (?demo=1)
-     Intercepts Eclipse calls, fakes login, disables order creation.
-     Activated purely client-side — no server changes needed.
+     DEMO MODE  (?demo=1)  — session setup, order block, banner.
+     Fetch interceptor is at the very top of <body>.
      ═══════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
-  const IS_DEMO = new URLSearchParams(location.search).get('demo') === '1';
-  if (!IS_DEMO) return;
+  if (new URLSearchParams(location.search).get('demo') !== '1') return;
 
-  // ── 1. Mark the page so CSS can target demo-specific overrides ──────
-  document.documentElement.setAttribute('data-demo', '1');
-
-  // ── 2. Deterministic fake pricing from catalog number ───────────────
-  // Hashes the SKU to a consistent price in a plausible range.
-  function demoPrice(sku, base, spread) {
-    let h = 0;
-    for (let i = 0; i < sku.length; i++) h = (h * 31 + sku.charCodeAt(i)) >>> 0;
-    return base + (h % spread);
-  }
-
-  // ── 3. Mock eclipseCall ─────────────────────────────────────────────
-  // Wait until page fully initialises then replace the real function.
-  window.addEventListener('load', () => {
-    const _real = window.eclipseCall;
-
-    window.eclipseCall = async function demoEclipseCall(body) {
-      await new Promise(r => setTimeout(r, 180 + Math.random() * 120)); // realistic latency
-
-      const action = body.action;
-
-      // ── Pricing ──────────────────────────────────────────────────────
-      if (action === 'pricing') {
-        const pricing = {};
-        (body.items || []).forEach(item => {
-          const cat = item.catalogNumber || item.cat || '';
-          if (!cat) return;
-          // Equipment: price by BTU bracket; accessories: $20-$350
-          const isEquip = /^\w{3,6}\d{2}/.test(cat);
-          pricing[cat] = isEquip
-            ? demoPrice(cat, 650, 1800)
-            : demoPrice(cat, 22, 330);
-        });
-        return { pricing };
-      }
-
-      // ── Inventory ─────────────────────────────────────────────────────
-      if (action === 'inventoryForProducts') {
-        const inventory = {};
-        (body.products || body.catalogNumbers || []).forEach(cat => {
-          const qty = 8 + (demoPrice(cat, 0, 55));
-          inventory[cat] = { onHand: qty, available: qty, branchId: 'FARM', status: 'In Stock' };
-        });
-        return { inventory };
-      }
-
-      // ── Branch inventory breakdown ────────────────────────────────────
-      if (action === 'branchInventory') {
-        const cat = body.catalogNumber || '';
-        const total = 8 + demoPrice(cat, 0, 55);
-        return {
-          inventory: [
-            { branchId: 'FARM', branchName: 'Farmingdale', onHand: Math.floor(total * 0.55), available: Math.floor(total * 0.5) },
-            { branchId: 'BALD', branchName: 'Baldwin',     onHand: Math.floor(total * 0.3),  available: Math.floor(total * 0.25) },
-            { branchId: 'STAM', branchName: 'Stamford',    onHand: Math.ceil(total * 0.15),  available: Math.ceil(total * 0.12)  },
-          ]
-        };
-      }
-
-      // ── Search / product lookup ───────────────────────────────────────
-      if (action === 'searchProducts' || action === 'searchProductsLite') {
-        const cat = (body.catalogNumber || body.keyword || '').toUpperCase();
-        return {
-          results: [{
-            catalogNumber: cat,
-            description: cat + ' DEMO PRODUCT',
-            tagAlongs: [],
-            productId: 'DEMO-' + cat,
-          }]
-        };
-      }
-
-      if (action === 'getProduct') {
-        return { catalogNumber: body.productId || '', description: 'DEMO PRODUCT', tagAlongs: [] };
-      }
-
-      // ── Substitutes ───────────────────────────────────────────────────
-      if (action === 'getSubstitutes') {
-        return { substitutes: [] };
-      }
-
-      // ── Future ledger ─────────────────────────────────────────────────
-      if (action === 'futureLedger') {
-        return { items: [] };
-      }
-
-      // ── Product image ─────────────────────────────────────────────────
-      if (action === 'productImageUrl') {
-        return { url: null };
-      }
-
-      // ── Customer search ───────────────────────────────────────────────
-      if (action === 'searchCustomers') {
-        return {
-          customers: [
-            { id: 'DEMO001', name: 'Demo HVAC Contractor',   address: '123 Main St, Farmingdale NY' },
-            { id: 'DEMO002', name: 'Sample Mechanical Inc',  address: '456 Oak Ave, Stamford CT'    },
-            { id: 'DEMO003', name: 'Prospect Heating & Air', address: '789 Elm Rd, Baldwin NY'      },
-          ].filter(c => !body.keyword || c.name.toLowerCase().includes((body.keyword||'').toLowerCase()))
-        };
-      }
-
-      // ── Open orders / order search ────────────────────────────────────
-      if (action === 'searchOrders' || action === 'searchOpenOrders') {
-        return { orders: [] };
-      }
-
-      // ── Sales order preview ───────────────────────────────────────────
-      if (action === 'salesOrderPreview') {
-        const lines = (body.lines || []);
-        const subtotal = lines.reduce((s, l) => s + (demoPrice(l.model || l.catalogNumber || '', 200, 800) * (l.qty || 1)), 0);
-        return {
-          preview: lines.map(l => ({
-            catalogNumber: l.model || l.catalogNumber,
-            description: l.description || l.model || '',
-            qty: l.qty || 1,
-            price: demoPrice(l.model || l.catalogNumber || '', 200, 800),
-            available: 12 + demoPrice(l.model || '', 0, 40),
-          })),
-          subtotal,
-          tax: Math.round(subtotal * 0.08875 * 100) / 100,
-          total: Math.round(subtotal * 1.08875 * 100) / 100,
-        };
-      }
-
-      // ── Order creation — BLOCKED in demo ─────────────────────────────
-      if (action === 'order') {
-        return { __demoBlocked: true };
-      }
-
-      // ── Re-auth (no-op in demo) ───────────────────────────────────────
-      if (action === 'login') {
-        return { sessionToken: 'DEMO_TOKEN', username: 'DEMO', homeBranch: 'FARM' };
-      }
-
-      // Fallback — return empty success for anything unrecognised
-      return {};
-    };
-  });
-
-  // ── 4. Auto-login: skip the login screen ────────────────────────────
-  window.addEventListener('load', () => {
-    // Give the app a moment to render, then inject the demo session
-    setTimeout(() => {
-      window.eclipseSession = window.eclipseSession || {};
+  // ── Auto-login: populate eclipseSession and hide login overlay ────────
+  function applyDemoSession() {
+    if (window.eclipseSession) {
       eclipseSession.token    = 'DEMO_TOKEN';
       eclipseSession.username = 'DEMO';
       eclipseSession.password = '';
-
-      const overlay = document.getElementById('login-overlay');
-      if (overlay) overlay.classList.remove('visible');
-
-      const badge = document.getElementById('user-badge');
-      if (badge) badge.style.display = '';
-
-      const nameEl = document.getElementById('user-name');
-      if (nameEl) nameEl.textContent = 'DEMO';
-
-      // Suppress the re-auth modal — in demo it's a no-op
-      window.reauthEclipseSession = async () => 'DEMO_TOKEN';
-    }, 300);
+    }
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.classList.remove('visible');
+    const badge = document.getElementById('user-badge');
+    if (badge) badge.style.display = '';
+    const nameEl = document.getElementById('user-name');
+    if (nameEl) nameEl.textContent = 'DEMO';
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    applyDemoSession();
+    setTimeout(applyDemoSession, 0);
+    setTimeout(applyDemoSession, 300);
+    setTimeout(applyDemoSession, 700);
   });
+  window.addEventListener('load', applyDemoSession);
 
-  // ── 5. Block order creation — replace "Preview & Create Quote" ───────
+  // ── Block order creation ──────────────────────────────────────────────
   window.addEventListener('load', () => {
     setTimeout(() => {
-      // Override the modal submit so it shows a demo message instead of calling Eclipse
       const submitBtn = document.getElementById('modal-submit');
       if (submitBtn) {
         submitBtn.onclick = function() {
           const statusEl = document.getElementById('modal-status');
           const closeBtn = document.getElementById('modal-close-btn');
-          if (statusEl) {
-            statusEl.style.color = '#0f6e56';
-            statusEl.innerHTML = `<strong>Demo mode:</strong> Order submission is disabled. In the live tool, this would create a quote in Eclipse.`;
-          }
+          if (statusEl) { statusEl.style.color = '#0f6e56'; statusEl.innerHTML = `<strong>Demo mode:</strong> Order submission is disabled. In the live tool, this creates a quote in Eclipse.`; }
           if (closeBtn) closeBtn.style.display = '';
           submitBtn.disabled = true;
         };
       }
-    }, 500);
+    }, 600);
   });
 
-  // ── 6. Demo banner ───────────────────────────────────────────────────
-  window.addEventListener('DOMContentLoaded', () => {
+  // ── Demo banner ───────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
     const banner = document.createElement('div');
     banner.id = 'demo-banner';
-    banner.innerHTML = `
-      <span style="font-size:15px;margin-right:6px">🎯</span>
-      <strong>Demo Mode</strong> — Inventory and pricing are simulated. Order submission is disabled.
-      <a href="${location.pathname}" style="color:#fff;font-weight:700;margin-left:16px;text-decoration:underline">Exit demo →</a>
-    `;
-    banner.style.cssText = `
-      position:fixed;bottom:0;left:0;right:0;z-index:99999;
-      background:#185FA5;color:#fff;font-size:13px;line-height:1.4;
-      padding:10px 18px;display:flex;align-items:center;
-      box-shadow:0 -2px 12px rgba(0,0,0,.2);font-family:inherit;
-    `;
+    banner.innerHTML = `<span style="font-size:15px;margin-right:6px">🎯</span><strong>Demo Mode</strong> — Inventory and pricing are simulated. Order submission is disabled. <a href="${location.pathname}" style="color:#fff;font-weight:700;margin-left:16px;text-decoration:underline">Exit demo →</a>`;
+    banner.style.cssText = `position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#185FA5;color:#fff;font-size:13px;line-height:1.4;padding:10px 18px;display:flex;align-items:center;box-shadow:0 -2px 12px rgba(0,0,0,.2);font-family:inherit`;
     document.body.appendChild(banner);
   });
-
 })();
 </script>
 </body>
