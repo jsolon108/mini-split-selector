@@ -7659,6 +7659,15 @@ function removeAddonFromSystem(qi, ai) {
 (function() {
   if (new URLSearchParams(location.search).get('demo') !== '1') return;
 
+  // ── Auto-select a demo customer so pricing/quote flow works immediately ─
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      if (typeof qSelectCustomer === 'function' && !qSelectedCustomer) {
+        qSelectCustomer({ id: 'DEMO001', name: 'Demo HVAC Contractor', address: '123 Main St, Farmingdale NY', contacts: [] });
+      }
+    }, 800);
+  });
+
   // ── Suppress session-expired UI in demo mode ─────────────────────────
   // The wrapEclipseFetch monitor can still fire in some edge cases.
   // Override showSessionExpiredBanner and the login overlay show path so they
