@@ -7504,14 +7504,33 @@ async function openCommonAddonPicker(qi) {
   const blurbEl = document.getElementById('cap-scenario-blurb');
   if (nameEl && q) {
     nameEl.textContent = q.name || label;
-    // Build a compact spec line: IDU · ODU, connection sizes
-    const idu = q.iu || q.iduModel || '';
+    // Build a compact spec line: IDU · ODU, connection sizes.
+    // SZ has one IDU/pair; MZ has one IDU + sizes per zone.
     const odu = q.ou || q.outdoor || '';
-    const liq = q.liq || q.liq_pipe || '';
-    const gas = q.gas || q.gas_pipe || '';
-    const sizePart = (liq && gas) ? ` · Liq: ${liq} · Gas: ${gas}` : '';
-    const parts = [idu && `IDU: ${idu}`, odu && `ODU: ${odu}`].filter(Boolean).join(' · ');
-    if (blurbEl) blurbEl.textContent = parts + sizePart;
+    let blurb = '';
+    if (q.qtype === 'mz' && Array.isArray(q.zones) && q.zones.length) {
+      const oduPart = odu ? `ODU: ${odu}` : '';
+      const zoneLines = q.zones.map(z => {
+        const liq = z.liq || z.liq_pipe || '';
+        const gas = z.gas || z.gas_pipe || '';
+        const sz = (liq && gas) ? ` · Liq: ${liq} · Gas: ${gas}` : '';
+        const cap = z.cap ? ` ${z.cap}K` : '';
+        const type = z.type ? ` ${z.type}` : '';
+        return `Zone ${z.z}: ${z.model || ''}${cap}${type}${sz}`;
+      });
+      blurb = [oduPart, ...zoneLines].filter(Boolean).join('\n');
+    } else {
+      const idu = q.iu || q.iduModel || '';
+      const liq = q.liq || q.liq_pipe || '';
+      const gas = q.gas || q.gas_pipe || '';
+      const sizePart = (liq && gas) ? ` · Liq: ${liq} · Gas: ${gas}` : '';
+      const parts = [idu && `IDU: ${idu}`, odu && `ODU: ${odu}`].filter(Boolean).join(' · ');
+      blurb = parts + sizePart;
+    }
+    if (blurbEl) {
+      blurbEl.textContent = blurb;
+      blurbEl.style.whiteSpace = 'pre-line'; // honor \n line breaks for multi-zone listing
+    }
   }
   document.getElementById('cap-search').value = '';
   document.getElementById('common-addon-picker-overlay').classList.add('open');
@@ -7556,23 +7575,37 @@ function renderCommonAddonPickerList() {
   if (!list || !COMMON_ADDONS) return;
   const search = (document.getElementById('cap-search')?.value || '').toLowerCase().trim();
 
-  // Get the target system's connection sizes for line-set filtering
+  // Get the target system's connection-size pairs for line-set filtering.
+  // SZ: one pair on q.liq/q.gas. MZ: one pair per zone on q.zones[].liq_pipe/gas_pipe.
+  // A line set passes if its parsed (liq,gas) matches ANY zone's pair.
   const q = _capTargetQi != null ? quote[_capTargetQi] : null;
-  const sysLiq = normSize(q?.liq || q?.liq_pipe || '');
-  const sysGas = normSize(q?.gas || q?.gas_pipe || '');
+  const sysPairs = [];
+  if (q?.qtype === 'mz' && Array.isArray(q.zones)) {
+    for (const z of q.zones) {
+      const zl = normSize(z.liq || z.liq_pipe || '');
+      const zg = normSize(z.gas || z.gas_pipe || '');
+      if (zl || zg) sysPairs.push({ liq: zl, gas: zg });
+    }
+  } else {
+    const sysLiq = normSize(q?.liq || q?.liq_pipe || '');
+    const sysGas = normSize(q?.gas || q?.gas_pipe || '');
+    if (sysLiq || sysGas) sysPairs.push({ liq: sysLiq, gas: sysGas });
+  }
 
   const filtered = COMMON_ADDONS.filter(a => {
     const desc = a.description || '';
     const cat = (categorizeAddon(desc, a.sku || '') || '').toLowerCase();
-    // For line sets: only show sizes that match this system's liq + gas connection sizes.
+    // For line sets: only show sizes that match at least one zone's connection sizes.
     // Parse the size pair from the description e.g. '1/4"x5/8"' → liq=1/4, gas=5/8.
-    if (cat === 'line sets' && (sysLiq || sysGas)) {
+    if (cat === 'line sets' && sysPairs.length) {
       const m = desc.match(/(\d\/\d+)["\u201C\u201D]?\s*[xX]\s*(\d\/\d+)/);
       if (m) {
         const descLiq = normSize(m[1]);
         const descGas = normSize(m[2]);
-        if (sysLiq && descLiq !== sysLiq) return false;
-        if (sysGas && descGas !== sysGas) return false;
+        const match = sysPairs.some(p =>
+          (!p.liq || descLiq === p.liq) && (!p.gas || descGas === p.gas)
+        );
+        if (!match) return false;
       }
     }
     if (!search) return true;
