@@ -3636,8 +3636,11 @@ function normSize(s) {
 }
 
 function makeDefaultAddon(d, zoneLabel) {
+  // Include zoneLabel in productId so per-zone defaults survive the dedup-by-catalog
+  // pass downstream (two identical zones would otherwise share catalogNumber and collapse).
+  const zoneKey = zoneLabel ? zoneLabel.replace(/\s+/g,'').toLowerCase() : '0';
   return {
-    productId: `default-${d.id}`,
+    productId: `default-${d.id}-${zoneKey}`,
     catalogNumber: d.mfg_num,
     description: d.description + (zoneLabel ? ` (${zoneLabel})` : ''),
     qtyNeeded: d.default_qty || 1,
@@ -3778,9 +3781,16 @@ async function loadAddonsForQuoteItem(qi) {
       console.log('[Addons] q no longer in quote — abandoning stale addon write');
       return;
     }
-    // Dedup by catalog number — keep first (required items sorted first already)
+    // Dedup by catalog number — keep first (required items sorted first already).
+    // Exception: default per-zone addons use productId (includes zone) so that
+    // identical zones each retain their own default line set / roll entry.
     const seen = new Set();
-    q.addons = addons.filter(a => { if (seen.has(a.catalogNumber)) return false; seen.add(a.catalogNumber); return true; });
+    q.addons = addons.filter(a => {
+      const key = a.isDefault && a.productId ? a.productId : a.catalogNumber;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     q.addonsLoading = false;
     q.addonsError = null;
 
