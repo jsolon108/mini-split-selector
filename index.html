@@ -3611,23 +3611,26 @@ async function injectDefaultAddons(q, addons) {
       }
     } else if (d.size_type === 'liq') {
       // DuraGuard liquid roll — match liq OD per zone.
-      // Skip if Eclipse already returned this exact catalog (it carries the right qty for the system).
-      if (addons.some(a => a.catalogNumber === d.mfg_num)) continue;
-      for (const z of zones) {
-        if (!z.liq) continue;
-        if (normSize(d.liq_size) === normSize(z.liq)) {
-          addons.push(makeDefaultAddon(d, z.label));
-        }
+      // Find zones needing this size, then inject defaults only for the SHORTFALL beyond
+      // what Eclipse already supplied (so 2 zones needing 1/4" with Eclipse qty=1 still
+      // gets a "Zone 2" default, but Eclipse qty=2 suppresses both).
+      const matchingZones = zones.filter(z => z.liq && normSize(d.liq_size) === normSize(z.liq));
+      if (!matchingZones.length) continue;
+      const eclipseQty = addons
+        .filter(a => a.catalogNumber === d.mfg_num)
+        .reduce((s, a) => s + (a.qtyNeeded || 1), 0);
+      for (const z of matchingZones.slice(eclipseQty)) {
+        addons.push(makeDefaultAddon(d, z.label));
       }
     } else if (d.size_type === 'gas') {
-      // DuraGuard gas roll — match gas OD per zone.
-      // Skip if Eclipse already returned this exact catalog.
-      if (addons.some(a => a.catalogNumber === d.mfg_num)) continue;
-      for (const z of zones) {
-        if (!z.gas) continue;
-        if (normSize(d.gas_size) === normSize(z.gas)) {
-          addons.push(makeDefaultAddon(d, z.label));
-        }
+      // DuraGuard gas roll — same shortfall logic as liq.
+      const matchingZones = zones.filter(z => z.gas && normSize(d.gas_size) === normSize(z.gas));
+      if (!matchingZones.length) continue;
+      const eclipseQty = addons
+        .filter(a => a.catalogNumber === d.mfg_num)
+        .reduce((s, a) => s + (a.qtyNeeded || 1), 0);
+      for (const z of matchingZones.slice(eclipseQty)) {
+        addons.push(makeDefaultAddon(d, z.label));
       }
     }
   }
