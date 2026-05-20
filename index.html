@@ -1550,6 +1550,7 @@ function renderQuote() {
           <div class="addon-category-label" onclick="toggleAddonCategory(${qi}, ${JSON.stringify(cat).replace(/"/g, '&quot;')})">
             <span class="addon-category-chevron">▶</span>
             <span class="addon-category-name">${cat}${cat === 'Line Sets' ? ' <span style="font-weight:400;color:#888;font-size:11px">(Additional lengths located in Additional Add-Ons)</span>' : ''}</span>
+            ${cat === 'Line Sets' && items.some(({a}) => /duraguard/i.test(a.description || '')) ? `<button onclick="event.stopPropagation();toggleAllDuraguard(${qi})" style="margin-left:8px;padding:2px 8px;border:1px solid #d0d7e2;background:#f8fafc;color:#185FA5;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer" title="Select/deselect all Duraguard line sets in this category">Select all Duraguard</button>` : ''}
             <span class="addon-category-chips">${chips.join('')}</span>
           </div>
           <div class="addon-category-body">${rows}</div>
@@ -3830,6 +3831,26 @@ function toggleAddon(qi, ai) {
   // When checking an addon, check availability and suggest sub if OOS
   if (!addon.subSuggestion) {
     checkAddonSub(qi, ai);
+  }
+}
+
+// Bulk toggle for Duraguard line sets in a quote item. If any matching row is
+// unchecked, this checks them all; if every match is already checked, it unchecks all.
+// Matches both Eclipse-supplied (description contains "DURAGUARD") and per-zone defaults
+// ("Duraguard Insulated Roll").
+function toggleAllDuraguard(qi) {
+  const q = quote[qi];
+  if (!q?.addons) return;
+  const isDura = a => a.category === 'Line Sets' && /duraguard/i.test(a.description || '');
+  const targets = q.addons.filter(isDura);
+  if (!targets.length) return;
+  const allChecked = targets.every(a => a.checked);
+  const newState = !allChecked;
+  targets.forEach(a => { a.checked = newState; });
+  renderQuote();
+  // Trigger sub-suggestion check for newly-checked items (fire and forget)
+  if (newState) {
+    q.addons.forEach((a, ai) => { if (isDura(a) && !a.subSuggestion) checkAddonSub(qi, ai); });
   }
 }
 
