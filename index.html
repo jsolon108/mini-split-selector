@@ -4190,13 +4190,15 @@ function buildDesktopOrderLines() {
       });
       Object.entries(iduQtys).forEach(([cat, qty]) => lines.push({ model: cat, qty }));
     }
-    // Addons: deduplicate by catalog number, combining quantities
+    // Addons: deduplicate by catalog number, combining quantities.
+    // Common addons carry an eclipseSku (warehouse code) — pass it through as the line's sku
+    // so the backend can fall back to it when the catalog number isn't uniquely resolvable.
     const addonMap = {};
     (q.addons || []).filter(a=>a.checked).forEach(a => {
       const cat = a.catalogNumber;
       const qty = a.qtyOverride ?? a.qtyNeeded ?? 1;
       if (addonMap[cat]) addonMap[cat].qty += qty;
-      else addonMap[cat] = { model: cat, qty };
+      else addonMap[cat] = { model: cat, sku: a.eclipseSku || '', qty };
     });
     Object.values(addonMap).forEach(l => lines.push(l));
   });
@@ -7719,6 +7721,11 @@ function commitCommonAddonPicks() {
       q.addons.push({
         productId: `common-${sku}-${Date.now()}`,
         catalogNumber: orderCat,
+        // Preserve the warehouse code so it can be sent alongside the catalog number on order entry.
+        // Some catalog numbers (e.g. "711", "19173") are too generic to uniquely identify a product
+        // in Eclipse — the warehouse code (G38-428, H26-660) is the unique key. Sending both lets
+        // the backend fall back to the warehouse code when the catalog match is ambiguous.
+        eclipseSku: sku,
         description: meta.description || sku,
         qtyNeeded: qty,
         qtyOverride: null,
