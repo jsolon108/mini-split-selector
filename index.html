@@ -7516,11 +7516,14 @@ async function openCommonAddonPicker(qi) {
   _capPicks = {};
   await loadCommonAddons();
   const q = quote[qi];
-  // Pre-populate picks with current qtys of items already added to this system via the picker
+  // Pre-populate picks with current qtys of items already added to this system via the picker.
+  // Items are stored with catalogNumber = mfg_num (what Eclipse needs); the picker's _capPicks
+  // is keyed by sku (the warehouse code, shown to users), so translate back via COMMON_ADDONS.
   if (q && Array.isArray(q.addons)) {
     for (const a of q.addons) {
       if (a.isCommon && a.checked) {
-        _capPicks[a.catalogNumber] = addonQty(a);
+        const meta = COMMON_ADDONS?.find(m => (m.mfg_num || m.sku) === a.catalogNumber);
+        if (meta) _capPicks[meta.sku] = addonQty(a);
       }
     }
   }
@@ -7675,7 +7678,11 @@ function commitCommonAddonPicks() {
   for (const [sku, qty] of Object.entries(_capPicks)) {
     const meta = COMMON_ADDONS.find(a => a.sku === sku);
     if (!meta) continue;
-    const existingIdx = q.addons.findIndex(a => a.catalogNumber === sku && a.isCommon);
+    // Eclipse order entry wants the catalog number (mfg_num), NOT the internal warehouse code (sku).
+    // Submitting the warehouse code produces APIPartNotFound on the Eclipse side.
+    // Fall back to sku only if mfg_num is missing (legacy rows).
+    const orderCat = meta.mfg_num || sku;
+    const existingIdx = q.addons.findIndex(a => a.catalogNumber === orderCat && a.isCommon);
     if (qty <= 0) {
       // Remove the user-picked entry if it exists
       if (existingIdx !== -1) q.addons.splice(existingIdx, 1);
@@ -7689,7 +7696,7 @@ function commitCommonAddonPicks() {
     } else {
       q.addons.push({
         productId: `common-${sku}-${Date.now()}`,
-        catalogNumber: sku,
+        catalogNumber: orderCat,
         description: meta.description || sku,
         qtyNeeded: qty,
         qtyOverride: null,
