@@ -6739,12 +6739,19 @@ function renderChallengeToday() {
   // In-progress attempt (server says they started but didn't finish) → offer Resume.
   // Calling startChallenge() in this state will be allowed by the server (resumed=true).
   if (d.in_progress && d.attempt) {
+    const adminBlock = (typeof isAdmin === 'function' && isAdmin())
+      ? `<div style="margin-top:14px;padding:10px;background:#f3eef7;border:1px dashed #b8a8c8;border-radius:6px;text-align:center">
+           <button onclick="adminResetMyAttempt()" style="padding:6px 14px;border:1px solid #5a2a82;background:#fff;color:#5a2a82;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">🛠 Reset my attempt (admin)</button>
+           <div style="font-size:11px;color:#666;margin-top:4px">Wipes today's in-progress attempt so you can start fresh.</div>
+         </div>`
+      : '';
     body.innerHTML = trialBanner + seasonHtml + `
       <div style="padding:14px;background:#fff4e0;border-left:3px solid #b06800;border-radius:0 8px 8px 0;margin-bottom:14px;font-size:13px;line-height:1.5">
         <b>⏸ Attempt in progress</b> — you started today's challenge but didn't finish.
         You can pick up where you left off. The timer reflects the actual elapsed time since you started.
       </div>
       <button onclick="startChallenge()" style="width:100%;height:42px;background:#b06800;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Resume Challenge →</button>
+      ${adminBlock}
     `;
     return;
   }
