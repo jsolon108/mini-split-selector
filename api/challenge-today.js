@@ -105,7 +105,8 @@ export default async function handler(req, res) {
     // Touching req.query makes Vercel's runtime fall back to the legacy url.parse(),
     // which logs a DEP0169 deprecation warning on current Node versions.
     const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-    const username = String(reqUrl.searchParams.get('username') || '').trim();
+    // Normalize to lowercase so the attempt lookup matches the canonical form in the DB.
+    const username = String(reqUrl.searchParams.get('username') || '').trim().toLowerCase();
     if (!username) return res.status(400).json({ error: 'username required' });
 
     const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
