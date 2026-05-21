@@ -6726,12 +6726,29 @@ function renderChallengeToday() {
   // Season banner
   let seasonHtml = '';
   if (d.season) {
-    const end = new Date(d.season.end_date + 'T23:59:59');
-    const daysLeft = Math.max(0, Math.ceil((end - new Date()) / 86400000));
+    // Count remaining CHALLENGE days only: weekdays (Mon–Fri) minus configured holidays.
+    // Sat/Sun and observed company holidays don't count toward "days left" since the
+    // shop doesn't run the challenge on them. Add more YYYY-MM-DD entries to HOLIDAYS
+    // as new closures come up.
+    const HOLIDAYS = new Set([
+      '2026-05-25', // Memorial Day
+    ]);
+    const todayStr = d.challenge_date;
+    const endStr = d.season.end_date;
+    let daysLeft = 0;
+    // Walk day-by-day from today through end_date inclusive
+    const cursor = new Date(todayStr + 'T12:00:00'); // noon avoids any DST edge
+    const endStop = new Date(endStr + 'T12:00:00');
+    while (cursor <= endStop) {
+      const dow = cursor.getDay(); // 0 = Sun, 6 = Sat
+      const iso = cursor.toISOString().slice(0, 10);
+      if (dow !== 0 && dow !== 6 && !HOLIDAYS.has(iso)) daysLeft++;
+      cursor.setDate(cursor.getDate() + 1);
+    }
     const startDate = d.season.start_date;
     const futureSeason = startDate > d.challenge_date;
     seasonHtml = `<div style="padding:12px 14px;background:linear-gradient(135deg,#0f6e56,#185FA5);color:#fff;border-radius:10px;margin-bottom:14px">
-      <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">${escHtml(d.season.name)} ${futureSeason ? `· starts ${startDate}` : `· ${daysLeft} days left`}</div>
+      <div style="font-size:11px;opacity:.85;text-transform:uppercase;letter-spacing:.05em">${escHtml(d.season.name)} ${futureSeason ? `· starts ${startDate}` : `· ${daysLeft} challenge day${daysLeft===1?'':'s'} left`}</div>
       <div style="font-size:13px;margin-top:4px;opacity:.95">🎁 ${escHtml(d.season.prize_text || 'Prize TBA')}</div>
     </div>`;
   }
