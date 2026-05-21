@@ -16,8 +16,13 @@
 // }
 // ═══════════════════════════════════════════════════════════════════════
 
+// Service role key — bypasses RLS so the API can manage challenge_attempts even
+// though anon writes are blocked. NEVER expose this in the browser. Set the env
+// var SUPABASE_SERVICE_ROLE_KEY in your Vercel project settings (Settings →
+// Environment Variables) and redeploy. Falls back to the publishable key only
+// for local dev safety; production should always have the env var set.
 const SB_URL = 'https://jnhgmnpcwiutkidkadbg.supabase.co';
-const SB_KEY = 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_jnXngFrJ8t1eG5sxAcTOUQ_1RJ2KnFV';
 
 async function fetchJson(url, opts) {
   const res = await fetch(url, opts);
