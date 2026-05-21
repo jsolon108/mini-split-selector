@@ -28,7 +28,10 @@
 //       under 8 min: +25  (bronze)
 //   - Max daily: 100+100+100 + 50 + 100 = 450
 //
-// Enforces one-attempt-per-day via UNIQUE (username, challenge_date) on challenge_attempts.
+// Persistence model: /api/challenge-start creates an `in_progress` row when the
+// user begins. This endpoint UPDATEs that row to `completed` with the scores.
+// If no in_progress row exists (user submitted without calling start), we still
+// allow the write — that path is hit by older clients or grader-test flows.
 // ═══════════════════════════════════════════════════════════════════════
 
 import { gradeQuote } from './challenge-grade.js';
@@ -109,13 +112,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // Has this user already attempted today?
+    // Find this user's existing attempt row (created by /api/challenge-start).
+    // Status semantics:
+    //   in_progress  → normal path: we PATCH it to completed below
+    //   completed    → cheat / double-submit: refuse (unless trial)
+    //   no row       → legacy client that skipped start: insert one (still a valid play)
     const existing = await fetch(
-      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}&select=id`,
+      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}&select=id,status`,
       { headers }
     ).then(r => r.json());
-    if (existing.length && !isTrial) {
-      return res.status(409).json({ error: 'Already attempted today', attempt_id: existing[0].id });
+
+    const existingRow = existing[0] || null;
+    if (existingRow && existingRow.status === 'completed' && !isTrial) {
+      return res.status(409).json({ error: 'Already attempted today', attempt_id: existingRow.id });
     }
 
     // Fetch the full scenario specs
@@ -152,37 +161,63 @@ export default async function handler(req, res) {
     const breakdown = scoreBreakdown(scenarioResults, timeSeconds);
     const passedCount = scenarioResults.filter(r => r.passed).length;
 
-    // On trial days, delete the existing attempt before inserting the new one
-    // (we already loaded the existing row above).
-    if (isTrial && existing.length) {
+    // On trial days, wipe any existing row before writing a fresh one (preserves
+    // "play again" replay semantics on trial-only dates).
+    if (isTrial && existingRow) {
       await fetch(
         `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}`,
         { method: 'DELETE', headers }
       );
     }
 
-    // Write the attempt row
-    const attemptInsert = await fetch(`${SB_URL}/rest/v1/challenge_attempts`, {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
-      body: JSON.stringify({
-        username,
-        challenge_date,
-        started_at,
-        completed_at: new Date().toISOString(),
-        scenario_results: scenarioResults,
-        scenarios_correct: passedCount,
-        time_seconds: timeSeconds,
-        daily_score: breakdown.total,
-        user_branch: user_branch || null
-      })
-    });
-    if (!attemptInsert.ok) {
-      const errText = await attemptInsert.text();
-      return res.status(409).json({ error: 'Attempt write failed (probably already attempted today)', detail: errText });
+    // Build the score payload (shared by PATCH and INSERT paths)
+    const scorePayload = {
+      completed_at: new Date().toISOString(),
+      status: 'completed',
+      scenario_results: scenarioResults,
+      scenarios_correct: passedCount,
+      time_seconds: timeSeconds,
+      daily_score: breakdown.total,
+      user_branch: user_branch || null
+    };
+
+    let attempt;
+    if (existingRow && !isTrial && existingRow.status === 'in_progress') {
+      // Normal path: PATCH the in_progress row to completed.
+      const patchRes = await fetch(
+        `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challenge_date}`,
+        {
+          method: 'PATCH',
+          headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+          body: JSON.stringify(scorePayload)
+        }
+      );
+      if (!patchRes.ok) {
+        const errText = await patchRes.text();
+        return res.status(500).json({ error: 'Attempt update failed', detail: errText });
+      }
+      const patched = await patchRes.json();
+      attempt = patched[0];
+    } else {
+      // Fallback (legacy clients, trial replays, or grader-test flows): INSERT a new row.
+      // started_at carries through from the client so timing stays accurate.
+      const insertRes = await fetch(`${SB_URL}/rest/v1/challenge_attempts`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({
+          username,
+          challenge_date,
+          started_at,
+          ...scorePayload
+        })
+      });
+      if (!insertRes.ok) {
+        const errText = await insertRes.text();
+        return res.status(409).json({ error: 'Attempt write failed (probably already attempted today)', detail: errText });
+      }
+      const inserted = await insertRes.json();
+      attempt = inserted[0];
     }
-    const attemptRows = await attemptInsert.json();
-    const attempt = attemptRows[0];
 
     return res.status(200).json({
       attempt,
