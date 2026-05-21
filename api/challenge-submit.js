@@ -90,7 +90,9 @@ function scoreBreakdown(scenarioResults, timeSeconds) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { username, challenge_date, started_at, submissions, user_branch } = req.body || {};
+    let { username, challenge_date, started_at, submissions, user_branch } = req.body || {};
+    // Normalize username to lowercase (matches the canonical form in the DB).
+    username = String(username || '').toLowerCase().trim();
     if (!username || !challenge_date || !started_at || !Array.isArray(submissions)) {
       return res.status(400).json({ error: 'username, challenge_date, started_at, submissions required' });
     }
