@@ -25,7 +25,9 @@ const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_jnXngFrJ
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { username, challenge_date, scenario_idx, submissions } = req.body || {};
+    let { username, challenge_date, scenario_idx, submissions } = req.body || {};
+    // Normalize username to lowercase (matches the canonical form in the DB).
+    username = String(username || '').toLowerCase().trim();
     if (!username || !challenge_date) {
       return res.status(400).json({ error: 'username and challenge_date required' });
     }
