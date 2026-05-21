@@ -19,7 +19,10 @@ const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'sb_publishable_jnXngFrJ
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { admin_username, target_username, challenge_date } = req.body || {};
+    let { admin_username, target_username, challenge_date } = req.body || {};
+    // Normalize to lowercase to match the canonical username form in the DB.
+    admin_username = String(admin_username || '').toLowerCase().trim();
+    target_username = String(target_username || '').toLowerCase().trim();
     if (!admin_username || !target_username || !challenge_date) {
       return res.status(400).json({ error: 'admin_username, target_username, challenge_date required' });
     }
@@ -28,9 +31,8 @@ export default async function handler(req, res) {
 
     // Verify admin: must exist in admin_users. Case-insensitive match to mirror
     // the client-side isAdmin() check (which lowercases both sides).
-    const adminLookup = encodeURIComponent(`*${admin_username.trim()}*`);
     const adminCheck = await fetch(
-      `${SB_URL}/rest/v1/admin_users?username=ilike.${encodeURIComponent(admin_username.trim())}&select=username&limit=1`,
+      `${SB_URL}/rest/v1/admin_users?username=eq.${encodeURIComponent(admin_username)}&select=username&limit=1`,
       { headers }
     );
     const adminRows = await adminCheck.json();
