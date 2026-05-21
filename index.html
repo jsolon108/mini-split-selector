@@ -4318,9 +4318,36 @@ async function pushToEclipse() {
     const data = await res.json();
     if (data.newToken) { eclipseSession.token = data.newToken; localStorage.setItem('eclipseToken', data.newToken); }
     if (data.success) {
-      statusEl.style.color = '#0f6e56';
-      statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
-      logEvent('eclipse_push', { orderId: data.orderId, customer: selectedCustomer?.name || qSelectedCustomer?.name, systems: quote.length });
+      // Backend may return { success: true, failedLines: [{ model, sku, description?, reason? }] }
+      // when the order was created but some lines couldn't be resolved on Eclipse's side.
+      // Don't hide the success, but make the failures impossible to miss so they can be added manually.
+      const failed = Array.isArray(data.failedLines) ? data.failedLines : [];
+      if (failed.length) {
+        statusEl.style.color = '#0f6e56';
+        const failRows = failed.map(f => {
+          const ident = [f.model, f.sku].filter(Boolean).join(' / ');
+          const desc = f.description ? ` — ${escHtml(f.description)}` : '';
+          const reason = f.reason ? ` <span style="color:#888;font-size:11px">(${escHtml(f.reason)})</span>` : '';
+          return `<li style="padding:3px 0"><span style="font-family:monospace;color:#185FA5">${escHtml(ident)}</span>${desc}${reason}</li>`;
+        }).join('');
+        statusEl.innerHTML = `
+          <div>✓ Quote created in Eclipse — Order #${escHtml(data.orderId || '')}</div>
+          <div style="margin-top:10px;padding:10px 12px;border:1px solid #f0c674;background:#fff8e6;border-radius:6px;color:#7a5300;text-align:left">
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">⚠ ${failed.length} line${failed.length===1?'':'s'} not added to the order</div>
+            <div style="font-size:12px;margin-bottom:6px">Eclipse could not resolve the following item${failed.length===1?'':'s'}. Add ${failed.length===1?'it':'them'} manually in Eclipse before sending.</div>
+            <ul style="margin:0;padding-left:18px;font-size:12px;color:#333">${failRows}</ul>
+          </div>`;
+      } else {
+        statusEl.style.color = '#0f6e56';
+        statusEl.textContent = `✓ Quote created in Eclipse — Order #${data.orderId}`;
+      }
+      logEvent('eclipse_push', {
+        orderId: data.orderId,
+        customer: selectedCustomer?.name || qSelectedCustomer?.name,
+        systems: quote.length,
+        failedLineCount: failed.length,
+        failedLines: failed.map(f => f.model || f.sku).filter(Boolean)
+      });
       document.getElementById('modal-close-btn').style.display = 'block';
     } else if (res.status === 401) {
       statusEl.style.color = '#E24B4A';
@@ -6709,6 +6736,19 @@ function renderChallengeToday() {
     </div>`;
   }
 
+  // In-progress attempt (server says they started but didn't finish) → offer Resume.
+  // Calling startChallenge() in this state will be allowed by the server (resumed=true).
+  if (d.in_progress && d.attempt) {
+    body.innerHTML = trialBanner + seasonHtml + `
+      <div style="padding:14px;background:#fff4e0;border-left:3px solid #b06800;border-radius:0 8px 8px 0;margin-bottom:14px;font-size:13px;line-height:1.5">
+        <b>⏸ Attempt in progress</b> — you started today's challenge but didn't finish.
+        You can pick up where you left off. The timer reflects the actual elapsed time since you started.
+      </div>
+      <button onclick="startChallenge()" style="width:100%;height:42px;background:#b06800;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Resume Challenge →</button>
+    `;
+    return;
+  }
+
   // Already attempted today?
   if (d.already_attempted && d.attempt) {
     const playAgainBtn = d.is_trial
@@ -6802,6 +6842,51 @@ async function adminResetMyAttempt() {
 // ── PLAY MODE ───────────────────────────────────────────────────────
 async function startChallenge() {
   if (!_ch.today || !_ch.today.scenarios) return;
+
+  // Server-side attempt lock: claim the attempt BEFORE clearing client state.
+  // Prevents the refresh/logout exploit (start → play → bail → restart fresh).
+  // - 201: brand new in_progress row, proceed normally
+  // - 409 with resumed=true: existing in_progress row, treat as resume (allowed)
+  // - 409 with resumed=false: existing completed row, block (unless trial)
+  const user = challengeUsername();
+  const date = _ch.today.challenge_date;
+  const isTrial = !!_ch.today.is_trial;
+  try {
+    const startRes = await fetch('/api/challenge-start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: user,
+        challenge_date: date,
+        scenario_ids: (_ch.today.scenarios || []).map(s => s.id || s.scenario_id).filter(Boolean)
+      })
+    });
+    if (startRes.status === 404) {
+      // Endpoint not deployed yet — degrade gracefully so dev/preview environments still work.
+      console.warn('[challenge] /api/challenge-start not found, skipping server lock');
+    } else if (startRes.ok || startRes.status === 409) {
+      const startData = await startRes.json().catch(() => ({}));
+      // Block restart of completed attempts (cheat). Trial mode is the only exception.
+      if (startRes.status === 409 && !startData.resumed && !isTrial) {
+        alert("You've already completed today's challenge. You can't restart it.");
+        await loadChallengeToday();
+        return;
+      }
+      // Resume case: stash the original started_at so the timer reflects real elapsed time
+      if (startData.attempt && startData.attempt.started_at) {
+        _ch.serverStartedAt = startData.attempt.started_at;
+      }
+    } else {
+      console.warn('[challenge] start failed', startRes.status);
+      alert("Couldn't start the challenge — please try again in a moment.");
+      return;
+    }
+  } catch (e) {
+    console.warn('[challenge] start network error', e);
+    alert("Couldn't reach the challenge server. Try again.");
+    return;
+  }
+
   // Make sure all addon data needed by injectDefaultAddons is loaded.
   // If user starts a challenge before page-load finishes these, the first system added during
   // the challenge will be missing default add-ons (line sets, whips, etc.).
@@ -6837,7 +6922,10 @@ async function startChallenge() {
   // Initialize challenge run
   _ch.scenarioIdx = 0;
   _ch.submissions = [];
-  _ch.startedAt = new Date().toISOString();
+  // If the server returned an existing started_at (resume case), use it so the timer
+  // reflects real elapsed time. Otherwise stamp now.
+  _ch.startedAt = _ch.serverStartedAt || new Date().toISOString();
+  _ch.serverStartedAt = null;
   startChallengeTimer();
   showChallengePlayPanel();
   renderChallengePlayPanel();
