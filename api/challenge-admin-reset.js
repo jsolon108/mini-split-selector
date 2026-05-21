@@ -26,9 +26,11 @@ export default async function handler(req, res) {
 
     const headers = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` };
 
-    // Verify admin: must exist in admin_users
+    // Verify admin: must exist in admin_users. Case-insensitive match to mirror
+    // the client-side isAdmin() check (which lowercases both sides).
+    const adminLookup = encodeURIComponent(`*${admin_username.trim()}*`);
     const adminCheck = await fetch(
-      `${SB_URL}/rest/v1/admin_users?username=eq.${encodeURIComponent(admin_username)}&select=username&limit=1`,
+      `${SB_URL}/rest/v1/admin_users?username=ilike.${encodeURIComponent(admin_username.trim())}&select=username&limit=1`,
       { headers }
     );
     const adminRows = await adminCheck.json();
