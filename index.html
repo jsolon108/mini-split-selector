@@ -6872,9 +6872,16 @@ async function startChallenge() {
         await loadChallengeToday();
         return;
       }
-      // Resume case: stash the original started_at so the timer reflects real elapsed time
-      if (startData.attempt && startData.attempt.started_at) {
-        _ch.serverStartedAt = startData.attempt.started_at;
+      // Resume case: stash the original started_at so the timer reflects real elapsed time,
+      // and stash any prior per-scenario progress so we restore it after clearing state.
+      if (startData.attempt) {
+        if (startData.attempt.started_at) _ch.serverStartedAt = startData.attempt.started_at;
+        if (typeof startData.attempt.scenario_idx === 'number') {
+          _ch.resumeScenarioIdx = startData.attempt.scenario_idx;
+        }
+        if (Array.isArray(startData.attempt.submissions)) {
+          _ch.resumeSubmissions = startData.attempt.submissions;
+        }
       }
     } else {
       console.warn('[challenge] start failed', startRes.status);
@@ -6919,13 +6926,29 @@ async function startChallenge() {
   quoteWideState.customItems = {};
   if (quoteWideState.lineComments) quoteWideState.lineComments.length = 0;
 
-  // Initialize challenge run
-  _ch.scenarioIdx = 0;
-  _ch.submissions = [];
+  // Initialize challenge run. Use server-side progress if resuming so refresh
+  // lands on the correct scenario with prior submissions preserved.
+  _ch.scenarioIdx = (typeof _ch.resumeScenarioIdx === 'number') ? _ch.resumeScenarioIdx : 0;
+  _ch.submissions = Array.isArray(_ch.resumeSubmissions) ? _ch.resumeSubmissions : [];
+  _ch.resumeScenarioIdx = null;
+  _ch.resumeSubmissions = null;
   // If the server returned an existing started_at (resume case), use it so the timer
   // reflects real elapsed time. Otherwise stamp now.
   _ch.startedAt = _ch.serverStartedAt || new Date().toISOString();
   _ch.serverStartedAt = null;
+
+  // If they've already completed all scenarios via resume (e.g. they refreshed
+  // between the last scenario and the final submit), jump straight to finish.
+  const scenarioCount = (_ch.today.scenarios || []).length;
+  if (_ch.scenarioIdx >= scenarioCount && _ch.submissions.length >= scenarioCount) {
+    startChallengeTimer();
+    showChallengePlayPanel();
+    setEclipseActionsEnabled(false);
+    document.getElementById('challenge-overlay').classList.remove('open');
+    try { logEvent('challenge_resumed_to_finish', {}); } catch(e) {}
+    finishChallenge();
+    return;
+  }
   startChallengeTimer();
   showChallengePlayPanel();
   renderChallengePlayPanel();
@@ -7178,6 +7201,25 @@ async function submitChallengeScenario() {
   if (typeof updateCount === 'function') updateCount();
 
   _ch.scenarioIdx++;
+
+  // Persist progress to the server so a refresh resumes from this point.
+  // Fire-and-forget — if it fails, we log but don't block the user from continuing.
+  // The in-memory state is still authoritative for this session; the server copy
+  // is only consulted on resume.
+  try {
+    fetch('/api/challenge-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: challengeUsername(),
+        challenge_date: _ch.today.challenge_date,
+        scenario_idx: _ch.scenarioIdx,
+        submissions: _ch.submissions
+      })
+    }).then(r => { if (!r.ok) console.warn('[challenge] progress save returned', r.status); })
+      .catch(e => console.warn('[challenge] progress save failed', e));
+  } catch(e) { console.warn('[challenge] progress save threw', e); }
+
   if (_ch.scenarioIdx < scenarios.length) {
     renderChallengePlayPanel();
     return;
