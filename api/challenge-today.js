@@ -6,8 +6,9 @@
 // Returns: {
 //   challenge_date: "YYYY-MM-DD",
 //   scenarios: [{ id, name, customer_blurb, difficulty }, ...] (3 items, NO spec)
-//   already_attempted: boolean
-//   attempt: { ... } | null  (if already attempted today)
+//   already_attempted: boolean   // true only for COMPLETED attempts (gates the start UI)
+//   in_progress: boolean         // true if user has a started-but-not-submitted row
+//   attempt: { ... } | null      // the row (completed OR in_progress)
 //   season: { id, name, start_date, end_date, prize_text } | null
 // }
 //
@@ -121,12 +122,16 @@ export default async function handler(req, res) {
     const byId = Object.fromEntries(scenarios.map(s => [s.id, s]));
     const orderedScenarios = scenarioIds.map(id => byId[id]).filter(Boolean);
 
-    // Has this user already attempted today?
+    // Has this user already attempted today? Look up ANY status (completed or in_progress).
+    // We expose `already_attempted` (legacy meaning = completed only) AND `in_progress`
+    // so the client can decide whether to show results or resume the run.
     const attemptRows = await fetchJson(
-      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challengeDate}&select=*&order=completed_at.desc&limit=1`,
+      `${SB_URL}/rest/v1/challenge_attempts?username=eq.${encodeURIComponent(username)}&challenge_date=eq.${challengeDate}&select=*&order=completed_at.desc.nullslast&limit=1`,
       { headers }
     );
     const attempt = attemptRows[0] || null;
+    const isCompleted = !!attempt && attempt.status === 'completed';
+    const isInProgress = !!attempt && attempt.status === 'in_progress';
 
     // Pull active season (if any)
     const seasonRows = await fetchJson(
@@ -138,7 +143,8 @@ export default async function handler(req, res) {
       challenge_date: challengeDate,
       is_trial: !!daily.is_trial,
       scenarios: orderedScenarios,
-      already_attempted: !!attempt,
+      already_attempted: isCompleted,
+      in_progress: isInProgress,
       attempt,
       season: seasonRows[0] || null
     });
