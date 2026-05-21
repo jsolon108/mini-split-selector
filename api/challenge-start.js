@@ -39,7 +39,11 @@ async function fetchJson(url, opts) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { username, challenge_date, scenario_ids } = req.body || {};
+    let { username, challenge_date, scenario_ids } = req.body || {};
+    // Normalize username to lowercase for case-insensitive identity. The DB has
+    // a unique index on LOWER(username), so 'Foo' and 'foo' collide; we lowercase
+    // here so the row is stored in canonical form.
+    username = String(username || '').toLowerCase().trim();
     if (!username || !challenge_date) {
       return res.status(400).json({ error: 'username and challenge_date required' });
     }
