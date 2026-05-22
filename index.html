@@ -841,12 +841,18 @@ let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [
 
 // ── Usage tracking ────────────────────────────────────────────────
 function logEvent(action, detail = {}) {
+  // Skip logging if we don't know who the user is yet. Previously this defaulted to
+  // 'unknown' and produced a phantom user on the activity leaderboard whenever someone
+  // interacted with the app before logging into Eclipse. Events without identity are
+  // not useful — better to drop than to pollute.
+  const username = eclipseSession?.username;
+  if (!username) return;
   try {
     fetch(`${SB_URL}/rest/v1/usage_events`, {
       method: 'POST',
       headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
       body: JSON.stringify({
-        username: eclipseSession.username || 'unknown',
+        username: username.toLowerCase().trim(),
         action,
         detail,
         user_branch: localStorage.getItem('eclipseHomeBranch') || null,
