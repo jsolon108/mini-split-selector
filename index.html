@@ -839,6 +839,99 @@ const H = { 'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY };
 
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {}, MZ_COMBOS_AHU = {}, quote = [], mzState = {}, equipmentCatalogs = new Set();
 
+// ── One-time announcements ────────────────────────────────────────
+// Each entry has an id and renders once per user (acked-state stored in localStorage
+// under `acked_announcements`). Add new entries above older ones. Old entries can
+// stay — once a user has seen + dismissed an id, it won't show again.
+const ANNOUNCEMENTS = [
+  {
+    id: 'prize_boost_2026_05_25',
+    title: '🎉 Prize Pool Just Got Bigger',
+    headline: 'Top 5 win Amazon gift cards',
+    body: `
+      <div style="font-size:14px;line-height:1.5;color:#333">
+        With one week left, we're boosting the prize pool and expanding to the
+        top 5 finishers:
+      </div>
+      <div style="margin:16px 0;padding:14px;background:linear-gradient(135deg,#0f6e56,#185FA5);border-radius:10px;color:#fff">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.2)">
+          <span style="font-weight:700">🥇 1st place</span><span style="font-weight:700;font-size:18px">$200</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.2)">
+          <span style="font-weight:700">🥈 2nd place</span><span style="font-weight:700;font-size:18px">$100</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.2)">
+          <span style="font-weight:700">🥉 3rd place</span><span style="font-weight:700;font-size:18px">$75</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.2)">
+          <span style="font-weight:700">4th place</span><span style="font-weight:700;font-size:18px">$50</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">
+          <span style="font-weight:700">5th place</span><span style="font-weight:700;font-size:18px">$25</span>
+        </div>
+      </div>
+      <div style="font-size:13px;color:#555;line-height:1.5">
+        Every challenge day matters. Even if you've missed a few, you can still
+        climb the leaderboard. <b>6 challenge days left.</b>
+      </div>
+    `,
+    cta: "Let's go →"
+  }
+];
+
+function _ackedAnnouncements() {
+  try { return new Set(JSON.parse(localStorage.getItem('acked_announcements') || '[]')); }
+  catch(e) { return new Set(); }
+}
+function _saveAckedAnnouncement(id) {
+  const s = _ackedAnnouncements();
+  s.add(id);
+  try { localStorage.setItem('acked_announcements', JSON.stringify([...s])); } catch(e) {}
+}
+
+function showPendingAnnouncements() {
+  const acked = _ackedAnnouncements();
+  const pending = ANNOUNCEMENTS.filter(a => !acked.has(a.id));
+  if (!pending.length) return;
+  // Show the first unacked one. If multiple are pending, the next will show
+  // on next login (or you can chain by calling showPendingAnnouncements()
+  // again from the dismiss handler).
+  _renderAnnouncement(pending[0]);
+}
+
+function _renderAnnouncement(a) {
+  // Remove any existing announcement overlay
+  document.getElementById('announcement-overlay')?.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'announcement-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,20,30,.55);display:flex;align-items:center;justify-content:center;z-index:10000;padding:20px;animation:fadeIn .2s ease-out';
+  overlay.innerHTML = `
+    <style>
+      @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
+    </style>
+    <div style="background:#fff;border-radius:14px;max-width:480px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:slideUp .3s ease-out">
+      <div style="padding:24px 24px 8px;border-bottom:1px solid #eee">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#185FA5;margin-bottom:6px">Announcement</div>
+        <div style="font-size:22px;font-weight:800;color:#1a1a1a;line-height:1.2">${escHtml(a.title)}</div>
+        <div style="font-size:14px;color:#666;margin-top:4px">${escHtml(a.headline)}</div>
+      </div>
+      <div style="padding:18px 24px 4px">${a.body}</div>
+      <div style="padding:16px 24px 24px;display:flex;gap:8px;justify-content:flex-end">
+        <button id="ann-dismiss-btn" style="padding:10px 22px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">${escHtml(a.cta || 'Got it')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const dismiss = () => {
+    _saveAckedAnnouncement(a.id);
+    overlay.remove();
+    try { logEvent('announcement_dismissed', { id: a.id }); } catch(e) {}
+  };
+  document.getElementById('ann-dismiss-btn').onclick = dismiss;
+  // Click-outside-to-close
+  overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(); });
+}
+
 // ── Usage tracking ────────────────────────────────────────────────
 function logEvent(action, detail = {}) {
   // Skip logging if we don't know who the user is yet. Previously this defaulted to
@@ -5317,6 +5410,10 @@ async function doLogin() {
     if (data.homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = data.homeBranch; }
     loadAdminUsers(true).then(refreshAdminUI);
     if (typeof resumeChallengeTimer === 'function') resumeChallengeTimer();
+    // Surface any one-time announcements (prize boost, schedule changes, etc.).
+    if (typeof showPendingAnnouncements === 'function') {
+      try { showPendingAnnouncements(); } catch(e) { console.warn(e); }
+    }
   } catch (err) {
     errEl.textContent = 'Network error — ' + err.message;
     btn.disabled = false;
@@ -5352,6 +5449,13 @@ function eclipseLogout() {
     document.getElementById('user-badge').style.display = '';
     if (homeBranch) { const b = document.getElementById('modal-branch'); if (b) b.value = homeBranch; }
     loadAdminUsers(true).then(refreshAdminUI);
+    // Show announcements for returning users too. Delay so the rest of the UI
+    // is rendered first — the modal feels nicer arriving a beat after the page.
+    setTimeout(() => {
+      if (typeof showPendingAnnouncements === 'function') {
+        try { showPendingAnnouncements(); } catch(e) { console.warn(e); }
+      }
+    }, 600);
   } else {
     document.getElementById('login-overlay').classList.add('visible');
   }
