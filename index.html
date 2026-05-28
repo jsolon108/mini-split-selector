@@ -619,7 +619,7 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div class="tab" onclick="switchTab('recent')">Recent Quotes</div>
     <div class="tab" onclick="switchTab('open')">Open Orders</div>
     <div class="tab" onclick="switchTab('alerts')" title="Manage header alert banners">📣 Alerts</div>
-    <div class="tab" onclick="switchTab('cats')" title="Manage add-on category rules">⚙️ Categories</div>
+    <div class="tab" onclick="switchTab('cats')" title="Manage product data, categories &amp; rules">🛠️ Product Admin</div>
     <div class="tab" onclick="switchTab('import')" title="Import unitary catalog (admin)">📥 Catalog Import</div>
   </div>
 
@@ -1048,7 +1048,7 @@ function switchTab(t) {
   document.querySelectorAll('.panel').forEach(el => {
     el.classList.toggle('active', el.id === 'panel-' + t);
   });
-  if (t === 'cats') { renderCategories(); renderFeatureFlags(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); renderExclusions(); }
+  if (t === 'cats') { renderCategories(); renderFeatureFlags(); renderCommonAddonsAdmin(); renderDefaultAddonsTable(); renderExclusions(); renderWifiAdmin(); }
   if (t === 'unitary') renderUnitary();
   if (t === 'import') renderImport();
   if (t === 'alerts') renderAlertsAdmin();
@@ -3336,6 +3336,89 @@ async function deleteAddonRule(id) {
     renderCategories();
   } catch(e) {
     alert('Delete failed: ' + e.message);
+  }
+}
+
+// ─── Factory WiFi admin ────────────────────────────────────────────────────
+// WiFi is a per-MODEL attribute. We edit by model and write every matching row
+// in BOTH ductless_sz (iu column) and ductless_mz_idu (model column) so the flag
+// can never end up half-set across a model's ODU mappings.
+function buildWifiModelMap() {
+  const map = new Map();
+  (SZ || []).forEach(s => {
+    if (!s.iu) return;
+    const m = map.get(s.iu) || { model: s.iu, brand: s.brand || '', types: new Set(), flags: [] };
+    if (s.indoor) m.types.add(s.indoor);
+    m.flags.push(!!s.factory_wifi);
+    map.set(s.iu, m);
+  });
+  const ouBrand = {};
+  (MZ || []).forEach(o => { ouBrand[o.id] = o.brand; });
+  Object.entries(MZ_IDU || {}).forEach(([ouId, rows]) => {
+    (rows || []).forEach(r => {
+      if (!r.model) return;
+      const m = map.get(r.model) || { model: r.model, brand: ouBrand[ouId] || '', types: new Set(), flags: [] };
+      if (!m.brand) m.brand = ouBrand[ouId] || '';
+      if (r.type) m.types.add(r.type);
+      m.flags.push(!!r.factory_wifi);
+      map.set(r.model, m);
+    });
+  });
+  return [...map.values()].map(m => {
+    const allTrue = m.flags.length > 0 && m.flags.every(f => f);
+    const anyTrue = m.flags.some(f => f);
+    return { model: m.model, brand: m.brand, types: [...m.types].join(', '), wifi: allTrue, mixed: anyTrue && !allTrue };
+  });
+}
+
+function renderWifiAdmin() {
+  const wrap = document.getElementById('wifi-admin-table');
+  if (!wrap) return;
+  const q = (document.getElementById('wifi-admin-search')?.value || '').toLowerCase().trim();
+  let rows = buildWifiModelMap();
+  if (q) rows = rows.filter(r =>
+    (r.model || '').toLowerCase().includes(q) ||
+    (r.brand || '').toLowerCase().includes(q) ||
+    (r.types || '').toLowerCase().includes(q));
+  rows.sort((a, b) => (a.brand || '').localeCompare(b.brand || '') || (a.model || '').localeCompare(b.model || ''));
+  if (!rows.length) { wrap.innerHTML = '<div style="color:#999;padding:10px;font-size:13px">No models match.</div>'; return; }
+  wrap.innerHTML = rows.map(r => `
+    <label style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid #f3f3f3;font-size:13px;cursor:pointer">
+      <input type="checkbox" ${r.wifi ? 'checked' : ''} onchange="toggleWifiAdmin('${(r.model||'').replace(/'/g,"\\'")}', this.checked)">
+      <span style="min-width:64px;color:#666">${escHtml(r.brand || '')}</span>
+      <span style="flex:1;font-family:'SF Mono',monospace;font-size:12px">${escHtml(r.model)}</span>
+      <span style="color:#999;font-size:11px">${escHtml(r.types)}</span>
+      ${r.mixed ? '<span style="color:#b06800;font-size:11px;font-weight:600" title="Some rows true, some false — toggling normalizes all of them">⚠ mixed</span>' : ''}
+    </label>`).join('');
+}
+
+async function saveFactoryWifi(model, newVal) {
+  const reqs = [
+    fetch(`${SB_URL}/rest/v1/ductless_sz?iu=eq.${encodeURIComponent(model)}`, {
+      method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ factory_wifi: newVal })
+    }),
+    fetch(`${SB_URL}/rest/v1/ductless_mz_idu?model=eq.${encodeURIComponent(model)}`, {
+      method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ factory_wifi: newVal })
+    })
+  ];
+  const results = await Promise.all(reqs);
+  for (const r of results) { if (!r.ok) throw new Error(await r.text()); }
+  // Update in-memory catalogs so the rest of the UI reflects the change without a reload.
+  (SZ || []).forEach(s => { if (s.iu === model) s.factory_wifi = newVal; });
+  Object.values(MZ_IDU || {}).flat().forEach(r => { if (r.model === model) r.factory_wifi = newVal; });
+}
+
+async function toggleWifiAdmin(model, checked) {
+  try {
+    await saveFactoryWifi(model, checked);
+    renderWifiAdmin();
+    if (typeof renderSingle === 'function') renderSingle();
+    if (typeof renderMZResults === 'function') renderMZResults();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+    renderWifiAdmin();
   }
 }
 
@@ -6277,6 +6360,16 @@ async function renderDefaultAddonsTable() {
 
   <div class="panel" id="panel-cats">
     <div style="max-width:880px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <h2 style="font-size:18px;font-weight:600;margin:0">Factory WiFi</h2>
+        <span style="font-size:12px;color:#666">Flag indoor units that ship with WiFi built in. Drives the single-zone filter/badge and the multi-zone badge.</span>
+      </div>
+      <div style="background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:14px;margin-bottom:24px">
+        <input id="wifi-admin-search" oninput="renderWifiAdmin()" placeholder="Filter by brand, model, or type…"
+          style="width:100%;height:32px;padding:0 10px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:10px"/>
+        <div id="wifi-admin-table" style="max-height:420px;overflow:auto;border:1px solid #f0f0f0;border-radius:6px"></div>
+        <div style="font-size:11px;color:#999;margin-top:8px">Toggling a model updates every matching unit in both the single-zone and multi-zone catalogs at once, so the flag stays consistent.</div>
+      </div>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <h2 style="font-size:18px;font-weight:600;margin:0">Add-on Category Rules</h2>
         <span style="font-size:12px;color:#666">Rules categorize Eclipse tag-along accessories. Lower priority = checked first.</span>
