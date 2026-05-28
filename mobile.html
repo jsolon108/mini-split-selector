@@ -1900,6 +1900,7 @@ function toggleAddonItem(qi, ai) {
   const addon = quote[qi]?.addons?.[ai];
   if (!addon || addon.required) return;
   addon.checked = !addon.checked;
+  if (addon.isSubstitute && !addon.checked) { removeSubAddonMobile(qi, ai); return; }
   renderQuoteTab();
   if (addon.checked && !addon.subSuggestion) checkAddonSub(qi, ai);
 }
@@ -1908,6 +1909,7 @@ function setAddonQtyMobile(qi, ai, val) {
   const a = quote[qi]?.addons?.[ai];
   if (!a) return;
   const v = Math.max(0, Math.floor(val || 0));
+  if (v === 0 && a.isSubstitute) { removeSubAddonMobile(qi, ai); return; }
   if (v === 0) { a.checked = false; a.qtyOverride = null; }
   else { a.qtyOverride = (v === a.qtyNeeded) ? null : v; if (!a.checked) a.checked = true; }
   renderQuoteTab();
