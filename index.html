@@ -1630,7 +1630,7 @@ function renderQuote() {
               <span style="color:#555;flex:1">${s.description}</span>
               <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
               <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
-              <button onclick="swapAddonForSub(${qi},${ai},'${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}')"
+              <button onclick="swapAddonForSub(${qi},${ai},'${escAttr(s.catalogNumber)}','${escAttr(s.description)}')"
                 style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">
                 Use this
               </button>
@@ -2635,7 +2635,7 @@ function renderCommonAddonsSection() {
               <span style="color:#555;flex:1">${s.description}</span>
               <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
               <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
-              <button onclick="swapWideItemForSub('${escAttr(a.sku)}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','common')"
+              <button onclick="swapWideItemForSub('${escAttr(a.sku)}','${escAttr(s.catalogNumber)}','${escAttr(s.description)}','common')"
                 style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Use this</button>
             </div>`
           ).join('') : '';
@@ -2733,7 +2733,7 @@ function renderLineHideSection() {
             <span style="color:#555;flex:1">${s.description}</span>
             <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
             <span style="font-weight:600">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
-            <button onclick="swapWideItemForSub('${escAttr(p.order_num)}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','lineHide')"
+            <button onclick="swapWideItemForSub('${escAttr(p.order_num)}','${escAttr(s.catalogNumber)}','${escAttr(s.description)}','lineHide')"
               style="padding:2px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Use this</button>
           </div>`
         ).join('') : '';
@@ -4328,7 +4328,7 @@ async function doDesktopPreview() {
                 <span style="color:#555;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.description}</span>
                 <span style="color:#0f6e56;font-weight:600">${s.branchQty} available</span>
                 <span style="font-weight:600;min-width:60px;text-align:right">${s.unitPrice != null ? '$'+s.unitPrice.toFixed(2) : '—'}</span>
-                <button onclick="swapForSub('${cat}','${s.catalogNumber}','${(s.description||'').replace(/'/g,"\\'")}')" 
+                <button onclick="swapForSub('${cat}','${escAttr(s.catalogNumber)}','${escAttr(s.description)}')" 
                   style="flex-shrink:0;padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">
                   Use this
                 </button>
