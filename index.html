@@ -1374,7 +1374,8 @@ function renderMZResultCard(o) {
   // Resolve actual model numbers for this ODU
   const zoneLines = mzZoneState.map((z, i) => {
     if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:13px">— empty —</div></div>`;
-    const row = iduRow(o.id, z.cap, z.type) || iduRows(o.id).find(r => r.cap===z.cap && r.type===z.type);
+    const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(o.id).some(r=>r.cap===c && r.type===z.type)) || z.cap) : z.cap;
+    const row = iduRow(o.id, capToUse, z.type) || iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
     const wifiBadge = (row && row.factory_wifi) ? ' <span style="font-size:10px;font-weight:600;color:#0f6e56;background:#e8f5e9;border:1px solid #cce9d9;border-radius:4px;padding:1px 5px;vertical-align:middle" title="Factory-installed WiFi">WiFi</span>' : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
