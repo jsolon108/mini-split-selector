@@ -8163,6 +8163,8 @@ function removeAddonFromSystem(qi, ai) {
   if (!q || !Array.isArray(q.addons)) return;
   const a = q.addons[ai];
   if (!a) return;
+  // Substitute lines fully revert: remove the sub and restore the grayed original.
+  if (a.isSubstitute) { removeSubAddon(qi, ai); return; }
   if (a.isCommon || a.isDefault) {
     q.addons.splice(ai, 1);
   } else {
