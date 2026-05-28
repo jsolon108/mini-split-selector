@@ -1375,10 +1375,11 @@ function renderMZResultCard(o) {
   const zoneLines = mzZoneState.map((z, i) => {
     if (!z.cap) return `<div class="zone-row"><span class="zone-label">Zone ${i+1}</span><div class="zone-selects" style="color:#bbb;font-size:13px">— empty —</div></div>`;
     const row = iduRow(o.id, z.cap, z.type) || iduRows(o.id).find(r => r.cap===z.cap && r.type===z.type);
+    const wifiBadge = (row && row.factory_wifi) ? ' <span style="font-size:10px;font-weight:600;color:#0f6e56;background:#e8f5e9;border:1px solid #cce9d9;border-radius:4px;padding:1px 5px;vertical-align:middle" title="Factory-installed WiFi">WiFi</span>' : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <div style="font-size:13px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}</div>
+        <div style="font-size:13px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}${wifiBadge}</div>
       </div>
     </div>`;
   }).join('');
