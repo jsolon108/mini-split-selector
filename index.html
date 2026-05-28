@@ -4075,12 +4075,29 @@ async function checkAddonSub(qi, ai) {
 }
 
 function swapAddonForSub(qi, ai, subCat, subDesc) {
-  const addon = quote[qi]?.addons?.[ai];
+  const q = quote[qi];
+  const addon = q?.addons?.[ai];
   if (!addon) return;
-  addon.catalogNumber = subCat;
-  addon.description = subDesc || subCat;
-  addon.subSuggestion = null;
-  quotePricing = {};
+  // Leave the original add-on row exactly as it is. Add the substitute as its own
+  // checked line in the same category. Idempotent: if it's already there, just re-check it.
+  const existing = q.addons.find(a => a.catalogNumber === subCat);
+  if (existing) {
+    existing.checked = true;
+  } else {
+    q.addons.push({
+      catalogNumber: subCat,
+      description: subDesc || subCat,
+      qtyNeeded: addon.qtyNeeded || 1,
+      qtyOverride: null,
+      qty: addon.qty,
+      required: false,
+      tagAlongType: addon.tagAlongType || '',
+      category: addon.category,
+      checked: true,
+      isSubstitute: true,
+      subFor: addon.catalogNumber
+    });
+  }
   renderQuote();
   getPricing();
 }
