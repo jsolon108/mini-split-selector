@@ -628,6 +628,7 @@ select:focus,input:focus{outline:none;border-color:#999}
       <select id="s-brand" onchange="renderSingle()"><option value="">All brands</option><option>Daikin</option><option>Hisense</option><option>Bosch</option><option>Fujitsu</option></select>
       <select id="s-cap" onchange="renderSingle()"><option value="">All capacities</option><option value="9">9K</option><option value="12">12K</option><option value="15">15K</option><option value="18">18K</option><option value="24">24K</option><option value="30">30K</option><option value="36">36K</option><option value="42">42K</option><option value="48">48K</option><option value="60">60K</option></select>
       <select id="s-indoor" onchange="renderSingle()"><option value="">All indoor types</option><option value="Wall Mount">Wall mount</option><option value="4-Way Cassette">4-Way cassette</option><option value="1-Way Cassette">1-Way cassette</option><option value="Ducted">Ducted</option><option value="Floor">Floor mount</option><option value="Air Handler">Air handler</option><option value="Ceiling">Ceiling susp.</option></select>
+      <select id="s-wifi" onchange="renderSingle()"><option value="">WiFi (any)</option><option value="yes">Factory WiFi</option><option value="no">No factory WiFi</option></select>
       <button onclick="clearSingle()" style="white-space:nowrap;height:36px;padding:0 14px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:13px;cursor:pointer;color:#666;flex-shrink:0">Reset Filters</button>
     </div>
     <div class="results" id="single-results"><div class="loading">Loading...</div></div>
@@ -1056,7 +1057,8 @@ function switchTab(t) {
 
 function renderSingle() {
   const b=document.getElementById('s-brand').value, c=document.getElementById('s-cap').value, ind=document.getElementById('s-indoor').value;
-  const list=SZ.filter(s=>(!b||s.brand===b)&&(!c||s.cap===+c)&&(!ind||s.indoor.includes(ind)));
+  const wf=document.getElementById('s-wifi').value;
+  const list=SZ.filter(s=>(!b||s.brand===b)&&(!c||s.cap===+c)&&(!ind||s.indoor.includes(ind))&&(!wf||(wf==='yes'?s.factory_wifi===true:s.factory_wifi!==true)));
   const el=document.getElementById('single-results');
   if (!list.length){el.innerHTML='<div class="no-res">No systems match.</div>';return;}
   el.innerHTML=list.map(s=>{
@@ -1064,7 +1066,7 @@ function renderSingle() {
     return `<div class="sys-card${inQ?' in-quote':''}">
       <div class="card-row">
         <div style="flex:1;min-width:0">
-          <div class="sys-name">${s.brand} ${s.series} — ${s.cap}K <span class="badge">${s.ref}</span></div>
+          <div class="sys-name">${s.brand} ${s.series} — ${s.cap}K <span class="badge">${s.ref}</span>${s.factory_wifi?' <span class="badge" style="background:#e8f5e9;color:#0f6e56;border-color:#cce9d9" title="Factory-installed WiFi">WiFi</span>':''}</div>
           <div class="sys-models">ODU: ${s.ou} · IDU: ${s.iu} <button class="inv-btn" onclick="showSZInvModal('${s.ou}','${s.iu}')">Inv</button></div>
           <div class="sys-specs">
             ${s.seer2?`<div class="spec">SEER2 <b>${s.seer2}</b></div>`:''}
@@ -5059,6 +5061,7 @@ function clearSingle() {
   document.getElementById('s-brand').value = '';
   document.getElementById('s-cap').value = '';
   document.getElementById('s-indoor').value = '';
+  document.getElementById('s-wifi').value = '';
   renderSingle();
 }
 
