@@ -6675,6 +6675,9 @@ async function submitFeedback() {
   <div style="font-size:11px;color:#888;font-style:italic;line-height:1.4;padding:8px 10px;background:#f8f9fa;border-radius:6px;margin-bottom:12px">
     Any SKU in each category counts — pick any pad, any whip, etc. Line sets must match the equipment's connection size.
   </div>
+  <div id="cplay-wifi-note" style="display:none;font-size:11px;color:#0f6e56;line-height:1.4;padding:8px 10px;background:#e8f5e9;border-radius:6px;margin-bottom:12px">
+    ℹ️ Factory-installed WiFi counts toward the WiFi requirement — if the unit already includes WiFi, no separate module is needed.
+  </div>
   <div style="display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-top:1px solid #eee;border-bottom:1px solid #eee;margin-bottom:12px">
     <span style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.05em">Total time</span>
     <span id="cplay-timer" style="font-family:'SF Mono',monospace;font-size:18px;font-weight:700;color:#0f6e56">0:00</span>
@@ -7253,6 +7256,8 @@ function renderChallengePlayPanel() {
   document.getElementById('cplay-progress').textContent = `Scenario ${idx+1} of ${scenarios.length}`;
   document.getElementById('cplay-scenario-name').textContent = s.name;
   document.getElementById('cplay-scenario-blurb').textContent = s.customer_blurb;
+  const wifiNote = document.getElementById('cplay-wifi-note');
+  if (wifiNote) wifiNote.style.display = /wifi/i.test(s.customer_blurb || '') ? 'block' : 'none';
   const diff = s.difficulty;
   const lbl = diff === 1 ? 'Easy' : diff === 2 ? 'Medium' : 'Hard';
   const bg = diff === 1 ? '#e8f5e9' : diff === 2 ? '#fff4e0' : '#fde8e8';
