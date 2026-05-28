@@ -4678,7 +4678,7 @@ function renderLedgerNote(outKey) {
 
   // Transfer branches: show per-branch if available, or generic note if totalQty > userQty
   branchStock.forEach(b => parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`));
-  if (showTransferNote) parts.push(`<span style="color:#0f6e56">available at other branches ⇄</span>`);
+  if (showTransferNote) parts.push(`<button onclick="showInvModal('${escAttr(outKey)}','${escAttr(outKey)}')" style="background:none;border:none;color:#0f6e56;cursor:pointer;font:inherit;padding:0;text-decoration:underline;text-underline-offset:2px">available at other branches ⇄</button>`);
 
   if (!parts.length) return '';
 
