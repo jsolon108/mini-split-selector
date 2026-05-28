@@ -4014,6 +4014,8 @@ function toggleAddonCategory(qi, cat) {
 function toggleAddon(qi, ai) {
   const addon = quote[qi].addons[ai];
   addon.checked = !addon.checked;
+  // Unchecking a substitute removes it entirely and restores the original it replaced.
+  if (addon.isSubstitute && !addon.checked) { removeSubAddon(qi, ai); return; }
   renderQuote();
   // When checking an addon, check availability and suggest sub if OOS
   if (!addon.subSuggestion) {
@@ -4121,6 +4123,8 @@ function setAddonQty(qi, ai, val) {
   const a = quote[qi].addons[ai];
   const v = Math.max(0, Math.floor(val || 0));
   if (v === 0) {
+    // Zeroing out a substitute reverts the swap (remove sub, restore original).
+    if (a.isSubstitute) { removeSubAddon(qi, ai); return; }
     // Treat 0 as "uncheck" — but keep the override null so it falls back to suggested if re-checked
     a.checked = false;
     a.qtyOverride = null;
