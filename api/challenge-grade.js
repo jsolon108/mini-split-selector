@@ -6,7 +6,8 @@
 //
 // Domain rules (see chat history):
 //   1. Cassettes have built-in condensate pumps — don't expect separate pump
-//   2. Hisense has factory WiFi — don't expect separate WiFi module
+//   2. WiFi is non-graded — factory-installed WiFi counts toward the WiFi
+//      requirement, and an add-on WiFi module is never penalized either way.
 //   3. Slimduct qty >= 2 → require coupler(s), qty = slimduct_qty - 1
 //   4. Surge protector: strict like everything else — only allowed when scenario lists it
 //   5. Line sets — Standard (paired LS... SKU) vs UV rated (DuraGuard, sold as separate
@@ -291,8 +292,7 @@ function gradeQuote(quote, scenario, lookups) {
   // but adding a pump to a cassette-only quote is technically an extra → fail.)
   const allCassette = zones.length > 0 && zones.every(z => /cassette/i.test(z.type || ''));
 
-  // Hisense factory WiFi — RULE 2
-  const isHisense = brand && brand.toLowerCase() === 'hisense';
+  // (WiFi handling is now brand-agnostic and non-graded — see RULE 2.)
 
   // 115V scenario — RULE 4 (surge forbidden)
   const is115V = spec.voltage === 115;
@@ -317,6 +317,10 @@ function gradeQuote(quote, scenario, lookups) {
   for (const req of required) {
     requiredTypes.add(req.type);
     const expectedQty = req.qty || 1;
+
+    // WiFi is non-graded: factory-installed WiFi (e.g. Hisense) counts toward the
+    // WiFi requirement, so missing an add-on module never fails. Skip the qty check.
+    if (req.type === 'wifi') continue;
 
     if (req.type === 'lineset') {
       // Helper: strip trailing quote/whitespace from pipe size strings ('1/4"' → '1/4')
@@ -486,11 +490,10 @@ function gradeQuote(quote, scenario, lookups) {
       continue;
     }
 
-    // RULE 2: Hisense quotes — extra WiFi module is wrong
-    if (type === 'wifi' && isHisense) {
-      fail.push(`WiFi module not needed on Hisense (factory installed)`);
-      continue;
-    }
+    // RULE 2: WiFi is non-graded. Factory-installed WiFi (Hisense ships with it)
+    // counts toward any WiFi requirement, and an add-on WiFi module is never
+    // penalized as an extra. Ignore WiFi entirely, regardless of brand.
+    if (type === 'wifi') continue;
 
     // Anything else not in the spec is an extra → fail (this catches surge_protector too).
     fail.push(`Unexpected ${type} on quote (${info.qty})`);
