@@ -2284,7 +2284,7 @@ function renderLedgerNote(outKey) {
     parts.push(`<span style="font-weight:600">${homeLed.qty}@${userBranch}${etaStr}</span>`);
   }
   branchStock.forEach(b => parts.push(`<span style="color:#0f6e56">${b.qty}@${b.code} ⇄</span>`));
-  if (showTransferNote) parts.push(`<span style="color:#0f6e56">available at other branches ⇄</span>`);
+  if (showTransferNote) parts.push(`<button onclick="showInvSheet('${esc(outKey.replace(/'/g,"\\'"))}','${esc(outKey.replace(/'/g,"\\'"))}')" style="background:none;border:none;color:#0f6e56;cursor:pointer;font:inherit;padding:0;text-decoration:underline">available at other branches ⇄</button>`);
   if (!parts.length) return '';
   const label = homeLed ? '📦 on order:' : '📦 on order, available to transfer:';
   return `<div style="margin-top:4px;padding:4px 0 4px 8px;font-size:11px;color:#555">${label} ${parts.join(', ')}</div>`;
