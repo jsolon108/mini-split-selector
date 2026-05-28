@@ -663,6 +663,7 @@ input[type=number] { -moz-appearance: textfield; }
       <div class="chip-row" id="sz-brand-chips"></div>
       <div class="chip-row" id="sz-cap-chips"></div>
       <div class="chip-row" id="sz-type-chips"></div>
+      <div class="chip-row" id="sz-wifi-chips"></div>
       <div id="sz-results"></div>
     </div>
 
@@ -865,7 +866,7 @@ let COMMON_ADDONS = null;
 // Catalog data — matches desktop schema exactly
 let SZ = [], MZ = [], MZ_IDU = {}, MZ_COMBOS = {};
 // SZ filter state
-let szBrandFilter = '', szCapFilter = '', szTypeFilter = '';
+let szBrandFilter = '', szCapFilter = '', szTypeFilter = '', szWifiFilter = '';
 // MZ zone state — zones-first approach matching desktop
 let mzZoneState = []; // [{cap, type, model, liq_pipe, gas_pipe}]
 let mzBrandFilter = '';
@@ -1087,12 +1088,19 @@ function renderSZTab() {
       `<div class="chip ${v===szTypeFilter?'active':''}" onclick="szType('${v}')">${esc(l)}</div>`
     ).join('');
 
+  // WiFi chips
+  document.getElementById('sz-wifi-chips').innerHTML =
+    [['', 'All WiFi'], ['yes', 'Factory WiFi'], ['no', 'No factory WiFi']].map(([v, l]) =>
+      `<div class="chip ${v===szWifiFilter?'active':''}" onclick="szWifi('${v}')">${esc(l)}</div>`
+    ).join('');
+
   // Filter results
   const term = (document.getElementById('sz-search')?.value || '').toLowerCase();
   let results = SZ.filter(s =>
     (!szBrandFilter || s.brand === szBrandFilter) &&
     (!szCapFilter || s.cap === +szCapFilter) &&
     (!szTypeFilter || s.indoor === szTypeFilter) &&
+    (!szWifiFilter || (szWifiFilter==='yes' ? s.factory_wifi===true : s.factory_wifi!==true)) &&
     (!term || `${s.brand} ${s.series} ${s.ou} ${s.iu} ${s.indoor}`.toLowerCase().includes(term))
   );
 
@@ -1114,7 +1122,7 @@ function renderSZTab() {
       <div class="product-inner">
         <div class="brand-badge">${esc((s.brand||'').substring(0,6))}</div>
         <div class="product-info">
-          <div class="product-name">${esc(s.brand)} ${esc(s.series)} — ${s.cap}K</div>
+          <div class="product-name">${esc(s.brand)} ${esc(s.series)} — ${s.cap}K${s.factory_wifi?' <span style="display:inline-block;font-size:9px;font-weight:700;color:var(--green);background:rgba(22,163,74,.12);border-radius:4px;padding:1px 5px;vertical-align:middle">WiFi</span>':''}</div>
           <div class="product-model">${esc(s.indoor)} · ${esc(s.ref||'')}</div>
           <div class="product-specs">ODU: ${esc(s.ou)}</div>
           <div class="product-specs">IDU: ${esc(s.iu)}</div>
@@ -1139,6 +1147,7 @@ function renderSZTab() {
 function szBrand(v) { szBrandFilter = v; renderSZTab(); }
 function szCap(v) { szCapFilter = v; renderSZTab(); }
 function szType(v) { szTypeFilter = v; renderSZTab(); }
+function szWifi(v) { szWifiFilter = v; renderSZTab(); }
 
 function szToggle(i) {
   const s = (window._szResults || [])[i];
@@ -1359,11 +1368,15 @@ function renderMZMatchingOUs() {
       const [ac, al] = dot==='g'?['g','In Stock']:dot==='y'?['y','Other Branch']:dot==='r'?['r','Out of Stock']:['u','—'];
       const inQ = quote.filter(q => q.qtype==='mz' && q.ou===o.ou).length;
       let totalPrice = pOu?.price || 0;
-      mzZoneState.forEach(z => {
+      const wifiZones = [];
+      mzZoneState.forEach((z, zi) => {
         if ((z.cap > 0 || z.cap === -1) && z.type) {
           const caps = z.cap === -1 ? [6,7] : [z.cap];
           const row = iduRows(o.id).find(r => caps.includes(r.cap) && r.type === z.type);
-          if (row) totalPrice += getPrice(row.model)?.price || 0;
+          if (row) {
+            totalPrice += getPrice(row.model)?.price || 0;
+            if (row.factory_wifi) wifiZones.push(zi + 1);
+          }
         }
       });
       const pct = o.ou_cap > 0 ? Math.round(totalBtu / (o.ou_cap * 1000) * 100) : 0;
@@ -1377,6 +1390,7 @@ function renderMZMatchingOUs() {
             <div class="product-model">${esc(o.ou)}</div>
             <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')}${o.seer2?' · SEER2: '+o.seer2:''}</div>
             ${o.note?`<div class="product-specs" style="color:var(--yellow);font-size:10px">${esc(o.note)}</div>`:''}
+            ${wifiZones.length?`<div class="product-specs" style="color:var(--green);font-size:10px">📶 Factory WiFi: zone ${wifiZones.join(', ')}</div>`:''}
           </div>
           <div class="product-stock">
             <div class="product-price-val">${totalPrice?fmt(totalPrice):'—'}</div>
@@ -1555,7 +1569,7 @@ function renderQuoteTab() {
                     <span style="font-family:var(--mono);color:var(--blue);font-size:10px">${s.catalogNumber}</span>
                     <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
                     <span style="font-weight:600">${s.unitPrice != null ? fmt(s.unitPrice) : '—'}</span>
-                    <button onclick="swapAddonSub(${qi},${a.ai},'${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}')"
+                    <button onclick="swapAddonSub(${qi},${a.ai},'${esc(s.catalogNumber.replace(/'/g,"\\'"))}','${esc((s.description||'').replace(/'/g,"\\'"))}')"
                       style="padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Use this</button>
                   </div>
                   <div style="color:var(--gray-600);font-size:10px;margin-top:2px">${esc(s.description||'')}</div>
@@ -2057,7 +2071,7 @@ function renderAddonsTab() {
               <span style="font-family:var(--mono);color:var(--blue);font-size:10px">${s.catalogNumber}</span>
               <span style="color:#0f6e56;font-weight:600">${s.branchQty} avail</span>
               <span style="font-weight:600">${s.unitPrice != null ? fmt(s.unitPrice) : '—'}</span>
-              <button onclick="swapWideItemSub('${a.sku.replace(/'/g,"\\'")}','${s.catalogNumber.replace(/'/g,"\\'")}','${(s.description||'').replace(/'/g,"\\'")}','common')"
+              <button onclick="swapWideItemSub('${esc(a.sku.replace(/'/g,"\\'"))}','${esc(s.catalogNumber.replace(/'/g,"\\'"))}','${esc((s.description||'').replace(/'/g,"\\'"))}','common')"
                 style="padding:3px 10px;background:#0f6e56;color:#fff;border:none;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--font)">Use this</button>
             </div>
             <div style="color:var(--gray-600);font-size:10px;margin-top:2px">${esc(s.description||'')}</div>
