@@ -272,6 +272,8 @@ export default async function handler(req, res) {
   if (action === 'order') {
     try {
       const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, shipToAccount);
+
+      async function postNotes(token, orderId) {
         if (!internalNotes || !orderId) return;
         try {
           await eclipseFetch(
