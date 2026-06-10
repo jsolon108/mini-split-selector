@@ -35,7 +35,7 @@ async function createSession(username, password) {
   return data.sessionToken;
 }
 
-function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username) {
+function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, shipToAccount) {
   const lineItems = lines
     .filter(l => l.model)
     .map(l => ({
@@ -52,7 +52,7 @@ function buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, 
     shipBranch: branch,
     glBranch: branch,
     billToCustomer: customerAccount || '',
-    shipToCustomer: customerAccount || '',
+    shipToCustomer: shipToAccount || customerAccount || '',
     customerPONumber: customerPO || '',
     customerReleaseNumber: 'API',
     orderBy: orderBy || '',
@@ -95,7 +95,7 @@ async function authedFetch(url, options, username, password, sessionToken) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { action, username, password, sessionToken, branch, customerAccount, customerPO, orderBy, lines, keyword, internalNotes } = req.body;
+  const { action, username, password, sessionToken, branch, customerAccount, shipToAccount, customerPO, orderBy, lines, keyword, internalNotes } = req.body;
 
   // Login
   if (action === 'login') {
@@ -137,16 +137,32 @@ export default async function handler(req, res) {
       });
       if (!r.ok) return res.status(r.status).json({ error: `Customer search failed: ${r.status}` });
       const data = await r.json();
-      const results = (data.results || [])
+      const billTos = (data.results || [])
         .filter(c => c.isBillTo === true && !c.autoDelete)
-        .slice(0, 10)
-        .map(c => ({
+        .slice(0, 10);
+
+      // Fetch ship-tos for each bill-to in parallel
+      const results = await Promise.all(billTos.map(async c => {
+        let shipTos = [];
+        try {
+          const stUrl = `${ECLIPSE_BASE}/Customers?BillToId=${encodeURIComponent(c.id)}&pageSize=50`;
+          const stR = await fetch(stUrl, { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } });
+          if (stR.ok) {
+            const stData = await stR.json();
+            shipTos = (stData.results || [])
+              .filter(s => s.isBillTo === false && !s.autoDelete)
+              .map(s => ({ id: s.id, name: s.name, city: s.city, state: s.state }));
+          }
+        } catch (_) {}
+        return {
           id: c.id,
           name: c.name,
           city: c.city,
           state: c.state,
-          contacts: (c.creditAuthPersonnelList || c.contacts || []).map(ct => ({ id: ct.contactId || ct.name, name: ct.name }))
-        }));
+          contacts: (c.creditAuthPersonnelList || c.contacts || []).map(ct => ({ id: ct.contactId || ct.name, name: ct.name })),
+          shipTos
+        };
+      }));
       return res.status(200).json({ results });
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -156,8 +172,7 @@ export default async function handler(req, res) {
   // Create order
   if (action === 'salesOrderPreview') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
-      payload.orderStatus = 'Bid';
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, shipToAccount);
       if (internalNotes) payload.internalNotes = internalNotes;
       const r = await eclipseFetch(`${ECLIPSE_BASE}/SalesOrders/Preview`, {
         method: 'POST',
@@ -251,10 +266,7 @@ export default async function handler(req, res) {
 
   if (action === 'order') {
     try {
-      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username);
-
-      
-      async function postNotes(token, orderId) {
+      const payload = buildOrderPayload(branch, customerAccount, customerPO, orderBy, lines, username, shipToAccount);
         if (!internalNotes || !orderId) return;
         try {
           await eclipseFetch(
