@@ -4488,6 +4488,34 @@ async function searchCustomers(keyword) {
   }
 }
 
+function applyShipTos(c, shipTos) {
+  const stRow = document.getElementById('ship-to-row');
+  const stSelect = document.getElementById('modal-ship-to');
+  const distinctShipTos = (shipTos || []).filter(s => s.id !== c.id);
+  if (distinctShipTos.length > 0) {
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
+      distinctShipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
+    stRow.style.display = 'block';
+  } else {
+    stRow.style.display = 'none';
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+  }
+}
+
+async function fetchAndApplyShipTos(c) {
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getShipTos', sessionToken: eclipseSession.token, customerAccount: c.id })
+    });
+    const data = await res.json();
+    applyShipTos(c, data.shipTos || []);
+  } catch (_) {
+    applyShipTos(c, []);
+  }
+}
+
 function selectCustomer(c) {
   selectedCustomer = c;
   document.getElementById('customer-results').style.display = 'none';
@@ -4508,18 +4536,8 @@ function selectCustomer(c) {
     obSelect.innerHTML = '<option value="">— select contact —</option>';
   }
 
-  // Only show ship-to selector when there are ship-to locations distinct from the bill-to
-  const stRow = document.getElementById('ship-to-row');
-  const stSelect = document.getElementById('modal-ship-to');
-  const distinctShipTos = (c.shipTos || []).filter(s => s.id !== c.id);
-  if (distinctShipTos.length > 0) {
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
-      distinctShipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
-    stRow.style.display = 'block';
-  } else {
-    stRow.style.display = 'none';
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
-  }
+  // Fetch ship-tos asynchronously — won't block or break customer selection if it fails
+  fetchAndApplyShipTos(c);
 }
 
 async function pushToEclipse() {
@@ -4787,18 +4805,8 @@ function qSelectCustomer(c) {
     obRow.style.display = 'block';
   } else { obRow.style.display='none'; }
 
-  // Only show ship-to selector when there are ship-to locations distinct from the bill-to
-  const stRow = document.getElementById('ship-to-row');
-  const stSelect = document.getElementById('modal-ship-to');
-  const distinctShipTos = (c.shipTos || []).filter(s => s.id !== c.id);
-  if (distinctShipTos.length > 0) {
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
-      distinctShipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
-    stRow.style.display = 'block';
-  } else {
-    stRow.style.display = 'none';
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
-  }
+  // Fetch ship-tos asynchronously
+  fetchAndApplyShipTos(c);
 }
 
 function clearQCustomer() {
