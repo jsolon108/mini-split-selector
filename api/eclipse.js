@@ -155,6 +155,51 @@ export default async function handler(req, res) {
     }
   }
 
+  // Fetch ship-to locations for a bill-to customer
+  if (action === 'getShipTos') {
+    try {
+      // Fetch the bill-to record to check isShipTo and get shipToLists
+      const r = await fetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(customerAccount)}`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      if (!r.ok) return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      const customer = await r.json();
+
+      // If the bill-to is also flagged as a ship-to, no selector needed
+      if (customer.isShipTo === true) {
+        return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      }
+
+      // Get ship-to IDs from shipToLists
+      const shipToIds = (customer.shipToLists || [])
+        .map(s => s.shipToId)
+        .filter(Boolean);
+
+      if (!shipToIds.length) {
+        return res.status(200).json({ shipTos: [], isSelfShipTo: false });
+      }
+
+      // Fetch each ship-to entity to get name/city — batch via id= param (comma-separated or repeated)
+      const idParam = shipToIds.map(id => `id=${encodeURIComponent(id)}`).join('&');
+      const stR = await fetch(`${ECLIPSE_BASE}/Customers?${idParam}&pageSize=50`, {
+        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+      });
+      let shipTos = [];
+      if (stR.ok) {
+        const stData = await stR.json();
+        shipTos = (stData.results || []).map(s => ({
+          id: s.id,
+          name: s.name,
+          city: s.city,
+          state: s.state
+        }));
+      }
+      return res.status(200).json({ shipTos, isSelfShipTo: false });
+    } catch (err) {
+      return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+    }
+  }
+
   // Create order
   if (action === 'salesOrderPreview') {
     try {
