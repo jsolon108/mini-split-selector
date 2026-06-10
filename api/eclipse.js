@@ -155,25 +155,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // Fetch ship-to locations for a given bill-to customer
-  if (action === 'getShipTos') {
-    try {
-      const stUrl = `${ECLIPSE_BASE}/Customers?BillToId=${encodeURIComponent(customerAccount)}&pageSize=50`;
-      const stR = await fetch(stUrl, { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } });
-      const stText = await stR.text();
-      let shipTos = [];
-      try {
-        const stData = JSON.parse(stText);
-        shipTos = (stData.results || [])
-          .filter(s => s.isBillTo === false && !s.autoDelete)
-          .map(s => ({ id: s.id, name: s.name, city: s.city, state: s.state }));
-      } catch (_) {}
-      return res.status(200).json({ shipTos });
-    } catch (err) {
-      return res.status(200).json({ shipTos: [] });
-    }
-  }
-
   // Create order
   if (action === 'salesOrderPreview') {
     try {
