@@ -141,32 +141,36 @@ export default async function handler(req, res) {
         .filter(c => c.isBillTo === true && !c.autoDelete)
         .slice(0, 10);
 
-      // Fetch ship-tos for each bill-to in parallel
-      const results = await Promise.all(billTos.map(async c => {
-        let shipTos = [];
-        try {
-          const stUrl = `${ECLIPSE_BASE}/Customers?BillToId=${encodeURIComponent(c.id)}&pageSize=50`;
-          const stR = await fetch(stUrl, { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } });
-          if (stR.ok) {
-            const stText = await stR.text();
-            const stData = JSON.parse(stText);
-            shipTos = (stData.results || [])
-              .filter(s => s.isBillTo === false && !s.autoDelete)
-              .map(s => ({ id: s.id, name: s.name, city: s.city, state: s.state }));
-          }
-        } catch (_) {}
-        return {
-          id: c.id,
-          name: c.name,
-          city: c.city,
-          state: c.state,
-          contacts: (c.creditAuthPersonnelList || c.contacts || []).map(ct => ({ id: ct.contactId || ct.name, name: ct.name })),
-          shipTos
-        };
+      const results = billTos.map(c => ({
+        id: c.id,
+        name: c.name,
+        city: c.city,
+        state: c.state,
+        contacts: (c.creditAuthPersonnelList || c.contacts || []).map(ct => ({ id: ct.contactId || ct.name, name: ct.name })),
+        shipTos: []
       }));
       return res.status(200).json({ results });
     } catch (err) {
       return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // Fetch ship-to locations for a given bill-to customer
+  if (action === 'getShipTos') {
+    try {
+      const stUrl = `${ECLIPSE_BASE}/Customers?BillToId=${encodeURIComponent(customerAccount)}&pageSize=50`;
+      const stR = await fetch(stUrl, { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } });
+      const stText = await stR.text();
+      let shipTos = [];
+      try {
+        const stData = JSON.parse(stText);
+        shipTos = (stData.results || [])
+          .filter(s => s.isBillTo === false && !s.autoDelete)
+          .map(s => ({ id: s.id, name: s.name, city: s.city, state: s.state }));
+      } catch (_) {}
+      return res.status(200).json({ shipTos });
+    } catch (err) {
+      return res.status(200).json({ shipTos: [] });
     }
   }
 
