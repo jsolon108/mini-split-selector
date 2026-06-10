@@ -4488,6 +4488,33 @@ async function searchCustomers(keyword) {
   }
 }
 
+function applyShipTos(c, shipTos, isSelfShipTo) {
+  const stRow = document.getElementById('ship-to-row');
+  const stSelect = document.getElementById('modal-ship-to');
+  if (!isSelfShipTo && shipTos.length > 0) {
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
+      shipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
+    stRow.style.display = 'block';
+  } else {
+    stRow.style.display = 'none';
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+  }
+}
+
+async function fetchAndApplyShipTos(c) {
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getShipTos', sessionToken: eclipseSession.token, customerAccount: c.id })
+    });
+    const data = await res.json();
+    applyShipTos(c, data.shipTos || [], data.isSelfShipTo !== false);
+  } catch (_) {
+    applyShipTos(c, [], true);
+  }
+}
+
 function selectCustomer(c) {
   selectedCustomer = c;
   document.getElementById('customer-results').style.display = 'none';
@@ -4508,6 +4535,7 @@ function selectCustomer(c) {
     obSelect.innerHTML = '<option value="">— select contact —</option>';
   }
 
+  fetchAndApplyShipTos(c);
 }
 
 async function pushToEclipse() {
@@ -4776,6 +4804,7 @@ function qSelectCustomer(c) {
   } else { obRow.style.display='none'; }
 
 }
+  fetchAndApplyShipTos(c);
 
 function clearQCustomer() {
   qSelectedCustomer = null;
