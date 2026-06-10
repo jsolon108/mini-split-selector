@@ -781,6 +781,10 @@ select:focus,input:focus{outline:none;border-color:#999}
       <label>Ordered By <span style="color:#E24B4A">*</span></label>
       <select id="modal-ordered-by"><option value="">— select contact —</option></select>
     </div>
+    <div id="ship-to-row" style="display:none">
+      <label>Ship To <span style="color:#E24B4A">*</span></label>
+      <select id="modal-ship-to"><option value="">— select ship-to location —</option></select>
+    </div>
     <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
     <label style="margin-top:10px">Internal Notes <span style="color:#aaa;font-weight:400">(optional — visible to staff only, not printed)</span></label>
@@ -4255,6 +4259,7 @@ async function doDesktopPreview() {
         username: eclipseSession.username,
         password: eclipseSession.password,
         customerAccount: selectedCustomer?.id,
+        shipToAccount: document.getElementById('modal-ship-to').value || null,
         branch: document.getElementById('modal-branch').value,
         customerPO: document.getElementById('modal-po').value.trim(),
         orderBy: document.getElementById('modal-ordered-by')?.value || '',
@@ -4444,6 +4449,8 @@ function clearCustomer() {
   document.getElementById('modal-customer-search').style.display = '';
   document.getElementById('ordered-by-row').style.display = 'none';
   document.getElementById('modal-ordered-by').innerHTML = '<option value="">— select contact —</option>';
+  document.getElementById('ship-to-row').style.display = 'none';
+  document.getElementById('modal-ship-to').innerHTML = '<option value="">— select ship-to location —</option>';
 }
 
 function customerSearchInput() {
@@ -4500,6 +4507,19 @@ function selectCustomer(c) {
     obRow.style.display = 'none';
     obSelect.innerHTML = '<option value="">— select contact —</option>';
   }
+
+  // Only show ship-to selector when there are ship-to locations distinct from the bill-to
+  const stRow = document.getElementById('ship-to-row');
+  const stSelect = document.getElementById('modal-ship-to');
+  const distinctShipTos = (c.shipTos || []).filter(s => s.id !== c.id);
+  if (distinctShipTos.length > 0) {
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
+      distinctShipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
+    stRow.style.display = 'block';
+  } else {
+    stRow.style.display = 'none';
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+  }
 }
 
 async function pushToEclipse() {
@@ -4508,10 +4528,14 @@ async function pushToEclipse() {
   const statusEl = document.getElementById('modal-status');
   const submitBtn = document.getElementById('modal-submit');
   const orderBy = document.getElementById('modal-ordered-by').value;
+  const shipToAccount = document.getElementById('modal-ship-to').value;
 
   if (!selectedCustomer) { statusEl.style.color='#E24B4A'; statusEl.textContent='Please search for and select a customer.'; return; }
   if (document.getElementById('ordered-by-row').style.display !== 'none' && !orderBy) {
     statusEl.style.color='#E24B4A'; statusEl.textContent='Please select an Ordered By contact.'; return;
+  }
+  if (document.getElementById('ship-to-row').style.display !== 'none' && !shipToAccount) {
+    statusEl.style.color='#E24B4A'; statusEl.textContent='Please select a Ship To location.'; return;
   }
 
   submitBtn.disabled = true;
@@ -4531,6 +4555,7 @@ async function pushToEclipse() {
         password: eclipseSession.password,
         branch,
         customerAccount: selectedCustomer.id,
+        shipToAccount: shipToAccount || null,
         customerPO,
         orderBy,
         internalNotes: (document.getElementById('modal-order-comment')?.value || '').trim(),
@@ -4761,6 +4786,19 @@ function qSelectCustomer(c) {
     obSelect.innerHTML = '<option value="">— select contact —</option>' + c.contacts.map(ct=>`<option value="${ct.id}">${ct.name}</option>`).join('');
     obRow.style.display = 'block';
   } else { obRow.style.display='none'; }
+
+  // Only show ship-to selector when there are ship-to locations distinct from the bill-to
+  const stRow = document.getElementById('ship-to-row');
+  const stSelect = document.getElementById('modal-ship-to');
+  const distinctShipTos = (c.shipTos || []).filter(s => s.id !== c.id);
+  if (distinctShipTos.length > 0) {
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
+      distinctShipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
+    stRow.style.display = 'block';
+  } else {
+    stRow.style.display = 'none';
+    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+  }
 }
 
 function clearQCustomer() {
