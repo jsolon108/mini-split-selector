@@ -148,7 +148,8 @@ export default async function handler(req, res) {
           const stUrl = `${ECLIPSE_BASE}/Customers?BillToId=${encodeURIComponent(c.id)}&pageSize=50`;
           const stR = await fetch(stUrl, { headers: { 'Accept': 'application/json', 'sessionToken': sessionToken } });
           if (stR.ok) {
-            const stData = await stR.json();
+            const stText = await stR.text();
+            const stData = JSON.parse(stText);
             shipTos = (stData.results || [])
               .filter(s => s.isBillTo === false && !s.autoDelete)
               .map(s => ({ id: s.id, name: s.name, city: s.city, state: s.state }));
