@@ -1351,10 +1351,11 @@ function renderMZResultCard(o) {
     const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(o.id).some(r=>r.cap===c && r.type===z.type)) || z.cap) : z.cap;
     const row = iduRow(o.id, capToUse, z.type) || iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
     const wifiBadge = (row && row.factory_wifi) ? ' <span style="font-size:10px;font-weight:600;color:#0f6e56;background:#e8f5e9;border:1px solid #cce9d9;border-radius:4px;padding:1px 5px;vertical-align:middle" title="Factory-installed WiFi">WiFi</span>' : '';
+    const subLink = (row && row.submittal_path) ? ` <a href="${submittalUrl(row.submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄</a>` : '';
     return `<div class="zone-row">
       <span class="zone-label">Zone ${i+1}</span>
       <div class="zone-selects">
-        <div style="font-size:13px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}${wifiBadge}</div>
+        <div style="font-size:13px;color:#333">${z.cap===-1?'6/7K':z.cap+'K'} ${z.type||''}${wifiBadge}${subLink}</div>
       </div>
     </div>`;
   }).join('');
@@ -1364,7 +1365,7 @@ function renderMZResultCard(o) {
 
   return `<div class="mz-card"${inQuoteCount > 0 ? ' style="border-color:#16a34a;background:#f0fdf4"' : ''}>
     <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max${inQuoteCount>0?` <span style="color:#16a34a;font-size:11px;font-weight:500">✓ in quote</span>`:''}</div>
-    <div class="mz-sub">${o.ou}</div>
+    <div class="mz-sub">${o.ou}${o.submittal_path?` <a href="${submittalUrl(o.submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}</div>
     <div class="mz-note">${o.note||''}</div>
     ${zoneLines}
     <div class="btu-bar">
@@ -1397,11 +1398,12 @@ function addMZResult(ouId) {
     if ((!z.cap && z.cap !== -1) || !z.type) return null;
     const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(ouId).some(r=>r.cap===c&&r.type===z.type)) || 6) : z.cap;
     const row = iduRow(ouId, capToUse, z.type) || iduRows(ouId).find(r => r.cap===capToUse && r.type===z.type);
-    return {z: i+1, cap: capToUse, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe};
+    return {z: i+1, cap: capToUse, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe, submittal_path: row?.submittal_path || ''};
   }).filter(Boolean);
   const total = zones.reduce((a,z) => a+z.cap*1000, 0);
   quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou: o.ou,
     ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz', zones, totalBtu: total,
+    ou_submittal_path: o.submittal_path || '',
     note: `${zones.length}-zone · ${total/1000}K total`});
   const newIdx = quote.length - 1;
   updateCount();
@@ -1532,12 +1534,12 @@ function renderQuote() {
         ${addonLines}
       </div>`;
     } else {
-      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#888;font-size:13px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
+      const zlines=q.zones.map(z=>`<div class="q-model-row"><span class="q-model-label">Zone ${z.z}</span><span>${z.model}</span><span style="color:#888;font-size:13px;white-space:nowrap">${z.cap}K ${z.type}</span>${z.liq_pipe?`<span class="q-pipes">Liq: ${z.liq_pipe} · Gas: ${z.gas_pipe}</span>`:''}${z.submittal_path?` <a href="${submittalUrl(z.submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}${priceBadge(z.model)}<button class="inv-btn" onclick="showInvModal('${z.model}','Zone ${z.z}')">Inventory</button></div>`).join('');
       const oduPrice = getPrice(q.ou);
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
       baseTotal = (oduPrice?.price||0) + zoneTotal;
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${q.ou_submittal_path?` <a href="${submittalUrl(q.ou_submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${zlines}
         ${addonLines}
       </div>`;
@@ -4130,7 +4132,11 @@ function copyQuote() {
         if(q.ahri) lines.push(`AHRI: ${q.ahri}`);
         if(q.submittal_path) lines.push(`Submittal: ${submittalUrl(q.submittal_path)}`);
       } else {
-        q.zones.forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`));
+        if(q.ou_submittal_path) lines.push(`  ODU Submittal: ${submittalUrl(q.ou_submittal_path)}`);
+        q.zones.forEach(z=>{
+          lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`);
+          if(z.submittal_path) lines.push(`  Submittal: ${submittalUrl(z.submittal_path)}`);
+        });
         lines.push(`Total indoor: ${q.totalBtu/1000}K`);
       }
     }

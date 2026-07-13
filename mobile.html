@@ -1429,13 +1429,14 @@ function mzAdd(oi) {
     const caps = z.cap === -1 ? [6,7] : [z.cap];
     const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(o.id).some(r=>r.cap===c&&r.type===z.type)) || 7) : z.cap;
     const row = iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
-    return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'' };
+    return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'', submittal_path: row?.submittal_path||'' };
   }).filter(Boolean);
   const newMzIdx = quote.length;
   logEvent('add_system', { type: 'mz', brand: o.brand, series: o.series, cap: o.ou_cap, zones: zones.length });
   quote.push({
     id: o.id+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
     ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
+    ou_submittal_path: o.submittal_path || '',
     zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: null
   });
   renderMZMatchingOUs();
@@ -1504,10 +1505,12 @@ function renderQuoteTab() {
         if (q.submittal_path) rowsHtml += `<div class="sys-row"><span class="row-label" style="font-size:9px;color:var(--blue)">PDF</span><a class="row-model" href="${submittalUrl(q.submittal_path)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">📄 Submittal</a></div>`;
       } else {
         rowsHtml = sysRow('ODU', q.ou, ouP, `${q.zones?.length||0} zones · ${q.note||''}`);
+        if (q.ou_submittal_path) rowsHtml += `<div class="sys-row"><span class="row-label" style="font-size:9px;color:var(--blue)">PDF</span><a class="row-model" href="${submittalUrl(q.ou_submittal_path)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">📄 ODU Submittal</a></div>`;
         (q.zones || []).forEach(z => {
           const zp = getPrice(z.model);
           if (zp) sysTotal += zp.price;
           rowsHtml += sysRow(`Z${z.z}`, z.model, zp, `${z.cap}K ${z.type||''}`);
+          if (z.submittal_path) rowsHtml += `<div class="sys-row"><span class="row-label" style="font-size:9px;color:var(--blue)">PDF</span><a class="row-model" href="${submittalUrl(z.submittal_path)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">📄 Submittal</a></div>`;
         });
       }
 
@@ -2926,7 +2929,11 @@ function doCopyQuote() {
       if (q.submittal_path) lines.push(`Submittal: ${submittalUrl(q.submittal_path)}`);
     } else {
       lines.push(`ODU: ${q.ou}  ${fmt(getPrice(q.ou)?.price)}`);
-      (q.zones||[]).forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  ${fmt(getPrice(z.model)?.price)}`));
+      if(q.ou_submittal_path) lines.push(`  ODU Submittal: ${submittalUrl(q.ou_submittal_path)}`);
+      (q.zones||[]).forEach(z=>{
+        lines.push(`Zone ${z.z}: ${z.model}  ${fmt(getPrice(z.model)?.price)}`);
+        if(z.submittal_path) lines.push(`  Submittal: ${submittalUrl(z.submittal_path)}`);
+      });
     }
   });
   navigator.clipboard.writeText(lines.join('\n'))
