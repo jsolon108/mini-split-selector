@@ -953,6 +953,7 @@ function stockDot(key) {
 }
 
 function iduRows(ouId) { return MZ_IDU[ouId] || []; }
+function submittalUrl(p) { return p ? `${SB_URL}/storage/v1/object/public/submittals/${p}` : ''; }
 function iduRow(ouId, cap, type) { return iduRows(ouId).find(r => r.cap === cap && r.type === type) || null; }
 
 function switchTab(name) {
@@ -1128,6 +1129,7 @@ function renderSZTab() {
           <div class="product-specs">IDU: ${esc(s.iu)}</div>
           ${s.seer2 ? `<div class="product-specs">SEER2: ${s.seer2}${s.hspf2?' · HSPF2: '+s.hspf2:''}</div>` : ''}
           ${s.liq_pipe ? `<div class="product-specs">Liq ${esc(s.liq_pipe)} · Gas ${esc(s.gas_pipe)}</div>` : ''}
+          ${s.submittal_path ? `<div class="product-specs"><a href="${submittalUrl(s.submittal_path)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">📄 Submittal</a></div>` : ''}
         </div>
         <div class="product-stock">
           <div class="product-price-val">${total ? fmt(total) : '—'}</div>
@@ -1499,6 +1501,7 @@ function renderQuoteTab() {
         if (iuP) sysTotal += iuP.price;
         rowsHtml = sysRow('ODU', q.ou, ouP, `SEER2: ${q.seer2||'—'}${q.liq_pipe ? ' · Liq '+q.liq_pipe : ''}`);
         rowsHtml += sysRow('IDU', q.iu, getPrice(q.iu), `${q.indoor||''} · Gas ${q.gas_pipe||'—'}`);
+        if (q.submittal_path) rowsHtml += `<div class="sys-row"><span class="row-label" style="font-size:9px;color:var(--blue)">PDF</span><a class="row-model" href="${submittalUrl(q.submittal_path)}" target="_blank" rel="noopener" style="color:var(--blue);font-weight:600;text-decoration:none">📄 Submittal</a></div>`;
       } else {
         rowsHtml = sysRow('ODU', q.ou, ouP, `${q.zones?.length||0} zones · ${q.note||''}`);
         (q.zones || []).forEach(z => {
@@ -2920,6 +2923,7 @@ function doCopyQuote() {
     if (q.qtype==='sz') {
       lines.push(`ODU: ${q.ou}  ${fmt(getPrice(q.ou)?.price)}`);
       lines.push(`IDU: ${q.iu}  ${fmt(getPrice(q.iu)?.price)}`);
+      if (q.submittal_path) lines.push(`Submittal: ${submittalUrl(q.submittal_path)}`);
     } else {
       lines.push(`ODU: ${q.ou}  ${fmt(getPrice(q.ou)?.price)}`);
       (q.zones||[]).forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  ${fmt(getPrice(z.model)?.price)}`));
