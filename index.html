@@ -1071,7 +1071,7 @@ function renderSingle() {
       <div class="card-row">
         <div style="flex:1;min-width:0">
           <div class="sys-name">${s.brand} ${s.series} — ${s.cap}K <span class="badge">${s.ref}</span>${s.factory_wifi?' <span class="badge" style="background:#e8f5e9;color:#0f6e56;border-color:#cce9d9" title="Factory-installed WiFi">WiFi</span>':''}</div>
-          <div class="sys-models">ODU: ${s.ou} · IDU: ${s.iu} <button class="inv-btn" onclick="showSZInvModal('${s.ou}','${s.iu}')">Inv</button></div>
+          <div class="sys-models">ODU: ${s.ou} · IDU: ${s.iu} <button class="inv-btn" onclick="showSZInvModal('${s.ou}','${s.iu}')">Inv</button>${s.submittal_path?` <a href="${submittalUrl(s.submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}</div>
           <div class="sys-specs">
             ${s.seer2?`<div class="spec">SEER2 <b>${s.seer2}</b></div>`:''}
             ${s.hspf2?`<div class="spec">HSPF2 <b>${s.hspf2}</b></div>`:''}
@@ -1108,6 +1108,7 @@ function addSZ(id) {
 }
 
 function iduRows(ouId){return MZ_IDU[ouId]||[];}
+function submittalUrl(p){return p?`${SB_URL}/storage/v1/object/public/submittals/${p}`:'';}
 function caps(ouId){return [...new Set(iduRows(ouId).map(r=>r.cap))].sort((a,b)=>a-b);}
 function typesForCap(ouId,cap){return iduRows(ouId).filter(r=>r.cap===cap);}
 function iduRow(ouId,cap,type){return iduRows(ouId).find(r=>r.cap===cap&&r.type===type)||null;}
@@ -1690,7 +1691,7 @@ function renderQuote() {
         <div class="q-name">${q.qtype==='unitary' ? `${q.brand} — ${q.display}` : `${q.brand} ${q.series} — ${q.cap}K`} <span class="badge ${q.qtype==='mz'?'mz':(q.qtype==='unitary'?'unitary':'')}">${q.qtype==='mz'?'Multi-zone':(q.qtype==='unitary'?'Unitary':'Single zone')}</span></div>
         ${models}
         ${totalRow}
-        <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}</div>
+        <div class="q-note">SEER2: ${q.seer2||'—'} · HSPF2: ${q.hspf2||'—'} · Ref: ${q.ref}${q.note?' · '+q.note:''}${q.submittal_path?` · <a href="${submittalUrl(q.submittal_path)}" target="_blank" rel="noopener" style="color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}</div>
         ${accordion}
         <div style="margin-top:8px">${q.addonsLoading
           ? `<button disabled style="padding:4px 10px;border:1px solid #e0e0e0;background:#f5f5f5;color:#aaa;border-radius:5px;font-size:12px;font-weight:600;cursor:not-allowed" title="Wait for Eclipse add-ons to finish loading">+ Additional Add-on (loading…)</button>`
@@ -4158,6 +4159,7 @@ function copyQuote() {
       if(q.qtype==='sz'){
         lines.push(`IDU: ${q.iu}${q.liq_pipe?`  |  Liq: ${q.liq_pipe}  Gas: ${q.gas_pipe}`:''}`);
         if(q.ahri) lines.push(`AHRI: ${q.ahri}`);
+        if(q.submittal_path) lines.push(`Submittal: ${submittalUrl(q.submittal_path)}`);
       } else {
         q.zones.forEach(z=>lines.push(`Zone ${z.z}: ${z.model}  (${z.cap}K ${z.type})${z.liq_pipe?`  |  Liq: ${z.liq_pipe}  Gas: ${z.gas_pipe}`:''}`));
         lines.push(`Total indoor: ${q.totalBtu/1000}K`);
