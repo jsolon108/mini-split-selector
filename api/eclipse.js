@@ -17,6 +17,10 @@ const eclipseFetch = (url, opts = {}) => fetch(url, {
   headers: { 'Connection': 'keep-alive', ...(opts.headers || {}) }
 });
 
+// Warm-instance cache of resolved ship-to lists, keyed by bill-to account.
+const shipToCache = {};
+const SHIP_TO_CACHE_MS = 10 * 60 * 1000;
+
 function formatCatalogNumber(model) {
   if (model && model.startsWith('BMS500-')) {
     return model.replace('BMS500-', '');
@@ -162,6 +166,12 @@ export default async function handler(req, res) {
   // and ask for a manual ship-to instead of silently submitting a doomed order.
   if (action === 'getShipTos') {
     try {
+      // Warm-instance cache: big accounts (300+ ship-tos) take many Eclipse
+      // round-trips to resolve names, so reuse results for a few minutes.
+      const cached = shipToCache[customerAccount];
+      if (cached && Date.now() - cached.at < SHIP_TO_CACHE_MS) {
+        return res.status(200).json(cached.data);
+      }
       const r = await fetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(customerAccount)}`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
@@ -207,7 +217,7 @@ export default async function handler(req, res) {
       } catch (_) { /* fall through to per-id fetch */ }
 
       if (!detailed.length) {
-        const CONCURRENCY = 10;
+        const CONCURRENCY = 20;   // matches eclipseAgent maxSockets
         const byId = {};
         for (let i = 0; i < shipToIds.length; i += CONCURRENCY) {
           await Promise.all(shipToIds.slice(i, i + CONCURRENCY).map(async id => {
@@ -232,7 +242,12 @@ export default async function handler(req, res) {
       const shipTos = detailed
         .concat(shipToIds.filter(id => !haveDetail.has(id)).map(id => ({ id, name: `Ship-to account #${id}` })))
         .sort((a, b) => String(a.name).localeCompare(String(b.name)));
-      return res.status(200).json({ shipTos, isSelfShipTo: false });
+      const result = { shipTos, isSelfShipTo: false };
+      // Only cache complete resolutions — partial failures should retry fresh
+      if (detailed.length === shipToIds.length) {
+        shipToCache[customerAccount] = { at: Date.now(), data: result };
+      }
+      return res.status(200).json(result);
     } catch (err) {
       console.log(`getShipTos: error for customer ${customerAccount}: ${err.message}`);
       return res.status(200).json({ shipTos: [], isSelfShipTo: false, lookupError: err.message });
