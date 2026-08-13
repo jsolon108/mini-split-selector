@@ -4512,6 +4512,15 @@ function getModalShipTo() {
 }
 
 async function fetchAndApplyShipTos(c) {
+  // Show the row immediately in a loading state — big accounts (300+
+  // ship-tos) take a while to resolve, and a hidden row reads as "no ship-to
+  // needed". The empty value also keeps preview/submit blocked while loading.
+  const stRow = document.getElementById('ship-to-row');
+  const stSelect = document.getElementById('modal-ship-to');
+  document.getElementById('ship-to-manual-block').style.display = 'none';
+  stSelect.style.display = '';
+  stSelect.innerHTML = '<option value="">Loading ship-to locations…</option>';
+  stRow.style.display = 'block';
   try {
     const res = await fetch('/api/eclipse', {
       method: 'POST',
@@ -4519,8 +4528,10 @@ async function fetchAndApplyShipTos(c) {
       body: JSON.stringify({ action: 'getShipTos', sessionToken: eclipseSession.token, customerAccount: c.id })
     });
     const data = await res.json();
+    if (selectedCustomer?.id !== c.id) return;   // customer changed while loading
     applyShipTos(c, data.shipTos || [], data.isSelfShipTo === true, data.lookupError);
   } catch (err) {
+    if (selectedCustomer?.id !== c.id) return;
     applyShipTos(c, [], false, err.message);
   }
 }

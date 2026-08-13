@@ -2692,8 +2692,11 @@ async function fetchEclipseShipTos(customerId) {
   const sel = document.getElementById('eclipse-ship-to');
   const manualBlock = document.getElementById('eclipse-ship-to-manual-block');
   const warnEl = document.getElementById('eclipse-ship-to-warn');
-  row.style.display = 'none';
-  sel.innerHTML = '<option value="">— select ship-to location —</option>';
+  // Loading state up front — big accounts take a while to resolve names, and
+  // the empty value keeps preview/submit blocked until loading finishes.
+  row.style.display = 'block';
+  sel.style.display = '';
+  sel.innerHTML = '<option value="">Loading ship-to locations…</option>';
   manualBlock.style.display = 'none';
   document.getElementById('eclipse-ship-to-manual').value = '';
   let data = { shipTos: [], isSelfShipTo: false, lookupError: 'request failed' };
@@ -2704,7 +2707,8 @@ async function fetchEclipseShipTos(customerId) {
     });
     data = await res.json();
   } catch(e) { data.lookupError = e.message; }
-  if (data.isSelfShipTo === true) return;
+  sel.innerHTML = '<option value="">— select ship-to location —</option>';
+  if (data.isSelfShipTo === true) { row.style.display = 'none'; return; }
   row.style.display = 'block';
   if ((data.shipTos || []).length > 0) {
     sel.innerHTML += data.shipTos.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.city ? ' — ' + esc(s.city) + ', ' + esc(s.state) : ''} (#${esc(s.id)})</option>`).join('');
