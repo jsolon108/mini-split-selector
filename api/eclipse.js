@@ -191,24 +191,47 @@ export default async function handler(req, res) {
         return res.status(200).json({ shipTos: [], isSelfShipTo: false });
       }
 
-      // Fetch each ship-to entity to get name/city — batch via id= param (comma-separated or repeated)
-      const idParam = shipToIds.map(id => `id=${encodeURIComponent(id)}`).join('&');
-      const stR = await fetch(`${ECLIPSE_BASE}/Customers?${idParam}&pageSize=50`, {
-        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-      });
-      // If the detail fetch fails, still return the bare IDs so the user can
-      // pick a ship-to rather than being blocked.
-      let shipTos = shipToIds.map(id => ({ id, name: `Ship-to account #${id}` }));
-      if (stR.ok) {
-        const stData = await stR.json();
-        const detailed = (stData.results || []).map(s => ({
-          id: s.id,
-          name: s.name,
-          city: s.city,
-          state: s.state
-        }));
-        if (detailed.length) shipTos = detailed;
+      // Fetch each ship-to entity to get name/city. Try one batched request
+      // first (comma-separated id list); Eclipse installs that don't support
+      // it return nothing, so fall back to per-id fetches with bounded
+      // concurrency (accounts like 11029 have 100+ ship-tos).
+      let detailed = [];
+      try {
+        const stR = await eclipseFetch(`${ECLIPSE_BASE}/Customers?id=${encodeURIComponent(shipToIds.join(','))}&pageSize=${shipToIds.length}`, {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        if (stR.ok) {
+          const stData = await stR.json();
+          detailed = (stData.results || []).map(s => ({ id: String(s.id), name: s.name, city: s.city, state: s.state }));
+        }
+      } catch (_) { /* fall through to per-id fetch */ }
+
+      if (!detailed.length) {
+        const CONCURRENCY = 10;
+        const byId = {};
+        for (let i = 0; i < shipToIds.length; i += CONCURRENCY) {
+          await Promise.all(shipToIds.slice(i, i + CONCURRENCY).map(async id => {
+            try {
+              const r2 = await eclipseFetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(id)}`, {
+                headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+              });
+              if (r2.ok) {
+                const s = await r2.json();
+                byId[id] = { id, name: s.name, city: s.city, state: s.state };
+              }
+            } catch (_) { /* leave missing — bare-id fallback below */ }
+          }));
+        }
+        detailed = shipToIds.map(id => byId[id]).filter(Boolean);
       }
+      console.log(`getShipTos: customer ${customerAccount} resolved ${detailed.length}/${shipToIds.length} ship-to names`);
+
+      // Any ids whose detail fetch failed still show as bare account numbers
+      // so the user can pick them rather than being blocked.
+      const haveDetail = new Set(detailed.map(s => String(s.id)));
+      const shipTos = detailed
+        .concat(shipToIds.filter(id => !haveDetail.has(id)).map(id => ({ id, name: `Ship-to account #${id}` })))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
       return res.status(200).json({ shipTos, isSelfShipTo: false });
     } catch (err) {
       console.log(`getShipTos: error for customer ${customerAccount}: ${err.message}`);
