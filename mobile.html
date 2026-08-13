@@ -814,6 +814,16 @@ input[type=number] { -moz-appearance: textfield; }
           <option value="">— select contact —</option>
         </select>
       </div>
+      <div id="eclipse-ship-to-row" style="display:none">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Ship To <span style="color:var(--red)">*</span></label>
+        <select class="branch-select" id="eclipse-ship-to" style="margin-bottom:12px">
+          <option value="">— select ship-to location —</option>
+        </select>
+        <div id="eclipse-ship-to-manual-block" style="display:none">
+          <div id="eclipse-ship-to-warn" style="font-size:12px;color:#B45309;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;padding:6px 10px;margin-bottom:6px"></div>
+          <input class="sheet-input" id="eclipse-ship-to-manual" type="text" inputmode="numeric" placeholder="Ship-to account #"/>
+        </div>
+      </div>
       <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">PO Number (optional)</label>
       <input class="sheet-input" id="eclipse-po" type="text" placeholder="Customer PO"/>
       <div id="eclipse-status" style="font-size:13px;color:var(--red);margin-bottom:10px;min-height:20px"></div>
@@ -2670,7 +2680,54 @@ function openEclipseSheet() {
     obRow.style.display = 'none';
     obSelect.innerHTML = '<option value="">— select contact —</option>';
   }
+  fetchEclipseShipTos(qSelectedCustomer.id);
   openOverlay('eclipse-overlay');
+}
+
+// Ship-to selector: shown only for bill-to-only accounts. If Eclipse returns
+// no linked ship-tos (or the lookup fails), fall back to manual entry —
+// submitting the bill-to as its own ship-to gets rejected with a 400.
+async function fetchEclipseShipTos(customerId) {
+  const row = document.getElementById('eclipse-ship-to-row');
+  const sel = document.getElementById('eclipse-ship-to');
+  const manualBlock = document.getElementById('eclipse-ship-to-manual-block');
+  const warnEl = document.getElementById('eclipse-ship-to-warn');
+  // Loading state up front — big accounts take a while to resolve names, and
+  // the empty value keeps preview/submit blocked until loading finishes.
+  row.style.display = 'block';
+  sel.style.display = '';
+  sel.innerHTML = '<option value="">Loading ship-to locations…</option>';
+  manualBlock.style.display = 'none';
+  document.getElementById('eclipse-ship-to-manual').value = '';
+  let data = { shipTos: [], isSelfShipTo: false, lookupError: 'request failed' };
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'getShipTos', sessionToken: eclipseSession.token, customerAccount: customerId })
+    });
+    data = await res.json();
+  } catch(e) { data.lookupError = e.message; }
+  sel.innerHTML = '<option value="">— select ship-to location —</option>';
+  if (data.isSelfShipTo === true) { row.style.display = 'none'; return; }
+  row.style.display = 'block';
+  if ((data.shipTos || []).length > 0) {
+    sel.innerHTML += data.shipTos.map(s => `<option value="${esc(s.id)}">${esc(s.name)}${s.city ? ' — ' + esc(s.city) + ', ' + esc(s.state) : ''} (#${esc(s.id)})</option>`).join('');
+    sel.style.display = '';
+  } else {
+    sel.style.display = 'none';
+    warnEl.textContent = data.lookupError
+      ? `Couldn't load ship-to locations (${data.lookupError}). This account is bill-to only — enter the ship-to account # to use.`
+      : 'This account is bill-to only, but no linked ship-to locations were found in Eclipse. Enter the ship-to account # to use.';
+    manualBlock.style.display = 'block';
+  }
+}
+
+function getEclipseShipTo() {
+  const row = document.getElementById('eclipse-ship-to-row');
+  if (row.style.display === 'none') return '';
+  const sel = document.getElementById('eclipse-ship-to');
+  if (sel.style.display !== 'none') return sel.value;
+  return document.getElementById('eclipse-ship-to-manual').value.trim();
 }
 
 function buildEclipseLines() {
@@ -2694,6 +2751,11 @@ async function doPreviewOrder(skipValidation = false) {
     statusEl.textContent = 'Please select an Ordered By contact.';
     return;
   }
+  const shipToAccount = getEclipseShipTo();
+  if (!skipValidation && document.getElementById('eclipse-ship-to-row').style.display !== 'none' && !shipToAccount) {
+    statusEl.textContent = 'Please select or enter a Ship To account.';
+    return;
+  }
   const btn = document.getElementById('eclipse-preview-btn');
   btn.textContent = 'Loading preview…'; btn.disabled = true; statusEl.textContent = '';
   try {
@@ -2708,6 +2770,7 @@ async function doPreviewOrder(skipValidation = false) {
         username: eclipseSession.username,
         password: eclipseSession.password,
         customerAccount: qSelectedCustomer.id,
+        shipToAccount: shipToAccount || null,
         branch: document.getElementById('eclipse-branch').value,
         customerPO: document.getElementById('eclipse-po').value.trim(),
         orderBy: orderBy || '',
@@ -2892,6 +2955,7 @@ async function doPushToEclipse() {
         username: eclipseSession.username,
         password: eclipseSession.password,
         customerAccount: qSelectedCustomer.id,
+        shipToAccount: getEclipseShipTo() || null,
         branch: document.getElementById('eclipse-branch').value,
         customerPO: document.getElementById('eclipse-po').value.trim(),
         orderBy: document.getElementById('eclipse-ordered-by').value || '',

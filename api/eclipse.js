@@ -17,6 +17,10 @@ const eclipseFetch = (url, opts = {}) => fetch(url, {
   headers: { 'Connection': 'keep-alive', ...(opts.headers || {}) }
 });
 
+// Warm-instance cache of resolved ship-to lists, keyed by bill-to account.
+const shipToCache = {};
+const SHIP_TO_CACHE_MS = 10 * 60 * 1000;
+
 function formatCatalogNumber(model) {
   if (model && model.startsWith('BMS500-')) {
     return model.replace('BMS500-', '');
@@ -155,14 +159,26 @@ export default async function handler(req, res) {
     }
   }
 
-  // Fetch ship-to locations for a bill-to customer
+  // Fetch ship-to locations for a bill-to customer.
+  // Response contract: { shipTos, isSelfShipTo, lookupError? }
+  // isSelfShipTo is ONLY true when Eclipse confirms the bill-to can receive
+  // shipments itself. Lookup failures return lookupError so the UI can warn
+  // and ask for a manual ship-to instead of silently submitting a doomed order.
   if (action === 'getShipTos') {
     try {
-      // Fetch the bill-to record to check isShipTo and get shipToLists
+      // Warm-instance cache: big accounts (300+ ship-tos) take many Eclipse
+      // round-trips to resolve names, so reuse results for a few minutes.
+      const cached = shipToCache[customerAccount];
+      if (cached && Date.now() - cached.at < SHIP_TO_CACHE_MS) {
+        return res.status(200).json(cached.data);
+      }
       const r = await fetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(customerAccount)}`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
-      if (!r.ok) return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      if (!r.ok) {
+        console.log(`getShipTos: /Customers/${customerAccount} failed with ${r.status}`);
+        return res.status(200).json({ shipTos: [], isSelfShipTo: false, lookupError: `Customer lookup failed (${r.status})` });
+      }
       const customer = await r.json();
 
       // If the bill-to is also flagged as a ship-to, no selector needed
@@ -170,33 +186,71 @@ export default async function handler(req, res) {
         return res.status(200).json({ shipTos: [], isSelfShipTo: true });
       }
 
-      // Get ship-to IDs from shipToLists
-      const shipToIds = (customer.shipToLists || [])
-        .map(s => s.shipToId)
-        .filter(Boolean);
+      // Ship-to links come back under shipToLists, but the shape varies by
+      // record (objects keyed shipToId/shipTo/id, or bare id strings). Log the
+      // raw field so mismatches are visible in Vercel logs.
+      const rawList = customer.shipToLists ?? customer.shipToList ?? customer.shipTos ?? [];
+      console.log(`getShipTos: customer ${customerAccount} isBillTo=${customer.isBillTo} isShipTo=${customer.isShipTo} rawShipToList=${JSON.stringify(rawList).slice(0, 2000)}`);
+
+      const shipToIds = (Array.isArray(rawList) ? rawList : [])
+        .map(s => (s && typeof s === 'object') ? (s.shipToId ?? s.shipTo ?? s.id) : s)
+        .filter(Boolean)
+        .map(String);
 
       if (!shipToIds.length) {
         return res.status(200).json({ shipTos: [], isSelfShipTo: false });
       }
 
-      // Fetch each ship-to entity to get name/city — batch via id= param (comma-separated or repeated)
-      const idParam = shipToIds.map(id => `id=${encodeURIComponent(id)}`).join('&');
-      const stR = await fetch(`${ECLIPSE_BASE}/Customers?${idParam}&pageSize=50`, {
-        headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
-      });
-      let shipTos = [];
-      if (stR.ok) {
-        const stData = await stR.json();
-        shipTos = (stData.results || []).map(s => ({
-          id: s.id,
-          name: s.name,
-          city: s.city,
-          state: s.state
-        }));
+      // Fetch each ship-to entity to get name/city. Try one batched request
+      // first (comma-separated id list); Eclipse installs that don't support
+      // it return nothing, so fall back to per-id fetches with bounded
+      // concurrency (accounts like 11029 have 100+ ship-tos).
+      let detailed = [];
+      try {
+        const stR = await eclipseFetch(`${ECLIPSE_BASE}/Customers?id=${encodeURIComponent(shipToIds.join(','))}&pageSize=${shipToIds.length}`, {
+          headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+        });
+        if (stR.ok) {
+          const stData = await stR.json();
+          detailed = (stData.results || []).map(s => ({ id: String(s.id), name: s.name, city: s.city, state: s.state }));
+        }
+      } catch (_) { /* fall through to per-id fetch */ }
+
+      if (!detailed.length) {
+        const CONCURRENCY = 20;   // matches eclipseAgent maxSockets
+        const byId = {};
+        for (let i = 0; i < shipToIds.length; i += CONCURRENCY) {
+          await Promise.all(shipToIds.slice(i, i + CONCURRENCY).map(async id => {
+            try {
+              const r2 = await eclipseFetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(id)}`, {
+                headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
+              });
+              if (r2.ok) {
+                const s = await r2.json();
+                byId[id] = { id, name: s.name, city: s.city, state: s.state };
+              }
+            } catch (_) { /* leave missing — bare-id fallback below */ }
+          }));
+        }
+        detailed = shipToIds.map(id => byId[id]).filter(Boolean);
       }
-      return res.status(200).json({ shipTos, isSelfShipTo: false });
+      console.log(`getShipTos: customer ${customerAccount} resolved ${detailed.length}/${shipToIds.length} ship-to names`);
+
+      // Any ids whose detail fetch failed still show as bare account numbers
+      // so the user can pick them rather than being blocked.
+      const haveDetail = new Set(detailed.map(s => String(s.id)));
+      const shipTos = detailed
+        .concat(shipToIds.filter(id => !haveDetail.has(id)).map(id => ({ id, name: `Ship-to account #${id}` })))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const result = { shipTos, isSelfShipTo: false };
+      // Only cache complete resolutions — partial failures should retry fresh
+      if (detailed.length === shipToIds.length) {
+        shipToCache[customerAccount] = { at: Date.now(), data: result };
+      }
+      return res.status(200).json(result);
     } catch (err) {
-      return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      console.log(`getShipTos: error for customer ${customerAccount}: ${err.message}`);
+      return res.status(200).json({ shipTos: [], isSelfShipTo: false, lookupError: err.message });
     }
   }
 
