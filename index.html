@@ -784,6 +784,10 @@ select:focus,input:focus{outline:none;border-color:#999}
     <div id="ship-to-row" style="display:none">
       <label>Ship To <span style="color:#E24B4A">*</span></label>
       <select id="modal-ship-to"><option value="">— select ship-to location —</option></select>
+      <div id="ship-to-manual-block" style="display:none">
+        <div id="ship-to-warn" style="font-size:12px;color:#B45309;background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:6px 10px;margin-bottom:6px"></div>
+        <input type="text" id="modal-ship-to-manual" placeholder="Ship-to account # (e.g. 11030)" inputmode="numeric"/>
+      </div>
     </div>
     <label>Customer PO # <span style="color:#aaa;font-weight:400">(optional)</span></label>
     <input type="text" id="modal-po" placeholder="e.g. PO-2026-001"/>
@@ -4185,6 +4189,9 @@ async function doDesktopPreview() {
   const btn = document.getElementById('modal-preview-btn');
   const statusEl = document.getElementById('modal-status');
   const panel = document.getElementById('modal-preview-panel');
+  if (document.getElementById('ship-to-row').style.display !== 'none' && !getModalShipTo()) {
+    statusEl.style.color='#E24B4A'; statusEl.textContent='Please select or enter a Ship To account.'; return;
+  }
   btn.textContent = 'Loading…'; btn.disabled = true; statusEl.textContent = '';
   try {
     const lines = buildDesktopOrderLines();
@@ -4236,7 +4243,7 @@ async function doDesktopPreview() {
         username: eclipseSession.username,
         password: eclipseSession.password,
         customerAccount: selectedCustomer?.id,
-        shipToAccount: document.getElementById('modal-ship-to').value || null,
+        shipToAccount: getModalShipTo() || null,
         branch: document.getElementById('modal-branch').value,
         customerPO: document.getElementById('modal-po').value.trim(),
         orderBy: document.getElementById('modal-ordered-by')?.value || '',
@@ -4428,6 +4435,8 @@ function clearCustomer() {
   document.getElementById('modal-ordered-by').innerHTML = '<option value="">— select contact —</option>';
   document.getElementById('ship-to-row').style.display = 'none';
   document.getElementById('modal-ship-to').innerHTML = '<option value="">— select ship-to location —</option>';
+  document.getElementById('ship-to-manual-block').style.display = 'none';
+  document.getElementById('modal-ship-to-manual').value = '';
 }
 
 function customerSearchInput() {
@@ -4465,17 +4474,41 @@ async function searchCustomers(keyword) {
   }
 }
 
-function applyShipTos(c, shipTos, isSelfShipTo) {
+function applyShipTos(c, shipTos, isSelfShipTo, lookupError) {
   const stRow = document.getElementById('ship-to-row');
   const stSelect = document.getElementById('modal-ship-to');
-  if (!isSelfShipTo && shipTos.length > 0) {
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>' +
-      shipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
-    stRow.style.display = 'block';
-  } else {
+  const manualBlock = document.getElementById('ship-to-manual-block');
+  const warnEl = document.getElementById('ship-to-warn');
+  stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+  if (isSelfShipTo) {
+    // Bill-to can receive shipments itself — no selector needed
     stRow.style.display = 'none';
-    stSelect.innerHTML = '<option value="">— select ship-to location —</option>';
+    manualBlock.style.display = 'none';
+    return;
   }
+  stRow.style.display = 'block';
+  if (shipTos.length > 0) {
+    stSelect.innerHTML += shipTos.map(s => `<option value="${s.id}">${s.name}${s.city ? ' — ' + s.city + ', ' + s.state : ''} (#${s.id})</option>`).join('');
+    stSelect.style.display = '';
+    manualBlock.style.display = 'none';
+  } else {
+    // Bill-to-only account but Eclipse returned no linked ship-tos (or the
+    // lookup failed). Eclipse will reject the bill-to as its own ship-to, so
+    // require a manual ship-to account instead of silently submitting.
+    stSelect.style.display = 'none';
+    warnEl.textContent = lookupError
+      ? `Couldn't load ship-to locations (${lookupError}). This account is bill-to only — enter the ship-to account # to use.`
+      : 'This account is bill-to only, but no linked ship-to locations were found in Eclipse. Enter the ship-to account # to use.';
+    manualBlock.style.display = 'block';
+  }
+}
+
+function getModalShipTo() {
+  const row = document.getElementById('ship-to-row');
+  if (row.style.display === 'none') return '';
+  const sel = document.getElementById('modal-ship-to');
+  if (sel.style.display !== 'none') return sel.value;
+  return document.getElementById('modal-ship-to-manual').value.trim();
 }
 
 async function fetchAndApplyShipTos(c) {
@@ -4486,9 +4519,9 @@ async function fetchAndApplyShipTos(c) {
       body: JSON.stringify({ action: 'getShipTos', sessionToken: eclipseSession.token, customerAccount: c.id })
     });
     const data = await res.json();
-    applyShipTos(c, data.shipTos || [], data.isSelfShipTo !== false);
-  } catch (_) {
-    applyShipTos(c, [], true);
+    applyShipTos(c, data.shipTos || [], data.isSelfShipTo === true, data.lookupError);
+  } catch (err) {
+    applyShipTos(c, [], false, err.message);
   }
 }
 
@@ -4521,14 +4554,14 @@ async function pushToEclipse() {
   const statusEl = document.getElementById('modal-status');
   const submitBtn = document.getElementById('modal-submit');
   const orderBy = document.getElementById('modal-ordered-by').value;
-  const shipToAccount = document.getElementById('modal-ship-to').value;
+  const shipToAccount = getModalShipTo();
 
   if (!selectedCustomer) { statusEl.style.color='#E24B4A'; statusEl.textContent='Please search for and select a customer.'; return; }
   if (document.getElementById('ordered-by-row').style.display !== 'none' && !orderBy) {
     statusEl.style.color='#E24B4A'; statusEl.textContent='Please select an Ordered By contact.'; return;
   }
   if (document.getElementById('ship-to-row').style.display !== 'none' && !shipToAccount) {
-    statusEl.style.color='#E24B4A'; statusEl.textContent='Please select a Ship To location.'; return;
+    statusEl.style.color='#E24B4A'; statusEl.textContent='Please select or enter a Ship To account.'; return;
   }
 
   submitBtn.disabled = true;

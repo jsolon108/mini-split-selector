@@ -155,14 +155,20 @@ export default async function handler(req, res) {
     }
   }
 
-  // Fetch ship-to locations for a bill-to customer
+  // Fetch ship-to locations for a bill-to customer.
+  // Response contract: { shipTos, isSelfShipTo, lookupError? }
+  // isSelfShipTo is ONLY true when Eclipse confirms the bill-to can receive
+  // shipments itself. Lookup failures return lookupError so the UI can warn
+  // and ask for a manual ship-to instead of silently submitting a doomed order.
   if (action === 'getShipTos') {
     try {
-      // Fetch the bill-to record to check isShipTo and get shipToLists
       const r = await fetch(`${ECLIPSE_BASE}/Customers/${encodeURIComponent(customerAccount)}`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
-      if (!r.ok) return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      if (!r.ok) {
+        console.log(`getShipTos: /Customers/${customerAccount} failed with ${r.status}`);
+        return res.status(200).json({ shipTos: [], isSelfShipTo: false, lookupError: `Customer lookup failed (${r.status})` });
+      }
       const customer = await r.json();
 
       // If the bill-to is also flagged as a ship-to, no selector needed
@@ -170,10 +176,16 @@ export default async function handler(req, res) {
         return res.status(200).json({ shipTos: [], isSelfShipTo: true });
       }
 
-      // Get ship-to IDs from shipToLists
-      const shipToIds = (customer.shipToLists || [])
-        .map(s => s.shipToId)
-        .filter(Boolean);
+      // Ship-to links come back under shipToLists, but the shape varies by
+      // record (objects keyed shipToId/shipTo/id, or bare id strings). Log the
+      // raw field so mismatches are visible in Vercel logs.
+      const rawList = customer.shipToLists ?? customer.shipToList ?? customer.shipTos ?? [];
+      console.log(`getShipTos: customer ${customerAccount} isBillTo=${customer.isBillTo} isShipTo=${customer.isShipTo} rawShipToList=${JSON.stringify(rawList).slice(0, 2000)}`);
+
+      const shipToIds = (Array.isArray(rawList) ? rawList : [])
+        .map(s => (s && typeof s === 'object') ? (s.shipToId ?? s.shipTo ?? s.id) : s)
+        .filter(Boolean)
+        .map(String);
 
       if (!shipToIds.length) {
         return res.status(200).json({ shipTos: [], isSelfShipTo: false });
@@ -184,19 +196,23 @@ export default async function handler(req, res) {
       const stR = await fetch(`${ECLIPSE_BASE}/Customers?${idParam}&pageSize=50`, {
         headers: { 'Accept': 'application/json', 'sessionToken': sessionToken }
       });
-      let shipTos = [];
+      // If the detail fetch fails, still return the bare IDs so the user can
+      // pick a ship-to rather than being blocked.
+      let shipTos = shipToIds.map(id => ({ id, name: `Ship-to account #${id}` }));
       if (stR.ok) {
         const stData = await stR.json();
-        shipTos = (stData.results || []).map(s => ({
+        const detailed = (stData.results || []).map(s => ({
           id: s.id,
           name: s.name,
           city: s.city,
           state: s.state
         }));
+        if (detailed.length) shipTos = detailed;
       }
       return res.status(200).json({ shipTos, isSelfShipTo: false });
     } catch (err) {
-      return res.status(200).json({ shipTos: [], isSelfShipTo: true });
+      console.log(`getShipTos: error for customer ${customerAccount}: ${err.message}`);
+      return res.status(200).json({ shipTos: [], isSelfShipTo: false, lookupError: err.message });
     }
   }
 
