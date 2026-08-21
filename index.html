@@ -1124,6 +1124,38 @@ function initMZZones() {
   renderMZResults();
 }
 
+// Combo tables list complete valid capacity combinations (one row per full
+// configuration). A finished build must match one exactly; a build still in
+// progress passes as long as the filled caps fit inside SOME nZones-length
+// combo — requiring an exact match mid-build dead-ends configurations whose
+// partial total is below the condenser's minimum (e.g. 6K+9K en route to six
+// zones on a Bosch 48K). 6/7K zones (cap -1) match either 6000 or 7000.
+function mzComboSatisfiable(combos, caps, nZones, complete) {
+  let keys = [caps.map(c => c === -1 ? 6000 : c)];
+  caps.forEach((c, i) => {
+    if (c === -1) {
+      const next = [];
+      keys.forEach(k => { next.push([...k]); const k7 = [...k]; k7[i] = 7000; next.push(k7); });
+      keys = next;
+    }
+  });
+  if (complete) return keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')));
+  return keys.some(key => {
+    for (const comboStr of combos) {
+      const pool = comboStr.split(',').map(Number);
+      if (pool.length !== nZones) continue;
+      let ok = true;
+      for (const c of key) {
+        const j = pool.indexOf(c);
+        if (j === -1) { ok = false; break; }
+        pool.splice(j, 1);
+      }
+      if (ok) return true;
+    }
+    return false;
+  });
+}
+
 function isCapViable(zoneIdx, candidateCap) {
   // Build a test state with the candidate cap in position zoneIdx
   const testState = mzZoneState.map((z, i) => i === zoneIdx ? {cap: candidateCap, type: '', model: '', liq_pipe: '', gas_pipe: ''} : z);
@@ -1156,28 +1188,14 @@ function isCapViable(zoneIdx, candidateCap) {
     }
 
     // Combo validation — check all filled caps including candidate
-    const allFilledCaps = testFilled.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
-    const comboKey = [...allFilledCaps].sort((a,b)=>a-b).join(',');
     const hasComboTable = !!MZ_COMBOS[o.id];
     const combos = hasAHU ? (MZ_COMBOS_AHU[o.id] || null) : MZ_COMBOS[o.id];
     if (hasAHU && hasComboTable && !MZ_COMBOS_AHU[o.id]) return false;
     if (combos) {
-      const has67 = testFilled.some(z => z.cap === -1);
-      if (has67) {
-        let keys = [allFilledCaps];
-        testFilled.forEach((z, i) => {
-          if (z.cap === -1) {
-            const next = [];
-            keys.forEach(k => { next.push([...k]); const k7=[...k]; k7[i]=7000; next.push(k7); });
-            keys = next;
-          }
-        });
-        if (!keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')))) return false;
-      } else {
-        if (!combos.has(comboKey)) return false;
-      }
+      const caps = testFilled.map(z => z.cap === -1 ? -1 : z.cap * 1000);
+      if (!mzComboSatisfiable(combos, caps, nZones, testFilled.length === nZones)) return false;
     } else {
-      const total = allFilledCaps.reduce((a,b)=>a+b,0);
+      const total = testFilled.reduce((a, z) => a + (z.cap === -1 ? 7000 : z.cap * 1000), 0);
       if (total > o.max_btu) return false;
     }
     return true;
@@ -1287,25 +1305,8 @@ function renderMZResults() {
     // If AHU selected and this ODU uses combo tables but has no AHU combos, exclude it
     if (hasAHU && hasComboTable && !MZ_COMBOS_AHU[o.id]) return false;
     if (combos) {
-      const has67 = filledZones.some(z => z.cap === -1);
-      if (has67) {
-        // Generate all 6000/7000 permutations for -1 zones using filledZones indices
-        let keys = [filledZones.map(z => z.cap === -1 ? 6000 : z.cap * 1000)];
-        filledZones.forEach((z, i) => {
-          if (z.cap === -1) {
-            const next = [];
-            keys.forEach(k => {
-              next.push([...k]);
-              const k7 = [...k]; k7[i] = 7000; next.push(k7);
-            });
-            keys = next;
-          }
-        });
-        const anyMatch = keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')));
-        if (!anyMatch) return false;
-      } else {
-        if (!combos.has(comboKey)) return false;
-      }
+      const caps = filledZones.map(z => z.cap === -1 ? -1 : z.cap * 1000);
+      if (!mzComboSatisfiable(combos, caps, nZones, filledZones.length === nZones)) return false;
     } else {
       // BTU range check (Daikin, Fujitsu)
       const total = filledCaps.reduce((a,b)=>a+b,0);
