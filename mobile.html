@@ -1182,6 +1182,38 @@ function szToggle(i) {
 // ══════════════════════════════════════════════
 // MULTI-ZONE TAB — zones-first approach (matches desktop)
 // ══════════════════════════════════════════════
+// Combo tables list complete valid capacity combinations (one row per full
+// configuration). A finished build must match one exactly; a build still in
+// progress passes as long as the filled caps fit inside SOME nZones-length
+// combo — requiring an exact match mid-build dead-ends configurations whose
+// partial total is below the condenser's minimum (e.g. 6K+9K en route to six
+// zones on a Bosch 48K). 6/7K zones (cap -1) match either 6000 or 7000.
+function mzComboSatisfiable(combos, caps, nZones, complete) {
+  let keys = [caps.map(c => c === -1 ? 6000 : c)];
+  caps.forEach((c, i) => {
+    if (c === -1) {
+      const next = [];
+      keys.forEach(k => { next.push([...k]); const k7 = [...k]; k7[i] = 7000; next.push(k7); });
+      keys = next;
+    }
+  });
+  if (complete) return keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')));
+  return keys.some(key => {
+    for (const comboStr of combos) {
+      const pool = comboStr.split(',').map(Number);
+      if (pool.length !== nZones) continue;
+      let ok = true;
+      for (const c of key) {
+        const j = pool.indexOf(c);
+        if (j === -1) { ok = false; break; }
+        pool.splice(j, 1);
+      }
+      if (ok) return true;
+    }
+    return false;
+  });
+}
+
 // ─── MZ viable cap check (port of desktop isCapViable) ────────────
 function mzIsCapViable(zoneIdx, candidateCap) {
   const testState = mzZoneState.map((z, i) => i === zoneIdx ? {cap: candidateCap, type:'', model:'', liq_pipe:'', gas_pipe:''} : z);
@@ -1198,26 +1230,12 @@ function mzIsCapViable(zoneIdx, candidateCap) {
       const caps = z.cap === -1 ? [6,7] : [z.cap];
       if (!iduRows(o.id).some(r => caps.includes(r.cap) && r.type === z.type)) return false;
     }
-    const allFilledCaps = testFilled.map(z => z.cap === -1 ? 7000 : z.cap * 1000);
-    const comboKey = [...allFilledCaps].sort((a,b)=>a-b).join(',');
     const combos = MZ_COMBOS[o.id];
     if (combos) {
-      const has67 = testFilled.some(z => z.cap === -1);
-      if (has67) {
-        let keys = [allFilledCaps.map(x=>x)];
-        testFilled.forEach((z,i) => {
-          if (z.cap === -1) {
-            const next = [];
-            keys.forEach(k => { const k6=[...k]; k6[i]=6000; next.push(k6); const k7=[...k]; k7[i]=7000; next.push(k7); });
-            keys = next;
-          }
-        });
-        if (!keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')))) return false;
-      } else {
-        if (!combos.has(comboKey)) return false;
-      }
+      const caps = testFilled.map(z => z.cap === -1 ? -1 : z.cap * 1000);
+      if (!mzComboSatisfiable(combos, caps, nZones, testFilled.length === nZones)) return false;
     } else {
-      const total = allFilledCaps.reduce((a,b)=>a+b,0);
+      const total = testFilled.reduce((a, z) => a + (z.cap === -1 ? 7000 : z.cap * 1000), 0);
       if (total > o.max_btu) return false;
     }
     return true;
@@ -1336,20 +1354,8 @@ function renderMZMatchingOUs() {
     }
     const combos = MZ_COMBOS[o.id];
     if (combos) {
-      const has67 = filledZones.some(z => z.cap === -1);
-      if (has67) {
-        let keys = [filledCaps.map(x=>x)];
-        filledZones.forEach((z,i) => {
-          if (z.cap === -1) {
-            const next = [];
-            keys.forEach(k => { const k6=[...k]; k6[i]=6000; next.push(k6); const k7=[...k]; k7[i]=7000; next.push(k7); });
-            keys = next;
-          }
-        });
-        if (!keys.some(k => combos.has([...k].sort((a,b)=>a-b).join(',')))) return false;
-      } else {
-        if (!combos.has(comboKey)) return false;
-      }
+      const caps = filledZones.map(z => z.cap === -1 ? -1 : z.cap * 1000);
+      if (!mzComboSatisfiable(combos, caps, nZones, filledZones.length === nZones)) return false;
     } else {
       if (totalBtu > o.max_btu) return false;
     }
