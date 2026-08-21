@@ -6801,6 +6801,114 @@ async function submitFeedback() {
 }
 </script>
 
+<!-- Ask the Docs (submittal chat) -->
+<button id="docchat-fab" onclick="openDocChat()" title="Ask questions across all submittal PDFs"
+  style="position:fixed;bottom:168px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#0b7285;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;gap:7px;font-family:inherit">
+  📄 Ask the Docs
+</button>
+<script>
+// ── Ask the Docs: chat over submittal PDFs ────────────────────────
+// Two-pass flow: (1) Claude picks relevant submittals from catalog metadata,
+// (2) Claude answers from those documents' extracted text (submittal_texts).
+const DOCCHAT_MODEL = 'claude-sonnet-5';
+let docChatHistory = [];   // [{role:'user'|'assistant', content}] answers only, no doc dumps
+let docChatBusy = false;
+
+function docChatCatalog() {
+  const seen = new Map();
+  SZ.forEach(s => { if (s.submittal_path && !seen.has(s.submittal_path))
+    seen.set(s.submittal_path, `${s.brand} ${s.series} ${s.cap}K ${s.indoor} single-zone system (outdoor ${s.ou}, indoor ${s.iu})`); });
+  MZ.forEach(o => { if (o.submittal_path && !seen.has(o.submittal_path))
+    seen.set(o.submittal_path, `${o.brand} multi-zone outdoor unit ${o.ou} (${o.ou_cap}K, up to ${o.zones_max} zones)`); });
+  const brandOf = {}; MZ.forEach(o => brandOf[o.id] = o.brand);
+  Object.entries(MZ_IDU).forEach(([ouId, rows]) => rows.forEach(r => { if (r.submittal_path && !seen.has(r.submittal_path))
+    seen.set(r.submittal_path, `${brandOf[ouId]||''} multi-zone indoor unit ${r.model} (${r.cap}K ${r.type})`); }));
+  return [...seen.entries()].map(([path, desc]) => ({path, desc}));
+}
+
+async function docChatClaude(system, messages, maxTokens) {
+  const res = await fetch('/api/claude', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ model: DOCCHAT_MODEL, max_tokens: maxTokens, system, messages }) });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || 'API error');
+  return (data.content || []).map(b => b.text || '').join('');
+}
+
+function openDocChat() {
+  let overlay = document.getElementById('docchat-panel');
+  if (overlay) { overlay.style.display = 'flex'; document.getElementById('docchat-input').focus(); return; }
+  overlay = document.createElement('div');
+  overlay.id = 'docchat-panel';
+  overlay.style.cssText = 'position:fixed;bottom:24px;right:24px;width:430px;max-width:calc(100vw - 48px);height:560px;max-height:calc(100vh - 48px);background:#fff;border:1px solid #d5d5d5;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.28);z-index:9500;display:flex;flex-direction:column;font-family:inherit;overflow:hidden';
+  overlay.innerHTML = `
+    <div style="padding:12px 16px;background:#0b7285;color:#fff;display:flex;align-items:center;gap:8px">
+      <span style="font-weight:700;font-size:14px">📄 Ask the Docs</span>
+      <span style="font-size:11px;opacity:.8;flex:1">answers from ${docChatCatalog().length} submittals</span>
+      <button onclick="document.getElementById('docchat-panel').style.display='none'" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer;line-height:1">×</button>
+    </div>
+    <div id="docchat-msgs" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:12px;color:#777;line-height:1.5">Ask anything the submittal sheets can answer — e.g. <i>"which 12K cassette allows the longest lineset run?"</i>, <i>"quietest 9K wall mount?"</i>, <i>"max height difference on the Bosch 24K regular?"</i></div>
+    </div>
+    <div style="padding:10px;border-top:1px solid #eee;display:flex;gap:8px">
+      <input id="docchat-input" placeholder="Ask about the submittals…" style="flex:1;padding:9px 12px;border:1px solid #ccc;border-radius:8px;font-size:13px;font-family:inherit" onkeydown="if(event.key==='Enter')docChatSend()"/>
+      <button id="docchat-send" onclick="docChatSend()" style="padding:9px 16px;background:#0b7285;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Ask</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  document.getElementById('docchat-input').focus();
+}
+
+function docChatBubble(role, text) {
+  const wrap = document.getElementById('docchat-msgs');
+  const div = document.createElement('div');
+  div.style.cssText = role === 'user'
+    ? 'align-self:flex-end;background:#0b7285;color:#fff;padding:8px 12px;border-radius:12px 12px 3px 12px;font-size:13px;max-width:85%;white-space:pre-wrap'
+    : 'align-self:flex-start;background:#f1f4f6;color:#222;padding:9px 12px;border-radius:12px 12px 12px 3px;font-size:13px;max-width:92%;white-space:pre-wrap;line-height:1.5';
+  div.textContent = text;
+  wrap.appendChild(div);
+  wrap.scrollTop = wrap.scrollHeight;
+  return div;
+}
+
+async function docChatSend() {
+  if (docChatBusy) return;
+  const input = document.getElementById('docchat-input');
+  const question = input.value.trim();
+  if (!question) return;
+  input.value = '';
+  docChatBusy = true;
+  document.getElementById('docchat-send').disabled = true;
+  docChatBubble('user', question);
+  const status = docChatBubble('assistant', 'Selecting documents…');
+  try {
+    const catalog = docChatCatalog();
+    const listing = catalog.map(d => `${d.path} — ${d.desc}`).join('\n');
+    const selRaw = await docChatClaude(
+      'You select documents for an HVAC equipment question. Reply with STRICT JSON only: {"paths":["..."]} — up to 12 paths from the provided list that are most relevant to the question. No other text.',
+      [{ role: 'user', content: `Question: ${question}\n\nAvailable documents:\n${listing}` }], 600);
+    let paths = [];
+    try { paths = JSON.parse(selRaw.match(/\{[\s\S]*\}/)[0]).paths.slice(0, 12); } catch (e) {}
+    paths = paths.filter(p => catalog.some(d => d.path === p));
+    if (!paths.length) throw new Error('No matching submittals found for that question.');
+    status.textContent = `Reading ${paths.length} submittal${paths.length > 1 ? 's' : ''}…`;
+    const inList = paths.map(p => `"${p}"`).join(',');
+    const tr = await fetch(`${SB_URL}/rest/v1/submittal_texts?path=in.(${encodeURIComponent(inList)})&select=path,text_quality,content`, { headers: H });
+    const texts = await tr.json();
+    const docsBlock = texts.map(t => `=== ${t.path}${t.text_quality !== 'ok' ? ' (WARNING: text extraction degraded, numbers may be missing)' : ''} ===\n${(t.content || '').slice(0, 9000)}`).join('\n\n');
+    const answer = await docChatClaude(
+      "You are a product-documentation assistant inside Johnstone Supply NY/CT's ductless quote builder. Answer ONLY from the provided submittal document excerpts — never from general knowledge. Always cite the specific model numbers and figures you used. If the documents don't contain the answer, say so plainly. If a document is flagged as degraded, caveat any claim that relies on it. Be concise: lead with the direct answer, then the supporting numbers per model.",
+      [...docChatHistory.slice(-6), { role: 'user', content: `Question: ${question}\n\nSubmittal documents:\n\n${docsBlock}` }], 900);
+    status.textContent = answer;
+    docChatHistory.push({ role: 'user', content: question }, { role: 'assistant', content: answer });
+    try { logEvent('docchat_question', { question: question.slice(0, 200), docs: paths.length }); } catch (e) {}
+  } catch (e) {
+    status.textContent = '⚠ ' + (e.message || 'Something went wrong — try rephrasing.');
+  } finally {
+    docChatBusy = false;
+    document.getElementById('docchat-send').disabled = false;
+  }
+}
+</script>
+
 <!-- Feedback Button + Modal -->
 <button id="feedback-fab" onclick="openFeedbackModal()" title="Send feedback"
   style="position:fixed;bottom:24px;right:24px;height:38px;padding:0 16px;border-radius:20px;background:#185FA5;color:#fff;border:none;font-size:13px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.2);z-index:9000;display:flex;align-items:center;gap:7px;font-family:inherit">
