@@ -1064,7 +1064,7 @@ async function loadCatalogs() {
     // Build equipment exclusion set — all known ODU/IDU models across SZ and MZ
     equipmentCatalogs = new Set();
     SZ.forEach(s => { if (s.ou) equipmentCatalogs.add(fmtCat(s.ou)); if (s.iu) equipmentCatalogs.add(fmtCat(s.iu)); });
-    MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(fmtCat(o.ou)); });
+    MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(fmtCat(o.ou)); if (o.ou_new) equipmentCatalogs.add(fmtCat(o.ou_new)); });
     Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(fmtCat(r.model)); });
     renderSZTab();
     renderMZTab();
@@ -1331,6 +1331,46 @@ function mzSetType(idx, type) {
   renderMZMatchingOUs();
 }
 
+// ── Generation-transition stock (e.g. Daikin AVJU9 → AVJU8) ──
+// Rows with ou_new carry two sellable generations; show live stock for both
+// so the counter can steer to what's on the shelf. Lazy lookup mirrors desktop.
+let mzGenStockInv = {}, mzGenStockSeq = 0;
+function mzGenStockQty(m) { const s = mzGenStockInv[m]; return s ? (s.userQty > 0 ? s.userQty : s.total) : 0; }
+function paintMZGenStock() {
+  document.querySelectorAll('#mz-results [data-stock-model]').forEach(el => {
+    const m = el.dataset.stockModel;
+    if (!(m in mzGenStockInv)) { el.textContent = eclipseSession.token ? '…' : ''; el.style.color = 'var(--gray-400)'; return; }
+    const s = mzGenStockInv[m];
+    if (s && s.userQty > 0) { el.textContent = `● ${s.userQty} in stock`; el.style.color = 'var(--green)'; }
+    else if (s && s.total > 0) { el.textContent = `● ${s.total} other br.`; el.style.color = 'var(--yellow)'; }
+    else { el.textContent = '○ no stock'; el.style.color = 'var(--red)'; }
+  });
+}
+async function mzFetchGenStock() {
+  const spans = [...document.querySelectorAll('#mz-results [data-stock-model]')];
+  if (!spans.length) return;
+  paintMZGenStock();
+  if (!eclipseSession.token) return;
+  const missing = [...new Set(spans.map(s => s.dataset.stockModel))].filter(m => !(m in mzGenStockInv));
+  if (!missing.length) return;
+  const seq = ++mzGenStockSeq;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'inventoryForProducts',
+        sessionToken: eclipseSession.token,
+        userId: eclipseSession.username,
+        userBranch: quotePricing?.userBranch || undefined,
+        products: missing.map(m => ({ catalogNumber: m }))
+      })
+    });
+    const data = await res.json();
+    missing.forEach(m => { mzGenStockInv[m] = (data.inventory || {})[m] || null; });
+    if (seq === mzGenStockSeq) paintMZGenStock();
+  } catch(_) { /* badges stay blank; page fully usable without them */ }
+}
+
 function renderMZMatchingOUs() {
   const el = document.getElementById('mz-results');
   const filledZones = mzZoneState.filter(z => z.cap > 0 || z.cap === -1);
@@ -1405,7 +1445,8 @@ function renderMZMatchingOUs() {
           <div class="brand-badge">${esc((o.brand||'').substring(0,6))}</div>
           <div class="product-info">
             <div class="product-name">${esc(o.brand)} ${esc(o.series)} — ${o.ou_cap}K</div>
-            <div class="product-model">${esc(o.ou)}</div>
+            <div class="product-model">${esc(o.ou)}${o.ou_new?` <span data-stock-model="${esc(o.ou)}" style="font-size:10px;font-weight:600"></span>`:''}</div>
+            ${o.ou_new?`<div class="product-model">${esc(o.ou_new)} <span data-stock-model="${esc(o.ou_new)}" style="font-size:10px;font-weight:600"></span></div>`:''}
             <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')}${o.seer2?' · SEER2: '+o.seer2:''}</div>
             ${o.note?`<div class="product-specs" style="color:var(--yellow);font-size:10px">${esc(o.note)}</div>`:''}
             ${wifiZones.length?`<div class="product-specs" style="color:var(--green);font-size:10px">📶 Factory WiFi: zone ${wifiZones.join(', ')}</div>`:''}
@@ -1433,6 +1474,7 @@ function renderMZMatchingOUs() {
       </div>`;
         }).join('');
     }).join('');
+  mzFetchGenStock();
 }
 
 function mzAdd(oi) {
@@ -1449,10 +1491,21 @@ function mzAdd(oi) {
   }).filter(Boolean);
   const newMzIdx = quote.length;
   logEvent('add_system', { type: 'mz', brand: o.brand, series: o.series, cap: o.ou_cap, zones: zones.length });
+  // Generation transition: default to the outgoing model while it has stock
+  // (sell-through first); take the new one only when old is dry and new isn't.
+  let ou = o.ou, ouSub = o.submittal_path || '', ouAlt = '', ouAltSub = '';
+  if (o.ou_new) {
+    ouAlt = o.ou_new; ouAltSub = o.submittal_path_new || '';
+    if ((o.ou in mzGenStockInv) && (o.ou_new in mzGenStockInv) && mzGenStockQty(o.ou) === 0 && mzGenStockQty(o.ou_new) > 0) {
+      ou = o.ou_new; ouSub = o.submittal_path_new || '';
+      ouAlt = o.ou; ouAltSub = o.submittal_path || '';
+    }
+  }
   quote.push({
     id: o.id+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap,
-    ou: o.ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
-    ou_submittal_path: o.submittal_path || '',
+    ou, ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz',
+    ou_submittal_path: ouSub,
+    ou_alt: ouAlt, ou_alt_submittal_path: ouAltSub,
     zones, totalBtu, note: `${zones.length}-zone · ${totalBtu/1000}K total`, addons: null
   });
   renderMZMatchingOUs();
