@@ -999,7 +999,7 @@ async function fetchData() {
     if (s.ou) equipmentCatalogs.add(formatCatNumLocal(s.ou));
     if (s.iu) equipmentCatalogs.add(formatCatNumLocal(s.iu));
   });
-  MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(formatCatNumLocal(o.ou)); });
+  MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(formatCatNumLocal(o.ou)); if (o.ou_new) equipmentCatalogs.add(formatCatNumLocal(o.ou_new)); });
   Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(formatCatNumLocal(r.model)); });
   console.log('[Equipment catalogs] Loaded', equipmentCatalogs.size, 'models to exclude from add-ons');
   loadAddonRules(); // fire-and-forget; rules are used later when tag-alongs load
@@ -1339,6 +1339,71 @@ function renderMZResults() {
     const items = filteredValid.filter(o => o.brand === brand).sort((a,b) => sortScore(a) - sortScore(b));
     return `<div class="grp-label">${brand}</div><div class="mz-grid">${items.map(o => renderMZResultCard(o)).join('')}</div>`;
   }).join('');
+  mzFetchStock();
+}
+
+// ── Generation-transition support (e.g. Daikin AVJU9 → AVJU8) ──
+// Rows with ou_new carry two sellable generations of the same system. The
+// card lists both models with live stock so the counter can steer to what's
+// on the shelf; stock is fetched lazily via inventoryForProducts.
+let mzStockInv = {};   // model -> {userQty,total,stockTier,branches} | null (looked up, none found)
+let mzStockGen = 0;
+
+function mzGenLines(o) {
+  const sub = p => p ? ` <a href="${submittalUrl(p)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>` : '';
+  if (!o.ou_new) return `<div class="mz-sub">${o.ou}${sub(o.submittal_path)}</div>`;
+  return `<div class="mz-sub">${o.ou} <span data-stock-model="${o.ou}" style="font-size:11px;font-weight:600"></span>${sub(o.submittal_path)}</div>
+    <div class="mz-sub">${o.ou_new} <span data-stock-model="${o.ou_new}" style="font-size:11px;font-weight:600"></span>${sub(o.submittal_path_new)}</div>`;
+}
+
+function paintMZStock() {
+  document.querySelectorAll('#multi-results [data-stock-model]').forEach(el => {
+    const m = el.dataset.stockModel;
+    if (!(m in mzStockInv)) { el.textContent = eclipseSession.token ? '…' : ''; el.style.color = '#bbb'; return; }
+    const s = mzStockInv[m];
+    if (s && s.userQty > 0) { el.textContent = `● ${s.userQty} in stock`; el.style.color = '#16a34a'; }
+    else if (s && s.total > 0) { el.textContent = `● ${s.total} other branch${s.total===1?'':'es'}`; el.style.color = '#b45309'; }
+    else { el.textContent = '○ no stock'; el.style.color = '#dc2626'; }
+  });
+}
+
+async function mzFetchStock() {
+  const spans = [...document.querySelectorAll('#multi-results [data-stock-model]')];
+  if (!spans.length) return;
+  paintMZStock();
+  if (!eclipseSession.token) return;
+  const missing = [...new Set(spans.map(s => s.dataset.stockModel))].filter(m => !(m in mzStockInv));
+  if (!missing.length) return;
+  const gen = ++mzStockGen;
+  try {
+    const res = await fetch('/api/eclipse', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'inventoryForProducts',
+        sessionToken: eclipseSession.token,
+        userId: eclipseSession.username,
+        userBranch: quotePricing?.userBranch || undefined,
+        products: missing.map(m => ({ catalogNumber: m }))
+      })
+    });
+    const data = await res.json();
+    missing.forEach(m => { mzStockInv[m] = (data.inventory || {})[m] || null; });
+    if (gen === mzStockGen) paintMZStock();
+  } catch (_) { /* stock badges stay in loading state; page fully usable without them */ }
+}
+
+function mzStockQty(model) {
+  const s = mzStockInv[model];
+  return s ? (s.userQty > 0 ? s.userQty : s.total) : 0;
+}
+
+function swapMZGen(qi) {
+  const q = quote[qi];
+  if (!q || !q.ou_alt) return;
+  [q.ou, q.ou_alt] = [q.ou_alt, q.ou];
+  [q.ou_submittal_path, q.ou_alt_submittal_path] = [q.ou_alt_submittal_path || '', q.ou_submittal_path || ''];
+  renderQuote();
+  renderMZResults();
 }
 
 function renderMZResultCard(o) {
@@ -1348,7 +1413,7 @@ function renderMZResultCard(o) {
   const barPct = Math.min(total/o.max_btu*100, 100);
   const allFilled = mzZoneState.every(z => (z.cap > 0 || z.cap === -1) && z.type);
   // Count how many times this OU is already in the quote so user sees confirmation without losing the grid
-  const inQuoteCount = quote.filter(q => q.qtype === 'mz' && q.ou === o.ou).length;
+  const inQuoteCount = quote.filter(q => q.qtype === 'mz' && (q.ou === o.ou || (o.ou_new && q.ou === o.ou_new))).length;
 
   // Resolve actual model numbers for this ODU
   const zoneLines = mzZoneState.map((z, i) => {
@@ -1370,7 +1435,7 @@ function renderMZResultCard(o) {
 
   return `<div class="mz-card"${inQuoteCount > 0 ? ' style="border-color:#16a34a;background:#f0fdf4"' : ''}>
     <div class="mz-title">${o.brand} ${o.series} — ${o.ou_cap}K · ${o.zones_max}-zone max${inQuoteCount>0?` <span style="color:#16a34a;font-size:11px;font-weight:500">✓ in quote</span>`:''}</div>
-    <div class="mz-sub">${o.ou}${o.submittal_path?` <a href="${submittalUrl(o.submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}</div>
+    ${mzGenLines(o)}
     <div class="mz-note">${o.note||''}</div>
     ${zoneLines}
     <div class="btu-bar">
@@ -1379,15 +1444,15 @@ function renderMZResultCard(o) {
     </div>
     <div style="display:flex;gap:6px;margin-top:6px">
       <button onclick="addMZResult('${o.id}')" ${allFilled?'':'disabled'} style="flex:1;padding:7px;font-size:12px;border-radius:6px;background:#f5f5f3;border:1px solid #ddd;cursor:pointer;color:#333;white-space:nowrap;font-family:inherit" ${!allFilled?'':''}>${btnLabel}</button>
-      ${inQuoteCount > 0 ? `<button onclick="removeMZFromQuote('${o.ou.replace(/'/g, "\\'")}')" title="Remove the most recently added ${o.ou} from the quote" style="padding:7px 14px;font-size:12px;border-radius:6px;background:#fff;border:1px solid #dc2626;color:#dc2626;cursor:pointer;white-space:nowrap;font-family:inherit">✕ Remove</button>` : ''}
+      ${inQuoteCount > 0 ? `<button onclick="removeMZFromQuote('${o.ou.replace(/'/g, "\\'")}','${(o.ou_new||'').replace(/'/g, "\\'")}')" title="Remove the most recently added ${o.ou} from the quote" style="padding:7px 14px;font-size:12px;border-radius:6px;background:#fff;border:1px solid #dc2626;color:#dc2626;cursor:pointer;white-space:nowrap;font-family:inherit">✕ Remove</button>` : ''}
     </div>
   </div>`;
 }
 
-// Remove the most-recently-added multizone line for a given OU
-function removeMZFromQuote(ou) {
+// Remove the most-recently-added multizone line for a given OU (either generation)
+function removeMZFromQuote(ou, ouNew) {
   for (let i = quote.length - 1; i >= 0; i--) {
-    if (quote[i].qtype === 'mz' && quote[i].ou === ou) {
+    if (quote[i].qtype === 'mz' && (quote[i].ou === ou || (ouNew && quote[i].ou === ouNew))) {
       quote.splice(i, 1);
       updateCount();
       renderQuote();
@@ -1406,9 +1471,23 @@ function addMZResult(ouId) {
     return {z: i+1, cap: capToUse, type: z.type, model: row?row.model:z.model, liq_pipe: row?row.liq_pipe:z.liq_pipe, gas_pipe: row?row.gas_pipe:z.gas_pipe, submittal_path: row?.submittal_path || ''};
   }).filter(Boolean);
   const total = zones.reduce((a,z) => a+z.cap*1000, 0);
-  quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou: o.ou,
+  // Generation transition: default to the outgoing model while it has stock
+  // (sell-through first), fall to the new one only when the old is dry and
+  // the new is on the shelf. The other generation stays on the quote line
+  // behind the ⇄ swap button.
+  let ou = o.ou, ouSub = o.submittal_path || '', ouAlt = '', ouAltSub = '';
+  if (o.ou_new) {
+    ouAlt = o.ou_new; ouAltSub = o.submittal_path_new || '';
+    const oldLooked = o.ou in mzStockInv, newLooked = o.ou_new in mzStockInv;
+    if (oldLooked && newLooked && mzStockQty(o.ou) === 0 && mzStockQty(o.ou_new) > 0) {
+      ou = o.ou_new; ouSub = o.submittal_path_new || '';
+      ouAlt = o.ou; ouAltSub = o.submittal_path || '';
+    }
+  }
+  quote.push({id: ouId+'-'+Date.now(), brand: o.brand, series: o.series, cap: o.ou_cap, ou,
     ref: o.ref, seer2: o.seer2, hspf2: o.hspf2, qty: 1, qtype: 'mz', zones, totalBtu: total,
-    ou_submittal_path: o.submittal_path || '',
+    ou_submittal_path: ouSub,
+    ou_alt: ouAlt, ou_alt_submittal_path: ouAltSub,
     note: `${zones.length}-zone · ${total/1000}K total`});
   const newIdx = quote.length - 1;
   updateCount();
@@ -1544,7 +1623,7 @@ function renderQuote() {
       const zoneTotal = q.zones.reduce((a,z)=>{ const p=getPrice(z.model); return a+(p?.price||0); },0);
       baseTotal = (oduPrice?.price||0) + zoneTotal;
       models=`<div class="q-model-list">
-        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${q.ou_submittal_path?` <a href="${submittalUrl(q.ou_submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
+        <div class="q-model-row"><span class="q-model-label">ODU</span><span>${q.ou}</span>${q.ou_submittal_path?` <a href="${submittalUrl(q.ou_submittal_path)}" target="_blank" rel="noopener" style="font-size:11px;color:#185FA5;font-weight:600;text-decoration:none">📄 Submittal</a>`:''}${q.ou_alt?`<button onclick="swapMZGen(${qi})" title="Switch to ${q.ou_alt}" style="height:22px;padding:0 7px;border:1px solid #d5d5d5;background:#fff;color:#555;border-radius:5px;font-size:10px;cursor:pointer;white-space:nowrap;font-family:inherit">⇄ ${q.ou_alt.slice(-5)}</button>`:''}${priceBadge(q.ou)}<button class="inv-btn" onclick="showInvModal('${q.ou}','ODU')">Inventory</button></div>
         ${zlines}
         ${addonLines}
       </div>`;
