@@ -1336,6 +1336,19 @@ function mzSetType(idx, type) {
 // so the counter can steer to what's on the shelf. Lazy lookup mirrors desktop.
 let mzGenStockInv = {}, mzGenStockSeq = 0;
 function mzGenStockQty(m) { const s = mzGenStockInv[m]; return s ? (s.userQty > 0 ? s.userQty : s.total) : 0; }
+// Generation pick for quoting: sell through the outgoing model, but branch
+// stock wins — a new-gen unit on our shelf beats an old-gen unit at another
+// branch. Returns true when the NEW generation should go on the quote.
+function mzUseNewGen(oldModel, newModel, inv) {
+  if (!(oldModel in inv) || !(newModel in inv)) return false;
+  const o = inv[oldModel], n = inv[newModel];
+  const oUser = o ? o.userQty : 0, nUser = n ? n.userQty : 0;
+  const oTotal = o ? o.total : 0, nTotal = n ? n.total : 0;
+  if (oUser > 0) return false;
+  if (nUser > 0) return true;
+  if (oTotal > 0) return false;
+  return nTotal > 0;
+}
 function paintMZGenStock() {
   document.querySelectorAll('#mz-results [data-stock-model]').forEach(el => {
     const m = el.dataset.stockModel;
@@ -1495,7 +1508,7 @@ function mzAdd(oi) {
     let zModel = row?.model || '', zSub = row?.submittal_path || '', zAlt = '', zAltSub = '';
     if (row && row.model_new) {
       zAlt = row.model_new; zAltSub = row.submittal_path_new || '';
-      if ((row.model in mzGenStockInv) && (row.model_new in mzGenStockInv) && mzGenStockQty(row.model) === 0 && mzGenStockQty(row.model_new) > 0) {
+      if (mzUseNewGen(row.model, row.model_new, mzGenStockInv)) {
         zModel = row.model_new; zSub = row.submittal_path_new || '';
         zAlt = row.model; zAltSub = row.submittal_path || '';
       }
@@ -1509,7 +1522,7 @@ function mzAdd(oi) {
   let ou = o.ou, ouSub = o.submittal_path || '', ouAlt = '', ouAltSub = '';
   if (o.ou_new) {
     ouAlt = o.ou_new; ouAltSub = o.submittal_path_new || '';
-    if ((o.ou in mzGenStockInv) && (o.ou_new in mzGenStockInv) && mzGenStockQty(o.ou) === 0 && mzGenStockQty(o.ou_new) > 0) {
+    if (mzUseNewGen(o.ou, o.ou_new, mzGenStockInv)) {
       ou = o.ou_new; ouSub = o.submittal_path_new || '';
       ouAlt = o.ou; ouAltSub = o.submittal_path || '';
     }
