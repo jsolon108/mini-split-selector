@@ -1065,7 +1065,7 @@ async function loadCatalogs() {
     equipmentCatalogs = new Set();
     SZ.forEach(s => { if (s.ou) equipmentCatalogs.add(fmtCat(s.ou)); if (s.iu) equipmentCatalogs.add(fmtCat(s.iu)); });
     MZ.forEach(o => { if (o.ou) equipmentCatalogs.add(fmtCat(o.ou)); if (o.ou_new) equipmentCatalogs.add(fmtCat(o.ou_new)); });
-    Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(fmtCat(r.model)); });
+    Object.values(MZ_IDU).flat().forEach(r => { if (r.model) equipmentCatalogs.add(fmtCat(r.model)); if (r.model_new) equipmentCatalogs.add(fmtCat(r.model_new)); });
     renderSZTab();
     renderMZTab();
     renderAddonsTab();
@@ -1336,6 +1336,19 @@ function mzSetType(idx, type) {
 // so the counter can steer to what's on the shelf. Lazy lookup mirrors desktop.
 let mzGenStockInv = {}, mzGenStockSeq = 0;
 function mzGenStockQty(m) { const s = mzGenStockInv[m]; return s ? (s.userQty > 0 ? s.userQty : s.total) : 0; }
+// Generation pick for quoting: sell through the outgoing model, but branch
+// stock wins — a new-gen unit on our shelf beats an old-gen unit at another
+// branch. Returns true when the NEW generation should go on the quote.
+function mzUseNewGen(oldModel, newModel, inv) {
+  if (!(oldModel in inv) || !(newModel in inv)) return false;
+  const o = inv[oldModel], n = inv[newModel];
+  const oUser = o ? o.userQty : 0, nUser = n ? n.userQty : 0;
+  const oTotal = o ? o.total : 0, nTotal = n ? n.total : 0;
+  if (oUser > 0) return false;
+  if (nUser > 0) return true;
+  if (oTotal > 0) return false;
+  return nTotal > 0;
+}
 function paintMZGenStock() {
   document.querySelectorAll('#mz-results [data-stock-model]').forEach(el => {
     const m = el.dataset.stockModel;
@@ -1427,6 +1440,7 @@ function renderMZMatchingOUs() {
       const inQ = quote.filter(q => q.qtype==='mz' && q.ou===o.ou).length;
       let totalPrice = pOu?.price || 0;
       const wifiZones = [];
+      const genRows = [];   // IDU generation transition (e.g. KPAS→KPBS): distinct dual-gen rows in this build
       mzZoneState.forEach((z, zi) => {
         if ((z.cap > 0 || z.cap === -1) && z.type) {
           const caps = z.cap === -1 ? [6,7] : [z.cap];
@@ -1434,6 +1448,7 @@ function renderMZMatchingOUs() {
           if (row) {
             totalPrice += getPrice(row.model)?.price || 0;
             if (row.factory_wifi) wifiZones.push(zi + 1);
+            if (row.model_new && !genRows.some(g => g.model === row.model)) genRows.push(row);
           }
         }
       });
@@ -1450,6 +1465,7 @@ function renderMZMatchingOUs() {
             <div class="product-specs">${o.zones_max}-zone max · ${esc(o.ref||'')}${o.seer2?' · SEER2: '+o.seer2:''}</div>
             ${o.note?`<div class="product-specs" style="color:var(--yellow);font-size:10px">${esc(o.note)}</div>`:''}
             ${wifiZones.length?`<div class="product-specs" style="color:var(--green);font-size:10px">📶 Factory WiFi: zone ${wifiZones.join(', ')}</div>`:''}
+            ${genRows.map(r=>`<div class="product-specs" style="font-size:10px">${esc(r.model)} <span data-stock-model="${esc(r.model)}" style="font-weight:600"></span> · ${esc(r.model_new)} <span data-stock-model="${esc(r.model_new)}" style="font-weight:600"></span></div>`).join('')}
           </div>
           <div class="product-stock">
             <div class="product-price-val">${totalPrice?fmt(totalPrice):'—'}</div>
@@ -1487,7 +1503,17 @@ function mzAdd(oi) {
     const caps = z.cap === -1 ? [6,7] : [z.cap];
     const capToUse = z.cap === -1 ? ([6,7].find(c => iduRows(o.id).some(r=>r.cap===c&&r.type===z.type)) || 7) : z.cap;
     const row = iduRows(o.id).find(r => r.cap===capToUse && r.type===z.type);
-    return { z: i+1, cap: capToUse, type: z.type, model: row?.model||'', liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'', submittal_path: row?.submittal_path||'' };
+    // IDU generation transition: outgoing model while it has stock, new one
+    // only when the old is dry and the new isn't (matches ODU behavior).
+    let zModel = row?.model || '', zSub = row?.submittal_path || '', zAlt = '', zAltSub = '';
+    if (row && row.model_new) {
+      zAlt = row.model_new; zAltSub = row.submittal_path_new || '';
+      if (mzUseNewGen(row.model, row.model_new, mzGenStockInv)) {
+        zModel = row.model_new; zSub = row.submittal_path_new || '';
+        zAlt = row.model; zAltSub = row.submittal_path || '';
+      }
+    }
+    return { z: i+1, cap: capToUse, type: z.type, model: zModel, liq_pipe: row?.liq_pipe||'', gas_pipe: row?.gas_pipe||'', submittal_path: zSub, model_alt: zAlt, submittal_path_alt: zAltSub };
   }).filter(Boolean);
   const newMzIdx = quote.length;
   logEvent('add_system', { type: 'mz', brand: o.brand, series: o.series, cap: o.ou_cap, zones: zones.length });
@@ -1496,7 +1522,7 @@ function mzAdd(oi) {
   let ou = o.ou, ouSub = o.submittal_path || '', ouAlt = '', ouAltSub = '';
   if (o.ou_new) {
     ouAlt = o.ou_new; ouAltSub = o.submittal_path_new || '';
-    if ((o.ou in mzGenStockInv) && (o.ou_new in mzGenStockInv) && mzGenStockQty(o.ou) === 0 && mzGenStockQty(o.ou_new) > 0) {
+    if (mzUseNewGen(o.ou, o.ou_new, mzGenStockInv)) {
       ou = o.ou_new; ouSub = o.submittal_path_new || '';
       ouAlt = o.ou; ouAltSub = o.submittal_path || '';
     }
